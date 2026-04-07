@@ -1,0 +1,47 @@
+# EAS Build ignore file
+# 排除不需要上传到 EAS Build 的文件
+
+# 后端代码（不需要在移动应用中）
+backend/
+
+# 部署脚本和文档
+*.sh
+*.md
+*.txt
+*.exp
+
+# 压缩包
+*.tar.gz
+*.zip
+*.tar
+
+# 日志文件
+*.log
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# 临时文件
+.DS_Store
+*.swp
+*.swo
+*~
+
+# 环境变量文件（敏感信息）
+.env
+.env.local
+.env.*.local
+
+# 安装脚本
+install_*.sh
+
+# Git 相关
+.git/
+.gitignore
+
+# IDE 配置
+.vscode/
+.idea/
+*.iml
+
+
