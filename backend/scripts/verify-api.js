@@ -111,35 +111,84 @@ const main = async () => {
       method: 'POST',
       body: JSON.stringify({
         name: 'Verify Model',
-        dimensions: '20x20x20',
-        estimatedMaterialGrams: 12,
-        visibility: 'team',
-        notes: 'verify model',
+        description: 'verify model description',
+        source: 'original',
       }),
     });
 
     const modelUploadForm = new FormData();
-    modelUploadForm.append('assetId', model.id);
+    modelUploadForm.append('originalName', '手机支架.stl');
     modelUploadForm.append('file', new Blob(['solid verify\nendsolid verify\n'], { type: 'application/sla' }), 'verify.stl');
-    const modelUploadResponse = await fetch(`${baseUrl}/api/models/upload`, {
+    const modelUploadResponse = await fetch(`${baseUrl}/api/models/${model.id}/files`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${authToken}` },
       body: modelUploadForm,
     });
     const modelUpload = await readJson(modelUploadResponse);
-    if (!modelUploadResponse.ok || !modelUpload.fileKey) {
+    if (!modelUploadResponse.ok || !modelUpload.file?.fileKey) {
       throw new Error(`Model upload failed: ${JSON.stringify(modelUpload)}`);
     }
-    await request(`/api/models/${model.id}/versions`, {
+    if (modelUpload.file.name !== '手机支架.stl') {
+      throw new Error(`Model upload did not preserve UTF-8 filename: ${JSON.stringify(modelUpload.file)}`);
+    }
+
+    const threeMfUploadForm = new FormData();
+    threeMfUploadForm.append('originalName', '彩色模型.3mf');
+    threeMfUploadForm.append('file', new Blob(['not-a-real-zip'], { type: 'model/3mf' }), 'verify.3mf');
+    const threeMfUploadResponse = await fetch(`${baseUrl}/api/models/${model.id}/files`, {
       method: 'POST',
-      body: JSON.stringify({
-        fileKey: modelUpload.fileKey,
-        fileUrl: modelUpload.fileUrl,
-        fileSize: modelUpload.size,
-        sha256: modelUpload.sha256,
-        notes: 'verify upload',
-      }),
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: threeMfUploadForm,
     });
+    const threeMfUpload = await readJson(threeMfUploadResponse);
+    if (!threeMfUploadResponse.ok || !threeMfUpload.file?.fileKey) {
+      throw new Error(`3MF upload failed: ${JSON.stringify(threeMfUpload)}`);
+    }
+
+    const stepUploadForm = new FormData();
+    stepUploadForm.append('originalName', '装配结构.step');
+    stepUploadForm.append('file', new Blob(['ISO-10303-21; END-ISO-10303-21;'], { type: 'model/step' }), 'verify.step');
+    const stepUploadResponse = await fetch(`${baseUrl}/api/models/${model.id}/files`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: stepUploadForm,
+    });
+    const stepUpload = await readJson(stepUploadResponse);
+    if (!stepUploadResponse.ok || !stepUpload.file?.fileKey) {
+      throw new Error(`STEP upload failed: ${JSON.stringify(stepUpload)}`);
+    }
+
+    const imageUploadForm = new FormData();
+    imageUploadForm.append('type', 'cover');
+    imageUploadForm.append('originalName', '封面图.png');
+    imageUploadForm.append('file', new Blob([Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])], { type: 'image/png' }), 'verify.png');
+    const imageUploadResponse = await fetch(`${baseUrl}/api/models/${model.id}/images`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${authToken}` },
+      body: imageUploadForm,
+    });
+    const imageUpload = await readJson(imageUploadResponse);
+    if (!imageUploadResponse.ok || !imageUpload.image?.fileKey) {
+      throw new Error(`Model image upload failed: ${JSON.stringify(imageUpload)}`);
+    }
+    if (imageUpload.image.name !== '封面图.png') {
+      throw new Error(`Model image upload did not preserve UTF-8 filename: ${JSON.stringify(imageUpload.image)}`);
+    }
+
+    const publicImageResponse = await fetch(`${baseUrl}${imageUpload.image.fileUrl}`);
+    if (!publicImageResponse.ok) {
+      throw new Error(`Public model image should be readable without auth, got ${publicImageResponse.status}`);
+    }
+
+    const protectedModelFileResponse = await fetch(`${baseUrl}${modelUpload.file.fileUrl}`);
+    if (protectedModelFileResponse.status !== 401) {
+      throw new Error(`Model file should still require auth, got ${protectedModelFileResponse.status}`);
+    }
+
+    const modelDetail = await request(`/api/models/${model.id}`);
+    if (modelDetail.files.length !== 3 || modelDetail.images.length < 1) {
+      throw new Error(`Model detail did not include uploaded files/images: ${JSON.stringify(modelDetail)}`);
+    }
 
     const material = await request('/api/materials', {
       method: 'POST',

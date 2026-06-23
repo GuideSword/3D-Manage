@@ -5,48 +5,136 @@ const path = require('path');
 const { saveFile, deleteFile, getFileUrl } = require('../config/storage');
 const { withData, nextId, appendAudit, now } = require('../utils/store');
 const { toCsv, fromCsv } = require('../utils/csv');
+const { createModelPreview } = require('../utils/modelPreview');
 const { requireRoles } = require('../middleware/auth');
 
-const upload = multer({
-  limits: { fileSize: 500 * 1024 * 1024 },
+const MODEL_EXTENSIONS = new Set(['.stl', '.obj', '.3mf', '.step', '.stp', '.zip']);
+const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const SOURCE_VALUES = new Set(['original', 'remix', 'imported']);
+const IMAGE_TYPES = new Set(['cover', 'real_print', 'other']);
+
+const createUpload = ({ allowedExtensions, maxFileSizeMb, errorMessage }) => multer({
+  limits: { fileSize: maxFileSizeMb * 1024 * 1024 },
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.stl', '.obj', '.3mf'];
     const ext = path.extname(file.originalname).toLowerCase();
-    if (allowedTypes.includes(ext)) {
+    if (allowedExtensions.has(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Unsupported model format. Use STL, OBJ, or 3MF.'));
+      const error = new Error(errorMessage);
+      error.status = 400;
+      cb(error);
     }
   },
 });
 
-const toNumber = (value, fallback = null) => {
-  if (value == null || value === '') {
-    return fallback;
-  }
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) ? number : fallback;
+const modelFileUpload = createUpload({
+  allowedExtensions: MODEL_EXTENSIONS,
+  maxFileSizeMb: 500,
+  errorMessage: 'Unsupported model format. Use STL, OBJ, 3MF, STEP, STP, or ZIP.',
+});
+
+const imageUpload = createUpload({
+  allowedExtensions: IMAGE_EXTENSIONS,
+  maxFileSizeMb: 25,
+  errorMessage: 'Unsupported image format. Use JPG, PNG, or WEBP.',
+});
+
+const asString = (value) => (value == null ? '' : String(value).trim());
+
+const normalizeSource = (source, fallback = '') => {
+  const normalized = asString(source || fallback).toLowerCase();
+  return SOURCE_VALUES.has(normalized) ? normalized : '';
 };
+
+const getFileType = (filename = '') => path.extname(filename).replace('.', '').toLowerCase();
+
+const nextChildId = (items = []) => nextId(items);
+
+const recoverUtf8Filename = (filename = '') => {
+  const value = asString(filename);
+  if (!value) {
+    return 'upload';
+  }
+
+  const looksLikeLatin1Mojibake = /[\u00c0-\u00ff]/.test(value) && !/[\u4e00-\u9fff]/.test(value);
+  if (!looksLikeLatin1Mojibake) {
+    return value;
+  }
+
+  try {
+    const recovered = Buffer.from(value, 'latin1').toString('utf8');
+    if (recovered && !recovered.includes('\uFFFD')) {
+      return recovered;
+    }
+  } catch (error) {
+    // Keep the original value when it is not latin1 mojibake.
+  }
+
+  return value;
+};
+
+const getUploadedOriginalName = (req, file) => (
+  asString(req.body.originalName || req.body.original_name)
+  || recoverUtf8Filename(file?.originalname)
+);
+
+const normalizeFileRecord = (file = {}) => ({
+  id: asString(file.id),
+  name: asString(file.name || file.originalName),
+  type: asString(file.type || getFileType(file.name || file.originalName)),
+  fileKey: asString(file.fileKey || file.file_key),
+  fileUrl: asString(file.fileUrl || file.file_url),
+  size: file.size ?? file.fileSize ?? file.file_size ?? null,
+  sha256: asString(file.sha256),
+  createdAt: file.createdAt || file.created_at || now(),
+});
+
+const normalizeImageRecord = (image = {}) => ({
+  id: asString(image.id),
+  name: asString(image.name || image.originalName),
+  type: asString(image.type || 'other'),
+  fileKey: asString(image.fileKey || image.file_key),
+  fileUrl: asString(image.fileUrl || image.file_url),
+  size: image.size ?? image.fileSize ?? image.file_size ?? null,
+  sha256: asString(image.sha256),
+  sourceFileId: image.sourceFileId || image.source_file_id || null,
+  createdAt: image.createdAt || image.created_at || now(),
+});
 
 const normalizeModelPayload = (payload = {}, existing = null) => {
   const timestamp = now();
-  const model = {
+  const files = Array.isArray(payload.files)
+    ? payload.files.map(normalizeFileRecord)
+    : existing?.files || [];
+  const images = Array.isArray(payload.images)
+    ? payload.images.map(normalizeImageRecord)
+    : existing?.images || [];
+
+  return {
     ...(existing || {}),
-    ...payload,
-    name: payload.name || existing?.name || '',
-    dimensions: payload.dimensions || existing?.dimensions || '',
-    estimatedMaterialGrams: toNumber(payload.estimatedMaterialGrams ?? payload.estimated_material_grams, existing?.estimatedMaterialGrams || null),
-    visibility: payload.visibility || existing?.visibility || 'team',
-    tags: Array.isArray(payload.tags) ? payload.tags : existing?.tags || [],
-    versions: Array.isArray(payload.versions) ? payload.versions : existing?.versions || [],
-    notes: payload.notes || existing?.notes || '',
+    id: existing?.id || payload.id,
+    name: asString(payload.name ?? existing?.name),
+    description: asString(payload.description ?? existing?.description),
+    source: normalizeSource(payload.source, existing?.source || 'original'),
+    files,
+    images,
     createdAt: existing?.createdAt || timestamp,
     updatedAt: timestamp,
   };
+};
 
-  model.currentVersion = payload.currentVersion || payload.current_version || existing?.currentVersion || model.versions.length || 1;
-  return model;
+const validateModel = (model) => {
+  if (!model.name) {
+    return 'Model name is required';
+  }
+  if (!model.description) {
+    return 'Model description is required';
+  }
+  if (!SOURCE_VALUES.has(model.source)) {
+    return 'Model source must be original, remix, or imported';
+  }
+  return null;
 };
 
 const filterModels = (models, query = {}) => {
@@ -55,14 +143,74 @@ const filterModels = (models, query = {}) => {
     const searchTerm = String(query.search).trim().toLowerCase();
     filteredModels = filteredModels.filter((model) => (
       (model.name || '').toLowerCase().includes(searchTerm)
-      || (model.notes || '').toLowerCase().includes(searchTerm)
-      || (model.tags || []).some((tag) => String(tag).toLowerCase().includes(searchTerm))
+      || (model.description || '').toLowerCase().includes(searchTerm)
+      || (model.source || '').toLowerCase().includes(searchTerm)
+      || (model.files || []).some((file) => (file.name || '').toLowerCase().includes(searchTerm))
     ));
   }
-  if (query.visibility) {
-    filteredModels = filteredModels.filter((model) => model.visibility === query.visibility);
+  if (query.source) {
+    filteredModels = filteredModels.filter((model) => model.source === query.source);
   }
   return filteredModels;
+};
+
+const toPublicModel = (model) => ({
+  id: model.id,
+  name: model.name,
+  description: model.description,
+  source: model.source,
+  files: model.files || [],
+  images: model.images || [],
+  createdAt: model.createdAt,
+  updatedAt: model.updatedAt,
+});
+
+const findModel = (data, id) => data.models.find((item) => item.id === String(id));
+
+const appendStoredFile = ({ model, uploadResult, originalName }) => {
+  const record = normalizeFileRecord({
+    id: nextChildId(model.files),
+    name: originalName,
+    type: getFileType(originalName),
+    fileKey: uploadResult.filePath,
+    fileUrl: getFileUrl(uploadResult.filePath),
+    size: uploadResult.size,
+    sha256: uploadResult.sha256,
+    createdAt: now(),
+  });
+  model.files.push(record);
+  return record;
+};
+
+const appendStoredImage = ({ model, uploadResult, originalName, type, sourceFileId = null }) => {
+  const record = normalizeImageRecord({
+    id: nextChildId(model.images),
+    name: originalName,
+    type,
+    fileKey: uploadResult.filePath,
+    fileUrl: getFileUrl(uploadResult.filePath),
+    size: uploadResult.size,
+    sha256: uploadResult.sha256,
+    sourceFileId,
+    createdAt: now(),
+  });
+  model.images.push(record);
+  return record;
+};
+
+const deleteModelAssets = async (model) => {
+  const fileKeys = [
+    ...(model.files || []).map((file) => file.fileKey),
+    ...(model.images || []).map((image) => image.fileKey),
+  ].filter(Boolean);
+
+  for (const fileKey of fileKeys) {
+    try {
+      await deleteFile(fileKey);
+    } catch (error) {
+      console.error('Delete model asset failed:', error);
+    }
+  }
 };
 
 router.get('/export', requireRoles('owner'), async (req, res) => {
@@ -81,17 +229,16 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     const csv = toCsv([
       { key: 'id', label: 'id' },
       { key: 'name', label: 'name' },
-      { key: 'dimensions', label: 'dimensions' },
-      { key: 'estimatedMaterialGrams', label: 'estimated_material_grams' },
-      { key: 'visibility', label: 'visibility' },
-      { key: 'currentVersion', label: 'current_version' },
-      { key: 'versionCount', label: 'version_count' },
+      { key: 'description', label: 'description' },
+      { key: 'source', label: 'source' },
+      { key: 'fileCount', label: 'file_count' },
+      { key: 'imageCount', label: 'image_count' },
       { key: 'createdAt', label: 'created_at' },
       { key: 'updatedAt', label: 'updated_at' },
-      { key: 'notes', label: 'notes' },
     ], models.map((model) => ({
       ...model,
-      versionCount: model.versions?.length || 0,
+      fileCount: model.files?.length || 0,
+      imageCount: model.images?.length || 0,
     })));
 
     const filename = `models-${new Date().toISOString().slice(0, 10)}.csv`;
@@ -115,24 +262,21 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
         ? req.body.models
         : fromCsv(req.body.csv).map((row) => ({
           name: row.name,
-          dimensions: row.dimensions,
-          estimatedMaterialGrams: row.estimated_material_grams || row.estimatedMaterialGrams,
-          visibility: row.visibility || 'team',
-          notes: row.notes,
+          description: row.description,
+          source: row.source || 'original',
         }));
 
-      const created = incomingModels.map((modelPayload) => {
+      const created = [];
+      for (const modelPayload of incomingModels) {
         const model = normalizeModelPayload(modelPayload);
-        model.id = nextId(data.models);
-        if (!model.versions.length) {
-          model.versions = [
-            { id: '1', version: 1, notes: 'Imported metadata-only version.', createdAt: now() },
-          ];
-          model.currentVersion = 1;
+        const validationError = validateModel(model);
+        if (validationError) {
+          throw new Error(validationError);
         }
+        model.id = nextId(data.models);
         data.models.push(model);
-        return model;
-      });
+        created.push(model);
+      }
 
       appendAudit(data, {
         entity: 'models',
@@ -143,34 +287,10 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
       return created;
     });
 
-    res.status(201).json({ imported: imported.length, items: imported });
+    res.status(201).json({ imported: imported.length, items: imported.map(toPublicModel) });
   } catch (error) {
     console.error('Import models failed:', error);
-    res.status(400).json({ error: 'Import models failed' });
-  }
-});
-
-router.post('/upload', requireRoles('owner', 'staff'), upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const { assetId } = req.body;
-    const folder = assetId ? `models/${assetId}` : 'models/default';
-    const result = await saveFile(req.file.buffer, req.file.originalname, folder);
-
-    return res.json({
-      success: true,
-      fileKey: result.filePath,
-      fileUrl: getFileUrl(result.filePath),
-      sha256: result.sha256,
-      size: result.size,
-      originalName: req.file.originalname,
-    });
-  } catch (error) {
-    console.error('Model upload failed:', error);
-    return res.status(500).json({ error: `Model upload failed: ${error.message}` });
+    res.status(400).json({ error: error.message || 'Import models failed' });
   }
 });
 
@@ -183,7 +303,7 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
       const start = (page - 1) * pageSize;
       const end = start + pageSize;
       return {
-        items: filteredModels.slice(start, end),
+        items: filteredModels.slice(start, end).map(toPublicModel),
         total: filteredModels.length,
         page,
         pageSize,
@@ -197,15 +317,14 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
 
 router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const created = await withData((data) => {
+    const result = await withData((data) => {
       const model = normalizeModelPayload(req.body);
-      model.id = nextId(data.models);
-      if (!model.versions.length) {
-        model.versions = [
-          { id: '1', version: 1, notes: 'Initial metadata-only version.', createdAt: now() },
-        ];
-        model.currentVersion = 1;
+      const validationError = validateModel(model);
+      if (validationError) {
+        return { status: 400, body: { error: validationError } };
       }
+
+      model.id = nextId(data.models);
       data.models.push(model);
       appendAudit(data, {
         entity: 'models',
@@ -213,57 +332,130 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
         action: 'create',
         diff: model,
       });
-      return model;
+      return { status: 201, body: toPublicModel(model) };
     });
-    res.status(201).json(created);
+    res.status(result.status).json(result.body);
   } catch (error) {
     res.status(500).json({ error: 'Create model failed' });
   }
 });
 
-router.post('/:id/versions', requireRoles('owner', 'staff'), async (req, res) => {
+router.post('/:id/files', requireRoles('owner', 'staff'), modelFileUpload.single('file'), async (req, res) => {
   try {
-    const result = await withData((data) => {
-      const model = data.models.find((item) => item.id === String(req.params.id));
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const result = await withData(async (data) => {
+      const model = findModel(data, req.params.id);
       if (!model) {
         return { status: 404, body: { error: 'Model not found' } };
       }
 
-      if (!Array.isArray(model.versions)) {
-        model.versions = [];
+      model.files = Array.isArray(model.files) ? model.files : [];
+      model.images = Array.isArray(model.images) ? model.images : [];
+
+      const originalName = getUploadedOriginalName(req, req.file);
+      const folder = `models/${model.id}/files`;
+      const uploadResult = await saveFile(req.file.buffer, originalName, folder);
+      const file = appendStoredFile({
+        model,
+        uploadResult,
+        originalName,
+      });
+
+      let previewImage = null;
+      let previewWarning = null;
+      try {
+        const preview = await createModelPreview({
+          fileBuffer: req.file.buffer,
+          originalName,
+          fullPath: uploadResult.fullPath,
+        });
+        if (preview?.buffer) {
+          const previewName = `${path.basename(originalName, path.extname(originalName))}-preview.${preview.extension}`;
+          const previewResult = await saveFile(preview.buffer, previewName, `models/${model.id}/images`);
+          previewImage = appendStoredImage({
+            model,
+            uploadResult: previewResult,
+            originalName: previewName,
+            type: 'auto_preview',
+            sourceFileId: file.id,
+          });
+        }
+      } catch (error) {
+        previewWarning = error.message || 'Preview generation failed';
+        console.warn('Model preview generation failed:', error);
       }
 
-      const nextVersionNumber = model.versions.reduce((max, version) => {
-        const number = Number.parseInt(version.version, 10);
-        return Number.isFinite(number) ? Math.max(max, number) : max;
-      }, 0) + 1;
-
-      const newVersion = {
-        id: nextId(model.versions),
-        version: req.body.version || nextVersionNumber,
-        fileKey: req.body.fileKey || req.body.file_key || '',
-        fileUrl: req.body.fileUrl || req.body.file_url || '',
-        fileSize: req.body.fileSize || req.body.file_size || null,
-        sha256: req.body.sha256 || '',
-        notes: req.body.notes || '',
-        createdAt: now(),
-      };
-
-      model.versions.push(newVersion);
-      model.currentVersion = newVersion.version;
       model.updatedAt = now();
       appendAudit(data, {
         entity: 'models',
         entityId: model.id,
-        action: 'version.create',
-        diff: newVersion,
+        action: 'file.create',
+        diff: { file, previewImage, previewWarning },
       });
 
-      return { status: 201, body: newVersion };
+      return {
+        status: 201,
+        body: {
+          file,
+          previewImage,
+          ...(previewWarning ? { previewWarning } : {}),
+        },
+      };
     });
-    res.status(result.status).json(result.body);
+
+    return res.status(result.status).json(result.body);
   } catch (error) {
-    res.status(500).json({ error: 'Add model version failed' });
+    console.error('Model file upload failed:', error);
+    return res.status(500).json({ error: `Model file upload failed: ${error.message}` });
+  }
+});
+
+router.post('/:id/images', requireRoles('owner', 'staff'), imageUpload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const imageType = asString(req.body.type || 'other');
+    if (!IMAGE_TYPES.has(imageType)) {
+      return res.status(400).json({ error: 'Image type must be cover, real_print, or other' });
+    }
+
+    const result = await withData(async (data) => {
+      const model = findModel(data, req.params.id);
+      if (!model) {
+        return { status: 404, body: { error: 'Model not found' } };
+      }
+
+      model.images = Array.isArray(model.images) ? model.images : [];
+
+      const originalName = getUploadedOriginalName(req, req.file);
+      const uploadResult = await saveFile(req.file.buffer, originalName, `models/${model.id}/images`);
+      const image = appendStoredImage({
+        model,
+        uploadResult,
+        originalName,
+        type: imageType,
+      });
+
+      model.updatedAt = now();
+      appendAudit(data, {
+        entity: 'models',
+        entityId: model.id,
+        action: 'image.create',
+        diff: image,
+      });
+
+      return { status: 201, body: { image } };
+    });
+
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    console.error('Model image upload failed:', error);
+    return res.status(500).json({ error: `Model image upload failed: ${error.message}` });
   }
 });
 
@@ -280,11 +472,11 @@ router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
 
 router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
   try {
-    const model = await withData((data) => data.models.find((item) => item.id === String(req.params.id)), { write: false });
+    const model = await withData((data) => findModel(data, req.params.id), { write: false });
     if (!model) {
       return res.status(404).json({ error: 'Model not found' });
     }
-    return res.json(model);
+    return res.json(toPublicModel(model));
   } catch (error) {
     return res.status(500).json({ error: 'Get model failed' });
   }
@@ -292,13 +484,19 @@ router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) =>
 
 router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const updated = await withData((data) => {
+    const result = await withData((data) => {
       const modelIndex = data.models.findIndex((item) => item.id === String(req.params.id));
       if (modelIndex === -1) {
-        return null;
+        return { status: 404, body: { error: 'Model not found' } };
       }
+
       const before = data.models[modelIndex];
       const model = normalizeModelPayload(req.body, before);
+      const validationError = validateModel(model);
+      if (validationError) {
+        return { status: 400, body: { error: validationError } };
+      }
+
       data.models[modelIndex] = model;
       appendAudit(data, {
         entity: 'models',
@@ -306,13 +504,10 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
         action: 'update',
         diff: { before, after: model },
       });
-      return model;
+      return { status: 200, body: toPublicModel(model) };
     });
 
-    if (!updated) {
-      return res.status(404).json({ error: 'Model not found' });
-    }
-    return res.json(updated);
+    return res.status(result.status).json(result.body);
   } catch (error) {
     return res.status(500).json({ error: 'Update model failed' });
   }
@@ -327,15 +522,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       }
 
       const [model] = data.models.splice(modelIndex, 1);
-      for (const version of model.versions || []) {
-        if (version.fileKey) {
-          try {
-            await deleteFile(version.fileKey);
-          } catch (error) {
-            console.error('Delete model file failed:', error);
-          }
-        }
-      }
+      await deleteModelAssets(model);
 
       appendAudit(data, {
         entity: 'models',

@@ -240,25 +240,36 @@ export const modelsAPI = {
     });
   },
 
-  uploadFile: async (file, metadata = {}) => {
+  uploadModelFile: async (id, file) => {
     const formData = new FormData();
-    Object.entries(metadata).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && value !== '') {
-        formData.append(key, String(value));
-      }
-    });
+    if (file?.name) {
+      formData.append('originalName', file.name);
+    }
     formData.append('file', file);
-    return apiRequest('/models/upload', {
+    return apiRequest(`/models/${id}/files`, {
       method: 'POST',
       body: formData,
     });
   },
 
-  addVersion: async (id, versionData) => {
-    return apiRequest(`/models/${id}/versions`, {
+  uploadImage: async (id, file, type = 'other') => {
+    const formData = new FormData();
+    formData.append('type', type);
+    if (file?.name) {
+      formData.append('originalName', file.name);
+    }
+    formData.append('file', file);
+    return apiRequest(`/models/${id}/images`, {
       method: 'POST',
-      body: JSON.stringify(versionData),
+      body: formData,
     });
+  },
+
+  uploadFile: async (file, metadata = {}) => {
+    if (!metadata.assetId) {
+      throw new Error('assetId is required for model file upload');
+    }
+    return modelsAPI.uploadModelFile(metadata.assetId, file);
   },
 };
 

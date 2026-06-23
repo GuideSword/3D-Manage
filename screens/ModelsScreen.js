@@ -11,35 +11,68 @@ import {
   ActivityIndicator,
   TextInput,
   Platform,
+  Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants';
+import { COLORS, API_CONFIG } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { modelsAPI, isAuthRequiredError } from '../utils/api';
+import { authAPI, modelsAPI, isAuthRequiredError } from '../utils/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
+
+const SOURCE_LABELS = {
+  original: '原创',
+  remix: '二创',
+  imported: '导入',
+};
+
+const getPreferredImage = (model) => {
+  const images = model.images || [];
+  return (
+    images.find((image) => image.type === 'cover')
+    || images.find((image) => image.type === 'auto_preview')
+    || null
+  );
+};
+
+const buildImageSource = (image, token) => {
+  if (!image?.fileUrl) {
+    return null;
+  }
+  const apiRoot = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
+  const uri = image.fileUrl.startsWith('http')
+    ? image.fileUrl
+    : `${image.fileUrl.startsWith('/api') ? apiRoot : API_CONFIG.BASE_URL}${image.fileUrl}`;
+  return {
+    uri,
+    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
+};
 
 const ModelsScreen = ({ navigation }) => {
   const [models, setModels] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [viewMode, setViewMode] = useState('list');
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [visibilityFilter, setVisibilityFilter] = useState('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [authToken, setAuthToken] = useState(null);
 
-  // 获取模型列表
   const fetchModels = async () => {
     try {
       setLoading(true);
+      setAuthToken(await authAPI.getToken());
+
       const params = {};
       if (searchQuery.trim()) {
         params.search = searchQuery.trim();
       }
-      if (visibilityFilter !== 'all') {
-        params.visibility = visibilityFilter;
+      if (sourceFilter !== 'all') {
+        params.source = sourceFilter;
       }
+
       const data = await modelsAPI.getAll(params);
       setModels(data || []);
     } catch (error) {
@@ -61,67 +94,71 @@ const ModelsScreen = ({ navigation }) => {
 
   useEffect(() => {
     fetchModels();
-  }, [searchQuery, visibilityFilter]);
+  }, [searchQuery, sourceFilter]);
 
-  // 当屏幕获得焦点时刷新数据
   useFocusEffect(
     useCallback(() => {
       fetchModels();
-    }, [searchQuery, visibilityFilter])
+    }, [searchQuery, sourceFilter])
   );
 
-  const cycleVisibilityFilter = () => {
-    setVisibilityFilter((current) => {
-      if (current === 'all') return 'team';
-      if (current === 'team') return 'private';
+  const cycleSourceFilter = () => {
+    setSourceFilter((current) => {
+      if (current === 'all') return 'original';
+      if (current === 'original') return 'remix';
+      if (current === 'remix') return 'imported';
       return 'all';
     });
   };
 
-  const ModelCard = ({ model, isGrid = false }) => (
-    <TouchableOpacity
-      onPress={() => navigation.navigate('ModelDetail', { modelId: model.id })}
-      style={isGrid ? styles.gridCardContainer : styles.listCardContainer}
-    >
-      <Card style={isGrid ? styles.gridCard : styles.listCard}>
-        {/* 模型预览占位图 */}
-        <View style={styles.previewPlaceholder}>
-          <Ionicons name="cube-outline" size={48} color={COLORS.textSecondary} />
-        </View>
+  const ModelCard = ({ model, isGrid = false }) => {
+    const preferredImage = getPreferredImage(model);
+    const imageSource = buildImageSource(preferredImage, authToken);
+    const sourceLabel = SOURCE_LABELS[model.source] || model.source || '未知';
 
-        <View style={styles.modelInfo}>
-          <View style={styles.modelHeader}>
-            <Text style={styles.modelName} numberOfLines={1}>
-              {model.name}
-            </Text>
-            <Badge
-              text={model.visibility === 'private' ? '私有' : '团队'}
-              color={model.visibility === 'private' ? COLORS.warning : COLORS.success}
-              size="small"
-            />
-          </View>
-
-          <View style={styles.modelMeta}>
-            {model.dimensions && (
-              <>
-                <Text style={styles.metaText}>尺寸: {model.dimensions}</Text>
-                <Text style={styles.metaText}>•</Text>
-              </>
-            )}
-            {model.estimatedMaterialGrams && (
-              <Text style={styles.metaText}>耗材: {model.estimatedMaterialGrams}g</Text>
+    return (
+      <TouchableOpacity
+        onPress={() => navigation.navigate('ModelDetail', { modelId: model.id })}
+        style={isGrid ? styles.gridCardContainer : styles.listCardContainer}
+      >
+        <Card style={isGrid ? styles.gridCard : styles.listCard}>
+          <View style={styles.previewBox}>
+            {imageSource ? (
+              <Image source={imageSource} style={styles.previewImage} resizeMode="cover" />
+            ) : (
+              <Ionicons name="cube-outline" size={48} color={COLORS.textSecondary} />
             )}
           </View>
 
-          {(model.createdAt || model.updatedAt) && (
-            <Text style={styles.modelDate}>
-              {model.updatedAt ? `更新时间: ${model.updatedAt}` : `创建时间: ${model.createdAt}`}
-            </Text>
-          )}
-        </View>
-      </Card>
-    </TouchableOpacity>
-  );
+          <View style={styles.modelInfo}>
+            <View style={styles.modelHeader}>
+              <Text style={styles.modelName} numberOfLines={1}>
+                {model.name}
+              </Text>
+              <Badge text={sourceLabel} color={COLORS.primary} size="small" />
+            </View>
+
+            {model.description ? (
+              <Text style={styles.description} numberOfLines={2}>
+                {model.description}
+              </Text>
+            ) : null}
+
+            <View style={styles.modelMeta}>
+              <Text style={styles.metaText}>文件: {(model.files || []).length}</Text>
+              <Text style={styles.metaText}>图片: {(model.images || []).length}</Text>
+            </View>
+
+            {(model.createdAt || model.updatedAt) && (
+              <Text style={styles.modelDate}>
+                {model.updatedAt ? `更新: ${new Date(model.updatedAt).toLocaleString('zh-CN')}` : `创建: ${new Date(model.createdAt).toLocaleString('zh-CN')}`}
+              </Text>
+            )}
+          </View>
+        </Card>
+      </TouchableOpacity>
+    );
+  };
 
   const renderModel = ({ item }) => (
     <ModelCard model={item} isGrid={viewMode === 'grid'} />
@@ -150,11 +187,11 @@ const ModelsScreen = ({ navigation }) => {
           </TouchableOpacity>
           <TouchableOpacity
             style={styles.headerButton}
-            onPress={cycleVisibilityFilter}
+            onPress={cycleSourceFilter}
           >
-            <Ionicons name="filter" size={24} color={visibilityFilter === 'all' ? COLORS.text : COLORS.primary} />
+            <Ionicons name="filter" size={24} color={sourceFilter === 'all' ? COLORS.text : COLORS.primary} />
           </TouchableOpacity>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.headerButton}
             onPress={() => navigation.navigate('CreateModel')}
           >
@@ -167,7 +204,7 @@ const ModelsScreen = ({ navigation }) => {
         <View style={styles.searchContainer}>
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索模型（名称、备注、标签）"
+            placeholder="搜索模型名称、描述或文件名"
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
@@ -180,12 +217,12 @@ const ModelsScreen = ({ navigation }) => {
         </View>
       )}
 
-      {visibilityFilter !== 'all' && (
+      {sourceFilter !== 'all' && (
         <View style={styles.filterHint}>
           <Text style={styles.filterHintText}>
-            当前筛选：{visibilityFilter === 'team' ? '团队模型' : '私有模型'}
+            当前筛选：{SOURCE_LABELS[sourceFilter] || sourceFilter}
           </Text>
-          <TouchableOpacity onPress={() => setVisibilityFilter('all')}>
+          <TouchableOpacity onPress={() => setSourceFilter('all')}>
             <Text style={styles.filterClearText}>清除</Text>
           </TouchableOpacity>
         </View>
@@ -201,7 +238,7 @@ const ModelsScreen = ({ navigation }) => {
           data={models}
           keyExtractor={(item) => String(item.id)}
           renderItem={renderModel}
-          key={viewMode} // 强制重新渲染以切换布局
+          key={viewMode}
           numColumns={viewMode === 'grid' ? 2 : 1}
           refreshControl={
             <RefreshControl
@@ -229,8 +266,7 @@ const ModelsScreen = ({ navigation }) => {
         />
       )}
 
-      {/* 浮动添加按钮 */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.fab}
         onPress={() => navigation.navigate('CreateModel')}
       >
@@ -331,17 +367,15 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   gridCardContainer: {
-    width: (width - 32 - 12) / 2, // 减去padding和间距
+    width: (width - 44) / 2,
     marginBottom: 12,
     marginHorizontal: 6,
   },
   listCard: {
     flexDirection: 'row',
   },
-  gridCard: {
-    // 网格卡片样式
-  },
-  previewPlaceholder: {
+  gridCard: {},
+  previewBox: {
     width: 80,
     height: 80,
     backgroundColor: COLORS.surface,
@@ -349,6 +383,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12,
+    overflow: 'hidden',
+  },
+  previewImage: {
+    width: '100%',
+    height: '100%',
   },
   modelInfo: {
     flex: 1,
@@ -366,6 +405,12 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 8,
   },
+  description: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
+    marginBottom: 8,
+  },
   modelMeta: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -374,21 +419,11 @@ const styles = StyleSheet.create({
   metaText: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginRight: 4,
+    marginRight: 12,
   },
   modelDate: {
     fontSize: 12,
     color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  versionIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  versionText: {
-    fontSize: 12,
-    color: COLORS.primary,
-    marginLeft: 4,
   },
   emptyContainer: {
     flex: 1,

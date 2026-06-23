@@ -23,7 +23,7 @@ const IMPORT_OPTIONS = [
 
 const EXAMPLE_HEADERS = {
   orders: 'customer_name,status,total,currency,due_date,item_model_name,item_material_type,item_color,item_quantity,item_unit_price,notes',
-  models: 'name,dimensions,estimated_material_grams,visibility,notes',
+  models: 'name,description,source',
   materials: 'type,brand,diameter,color,density,unit_price,unit,notes',
   stockLots: 'material_id,lot_no,serial_no,location,qty,state,notes',
 };

@@ -4,7 +4,10 @@ const router = express.Router();
 const { getFile, getFileInfo, UPLOAD_DIR } = require('../config/storage');
 const { requireRoles } = require('../middleware/auth');
 
-router.get(/.*/, requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
+const PUBLIC_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+const protectedFileAccess = requireRoles('owner', 'staff', 'viewer');
+
+const sendStoredFile = async (req, res) => {
   try {
     const filePath = req.path.replace(/^\/+/, '');
     const resolvedPath = path.resolve(path.join(UPLOAD_DIR, filePath));
@@ -20,13 +23,18 @@ router.get(/.*/, requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
       '.stl': 'application/sla',
       '.obj': 'model/obj',
       '.3mf': 'model/3mf',
+      '.step': 'model/step',
+      '.stp': 'model/step',
+      '.zip': 'application/zip',
       '.png': 'image/png',
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
+      '.webp': 'image/webp',
       '.pdf': 'application/pdf',
       '.csv': 'text/csv',
     };
 
+    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
     res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
     res.setHeader('Content-Length', fileInfo.size);
     res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
@@ -52,6 +60,19 @@ router.get(/.*/, requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
     }
     return res.status(500).json({ error: 'File download failed' });
   }
+};
+
+router.get(/.*/, async (req, res, next) => {
+  const ext = path.extname(req.path).toLowerCase();
+  if (PUBLIC_IMAGE_EXTENSIONS.has(ext)) {
+    return sendStoredFile(req, res);
+  }
+  return protectedFileAccess(req, res, (error) => {
+    if (error) {
+      return next(error);
+    }
+    return sendStoredFile(req, res);
+  });
 });
 
 module.exports = router;
