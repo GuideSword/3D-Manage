@@ -14,11 +14,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, INVENTORY_TXN_TYPES, INVENTORY_TXN_LABELS } from '../constants';
+import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, INVENTORY_TXN_TYPES, INVENTORY_TXN_LABELS, ROUTES } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { materialsAPI, stockAPI } from '../utils/api';
+import { materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
 
-const MaterialsScreen = ({ navigation }) => {
+const MaterialsScreen = ({ navigation, route }) => {
   const [materials, setMaterials] = useState([]);
   const [stockLots, setStockLots] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -52,6 +52,9 @@ const MaterialsScreen = ({ navigation }) => {
       }
       setMaterials(filteredData);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取物料列表失败:', error);
       Alert.alert('错误', '获取物料列表失败，请检查网络连接');
       setMaterials([]);
@@ -67,6 +70,9 @@ const MaterialsScreen = ({ navigation }) => {
       const data = await stockAPI.getLots();
       setStockLots(data || []);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取库存批次失败:', error);
       Alert.alert('错误', '获取库存批次失败，请检查网络连接');
       setStockLots([]);
@@ -86,6 +92,12 @@ const MaterialsScreen = ({ navigation }) => {
   useEffect(() => {
     loadData();
   }, [searchQuery]);
+
+  useEffect(() => {
+    if (route?.params?.activeTab) {
+      setActiveTab(route.params.activeTab);
+    }
+  }, [route?.params?.activeTab]);
 
   // 当屏幕获得焦点时刷新数据
   useFocusEffect(
@@ -111,6 +123,9 @@ const MaterialsScreen = ({ navigation }) => {
               Alert.alert('成功', '物料已删除');
               await fetchMaterials();
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除物料失败');
             } finally {
               setDeletingId(null);
@@ -225,6 +240,9 @@ const MaterialsScreen = ({ navigation }) => {
               Alert.alert('成功', '批次已删除');
               await fetchStockLots();
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除批次失败');
             } finally {
               setDeletingId(null);
@@ -297,21 +315,24 @@ const MaterialsScreen = ({ navigation }) => {
       <View style={styles.inventoryActions}>
         <TouchableOpacity 
           style={styles.inventoryButton} 
-          onPress={() => navigation.navigate('InboundTransaction')}
+          onPress={() => navigation.navigate(ROUTES.INBOUND_TRANSACTION)}
         >
           <Ionicons name="add-circle" size={20} color={COLORS.success} />
           <Text style={styles.inventoryButtonText}>入库</Text>
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.inventoryButton} 
-          onPress={() => navigation.navigate('OutboundTransaction')}
+          onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
         >
           <Ionicons name="remove-circle" size={20} color={COLORS.danger} />
           <Text style={styles.inventoryButtonText}>出库</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.inventoryButton} disabled>
-          <Ionicons name="swap-horizontal" size={20} color={COLORS.textSecondary} />
-          <Text style={[styles.inventoryButtonText, { color: COLORS.textSecondary }]}>调整</Text>
+        <TouchableOpacity
+          style={styles.inventoryButton}
+          onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
+        >
+          <Ionicons name="swap-horizontal" size={20} color={COLORS.warning} />
+          <Text style={styles.inventoryButtonText}>盘点</Text>
         </TouchableOpacity>
       </View>
     </Card>
@@ -723,6 +744,3 @@ const styles = StyleSheet.create({
 });
 
 export default MaterialsScreen;
-
-
-

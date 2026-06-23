@@ -8,12 +8,15 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { COLORS, ROUTES } from '../constants';
 import { Card, Button, Input } from '../components';
-import { modelsAPI } from '../utils/api';
+import { modelsAPI, isAuthRequiredError } from '../utils/api';
+import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
 const CreateModelScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
+  const [selectedFile, setSelectedFile] = useState(null);
   const [formData, setFormData] = useState({
     name: '',
     length: '', // 长度 (mm)
@@ -22,6 +25,27 @@ const CreateModelScreen = ({ navigation }) => {
     estimatedMaterialGrams: '', // 大概所需耗材克数
     notes: '',
   });
+
+  const pickModelFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) {
+        return;
+      }
+
+      const asset = result.assets?.[0];
+      if (!validateExtension(asset, ['stl', 'obj', '3mf'])) {
+        Alert.alert('文件格式不支持', '请选择 STL、OBJ 或 3MF 模型文件');
+        return;
+      }
+      setSelectedFile(asset);
+    } catch (error) {
+      Alert.alert('错误', '选择模型文件失败');
+    }
+  };
 
   // 验证表单
   const validateForm = () => {
@@ -65,10 +89,23 @@ const CreateModelScreen = ({ navigation }) => {
       };
 
       const newModel = await modelsAPI.create(modelData);
+      if (selectedFile) {
+        const uploadResult = await modelsAPI.uploadFile(
+          pickerAssetToFormFile(selectedFile),
+          { assetId: newModel.id }
+        );
+        await modelsAPI.addVersion(newModel.id, {
+          fileKey: uploadResult.fileKey,
+          fileUrl: uploadResult.fileUrl,
+          fileSize: uploadResult.size,
+          sha256: uploadResult.sha256,
+          notes: `上传文件：${uploadResult.originalName || selectedFile.name}`,
+        });
+      }
 
       Alert.alert(
         '成功',
-        '模型创建成功！',
+        selectedFile ? '模型创建并上传文件成功！' : '模型创建成功！',
         [
           {
             text: '查看模型',
@@ -85,6 +122,9 @@ const CreateModelScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('创建模型失败:', error);
       Alert.alert('错误', '创建模型失败，请检查网络连接或稍后重试');
     } finally {
@@ -148,6 +188,25 @@ const CreateModelScreen = ({ navigation }) => {
           />
         </Card>
 
+        <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>模型文件</Text>
+          <Text style={styles.helperText}>支持 STL、OBJ、3MF。也可以先创建元数据，之后再补版本。</Text>
+          {selectedFile && (
+            <View style={styles.fileInfo}>
+              <Text style={styles.fileName}>{selectedFile.name}</Text>
+              {selectedFile.size ? (
+                <Text style={styles.fileMeta}>{Math.round(selectedFile.size / 1024)} KB</Text>
+              ) : null}
+            </View>
+          )}
+          <Button
+            title={selectedFile ? '重新选择文件' : '选择模型文件'}
+            onPress={pickModelFile}
+            variant="outline"
+            style={styles.fileButton}
+          />
+        </Card>
+
         {/* 备注 */}
         <Card style={styles.section}>
           <Input
@@ -199,6 +258,31 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     marginBottom: 16,
   },
+  helperText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  fileInfo: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    marginBottom: 12,
+  },
+  fileName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  fileMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  fileButton: {
+    marginTop: 4,
+  },
   buttonContainer: {
     padding: 16,
     paddingBottom: 32,
@@ -235,4 +319,3 @@ const styles = StyleSheet.create({
 });
 
 export default CreateModelScreen;
-

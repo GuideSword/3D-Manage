@@ -1,115 +1,94 @@
-# 3D打印管理系统 - 后端服务
+# 3D Manage Backend
 
-基于 Node.js + Express 的后端API服务，支持文件本地存储。
+Express API for the 3D printing management app. It supports authenticated CRUD flows for orders, models, materials, stock lots, inventory transactions, CSV import/export, local file uploads, and Aliyun OSS signed URLs.
 
-## 快速开始
-
-### 1. 安装依赖
+## Quick Start
 
 ```bash
 npm install
-```
-
-### 2. 配置环境变量
-
-```bash
-cp .env.example .env
-# 编辑 .env 文件，配置数据库、JWT密钥等
-```
-
-### 3. 启动服务
-
-```bash
-# 开发模式（自动重启）
+npm run store:init
 npm run dev
-
-# 生产模式
-npm start
 ```
 
-服务将在 `http://localhost:3001` 启动。
+The API listens on `http://localhost:3001` by default. Override with `PORT`.
 
-## 部署到服务器
-
-### 使用 PM2（推荐）
+## Environment
 
 ```bash
-# 安装 PM2
-npm install -g pm2
+PORT=3001
+JWT_SECRET=replace-with-a-long-random-secret
 
-# 启动服务
-pm2 start server.js --name "3d-manage-api"
+# file store, default
+STORE_DRIVER=file
+DATA_DIR=./data
+UPLOAD_DIR=./uploads
 
-# 保存进程列表
-pm2 save
+# PostgreSQL JSONB store, optional
+# STORE_DRIVER=postgres
+# DATABASE_URL=postgres://user:password@localhost:5432/3d_manage
+# DATABASE_SSL=false
+# STORE_TABLE=app_store
+# STORE_ID=default
 
-# 设置开机自启
-pm2 startup
-
-# 查看日志
-pm2 logs 3d-manage-api
+# Aliyun OSS, optional when callers do not pass credentials per request
+# OSS_ACCESS_KEY_ID=
+# OSS_ACCESS_KEY_SECRET=
+# OSS_BUCKET=
+# OSS_REGION=oss-cn-hangzhou
 ```
 
-### 使用 Nginx 反向代理（可选）
+`STORE_DRIVER=file` writes one JSON file at `DATA_DIR/store.json`. `STORE_DRIVER=postgres` writes the same application document into one JSONB row, so existing routes keep the same behavior while deployment can use PostgreSQL-backed persistence.
 
-```nginx
-server {
-    listen 80;
-    server_name api.yourdomain.com;
+Run `npm run store:init` before deployment to create the local file or PostgreSQL table with clean business collections. `npm run db:sync` is kept as a compatibility alias for the same command.
 
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
+## Authentication
 
-    # 文件上传大小限制
-    client_max_body_size 500M;
-}
+The first login or registration bootstraps an owner account when no users exist:
+
+```text
+admin@example.com / Admin123456
 ```
 
-## 文件存储
+Business APIs require `Authorization: Bearer <token>`. Public registration creates non-owner users only; owner-level actions require an owner token.
 
-- **存储位置**: `backend/uploads/`
-- **目录结构**:
-  - `models/` - 模型文件（STL/OBJ/3MF）
-  - `orders/attachments/` - 订单附件（图片/PDF）
-  - `stock/` - 库存批次图片
-  - `previews/` - 预览图
+## Verification
 
-- **文件访问**: `GET /api/files/:filePath`
-- **文件大小限制**: 模型文件 500MB，附件 50MB
+```bash
+npm run verify
+```
 
-## API 端点
+The verification script starts the API on a random local port, uses an isolated temp data/upload directory, and checks auth, permissions, orders, models, materials, stock, CSV export, file uploads, OSS URL signing, and store persistence.
 
-- `GET /health` - 健康检查
-- `POST /api/auth/login` - 登录
-- `GET /api/orders` - 获取订单列表
-- `POST /api/orders` - 创建订单
-- `POST /api/orders/upload-attachment` - 上传订单附件
-- `GET /api/models` - 获取模型列表
-- `POST /api/models/upload` - 上传模型文件
-- `GET /api/files/:filePath` - 下载文件
+## Main API Groups
 
-## 注意事项
+- `GET /health`
+- `POST /api/auth/login`
+- `POST /api/auth/register`
+- `GET /api/auth/me`
+- `/api/orders`
+- `/api/models`
+- `/api/materials`
+- `/api/stock`
+- `/api/files/:filePath`
+- `/api/oss/*`
 
-1. **生产环境**:
-   - 修改 JWT_SECRET 为强密钥
-   - 配置 HTTPS
-   - 设置文件备份策略
-   - 定期清理临时文件
+Each business group includes list/detail, create/update/delete where applicable, CSV import/export, and audit logging.
 
-2. **存储空间**:
-   - 监控 `uploads/` 目录大小
-   - 建议设置自动备份
-   - 考虑使用云存储（如需要）
+## Files
 
-3. **性能优化**:
-   - 大文件上传建议使用流式处理
-   - 配置 Nginx 缓存静态文件
-   - 使用 CDN 加速文件下载（可选）
+Local uploads are stored under `UPLOAD_DIR`:
 
+- `models/` for STL/OBJ/3MF model files
+- `orders/attachments/` for order images/PDFs
+- `stock/` for stock-related files
+- `previews/` for generated previews
 
+Use `/api/files/:filePath` with an authenticated token to download local files.
+
+## Production Notes
+
+- Set a strong `JWT_SECRET`.
+- Put the API behind HTTPS.
+- Back up `DATA_DIR` or the PostgreSQL database.
+- Back up `UPLOAD_DIR` unless all durable files are stored in OSS.
+- Configure reverse proxy upload limits for model files.

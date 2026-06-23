@@ -79,13 +79,16 @@ nohup node server.js > server.log 2>&1 &
    // GET /api/models/:id - 获取单个模型详情
    router.get('/:id', async (req, res) => {
      try {
-       const model = mockModels.find(m => m.id === req.params.id);
+       const model = await withData(
+         (data) => data.models.find((item) => item.id === String(req.params.id)),
+         { write: false }
+       );
        if (!model) {
          return res.status(404).json({ error: '模型不存在' });
        }
-       res.json(model);
+       return res.json(model);
      } catch (error) {
-       res.status(500).json({ error: '获取模型详情失败' });
+       return res.status(500).json({ error: '获取模型详情失败' });
      }
    });
    ```
@@ -158,7 +161,6 @@ curl http://101.37.28.116:3001/api/models/1
 - **本地文件**: `backend/routes/models.js`
 - **远程文件**: `/root/3D-Manage/backend/routes/models.js`（根据实际情况调整）
 - **更新脚本**: `update_models_route.sh`
-
 
 
 

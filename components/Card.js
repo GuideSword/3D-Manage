@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { COLORS } from '../constants';
 
 const Card = ({ children, style, ...props }) => {
@@ -17,17 +17,23 @@ const styles = StyleSheet.create({
     padding: 16,
     marginVertical: 4,
     marginHorizontal: 8,
-    shadowColor: COLORS.dark,
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.22,
-    shadowRadius: 2.22,
-    elevation: 3,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 1px 3px rgba(28, 28, 30, 0.22)',
+      },
+      default: {
+        shadowColor: COLORS.dark,
+        shadowOffset: {
+          width: 0,
+          height: 1,
+        },
+        shadowOpacity: 0.22,
+        shadowRadius: 2.22,
+        elevation: 3,
+      },
+    }),
   },
 });
 
 export default Card;
-
 

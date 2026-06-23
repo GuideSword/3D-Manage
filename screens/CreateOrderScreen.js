@@ -12,10 +12,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useFocusEffect } from '@react-navigation/native';
 import { COLORS, ORDER_STATUSES, ROUTES } from '../constants';
 import { Card, Button, Input, Picker } from '../components';
-import { ordersAPI, modelsAPI, materialsAPI } from '../utils/api';
+import { ordersAPI, modelsAPI, materialsAPI, isAuthRequiredError } from '../utils/api';
+import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
 // 颜色选项
 const COLOR_OPTIONS = [
@@ -30,6 +32,7 @@ const CreateOrderScreen = ({ navigation }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [models, setModels] = useState([]);
   const [materials, setMaterials] = useState([]);
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
   
   const [formData, setFormData] = useState({
     customerName: '',
@@ -60,8 +63,14 @@ const CreateOrderScreen = ({ navigation }) => {
     try {
       setLoadingData(true);
       const [modelsData, materialsData] = await Promise.all([
-        modelsAPI.getAll().catch(() => []),
-        materialsAPI.getAll().catch(() => []),
+        modelsAPI.getAll().catch((error) => {
+          if (isAuthRequiredError(error)) throw error;
+          return [];
+        }),
+        materialsAPI.getAll().catch((error) => {
+          if (isAuthRequiredError(error)) throw error;
+          return [];
+        }),
       ]);
       
       // 直接使用API返回的数据，不合并默认选项
@@ -76,12 +85,35 @@ const CreateOrderScreen = ({ navigation }) => {
         ? materialsData 
         : apiMaterialTypes.map((type) => ({ type, id: type })));
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('加载选项失败:', error);
       // API失败时设置为空数组
       setModels([]);
       setMaterials([]);
     } finally {
       setLoadingData(false);
+    }
+  };
+
+  const pickAttachment = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/png', 'image/jpeg', 'application/pdf'],
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const asset = result.assets?.[0];
+      if (!validateExtension(asset, ['png', 'jpg', 'jpeg', 'pdf'])) {
+        Alert.alert('文件格式不支持', '请选择 PNG、JPG、JPEG 或 PDF 附件');
+        return;
+      }
+      setSelectedAttachment(asset);
+    } catch (error) {
+      Alert.alert('错误', '选择附件失败');
     }
   };
 
@@ -190,6 +222,17 @@ const CreateOrderScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
+      const attachments = [];
+      if (selectedAttachment) {
+        const uploadResult = await ordersAPI.uploadAttachment(pickerAssetToFormFile(selectedAttachment));
+        attachments.push({
+          fileKey: uploadResult.fileKey,
+          fileUrl: uploadResult.fileUrl,
+          sha256: uploadResult.sha256,
+          size: uploadResult.size,
+          originalName: uploadResult.originalName || selectedAttachment.name,
+        });
+      }
 
       // 构建订单数据
       const orderItems = items.map((item) => {
@@ -221,7 +264,8 @@ const CreateOrderScreen = ({ navigation }) => {
         currency: formData.currency,
         dueDate: formData.dueDate ? formatDate(formData.dueDate) : undefined,
         notes: formData.notes.trim() || undefined,
-        status: ORDER_STATUSES.IN_PROGRESS,
+        attachments,
+        status: ORDER_STATUSES.PENDING_REVIEW,
       };
 
       // 提交到API
@@ -246,6 +290,9 @@ const CreateOrderScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('创建订单失败:', error);
       Alert.alert('错误', '创建订单失败，请检查网络连接或稍后重试');
     } finally {
@@ -366,6 +413,25 @@ const CreateOrderScreen = ({ navigation }) => {
             multiline
             numberOfLines={3}
           />
+
+          <View style={styles.attachmentBlock}>
+            <Text style={styles.label}>附件</Text>
+            <Text style={styles.helperText}>支持 PNG、JPG、PDF，可上传客户图纸或确认文件。</Text>
+            {selectedAttachment && (
+              <View style={styles.fileInfo}>
+                <Text style={styles.fileName}>{selectedAttachment.name}</Text>
+                {selectedAttachment.size ? (
+                  <Text style={styles.fileMeta}>{Math.round(selectedAttachment.size / 1024)} KB</Text>
+                ) : null}
+              </View>
+            )}
+            <Button
+              title={selectedAttachment ? '重新选择附件' : '选择附件'}
+              onPress={pickAttachment}
+              variant="outline"
+              style={styles.fileButton}
+            />
+          </View>
         </Card>
 
         {/* 订单项 */}
@@ -518,6 +584,34 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     color: COLORS.text,
     marginBottom: 4,
+  },
+  helperText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    lineHeight: 20,
+    marginBottom: 12,
+  },
+  attachmentBlock: {
+    marginTop: 12,
+  },
+  fileInfo: {
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: COLORS.surface,
+    marginBottom: 12,
+  },
+  fileName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  fileMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 4,
+  },
+  fileButton: {
+    marginTop: 4,
   },
   datePickerContainer: {
     marginVertical: 8,

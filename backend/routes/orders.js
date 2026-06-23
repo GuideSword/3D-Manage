@@ -3,145 +3,252 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { saveFile, deleteFile, getFileUrl } = require('../config/storage');
+const { withData, nextId, appendAudit, now } = require('../utils/store');
+const { toCsv, fromCsv } = require('../utils/csv');
+const { requireRoles } = require('../middleware/auth');
 
-// 临时模拟订单数据（临时，后续连接数据库）
-let mockOrders = [
-  {
-    id: '1',
-    customer: { id: '1', name: '张三' },
-    status: 'pending_review',
-    total: 150.00,
-    currency: 'CNY',
-    dueDate: '2024-12-01',
-    createdAt: '2024-11-15',
-    items: [
-      { id: '1', materialType: 'PLA', color: '白色', quantity: 2, unitPrice: 50.00 },
-      { id: '2', materialType: 'ABS', color: '黑色', quantity: 1, unitPrice: 50.00 },
-    ],
-  },
-  {
-    id: '2',
-    customer: { id: '2', name: '李四' },
-    status: 'in_progress',
-    total: 300.00,
-    currency: 'CNY',
-    dueDate: '2024-12-05',
-    createdAt: '2024-11-10',
-    items: [
-      { id: '3', materialType: 'PETG', color: '透明', quantity: 3, unitPrice: 100.00 },
-    ],
-  },
-  {
-    id: '3',
-    customer: { id: '3', name: '王五' },
-    status: 'completed',
-    total: 200.00,
-    currency: 'CNY',
-    dueDate: '2024-11-20',
-    createdAt: '2024-11-05',
-    items: [
-      { id: '4', materialType: 'TPU', color: '蓝色', quantity: 2, unitPrice: 100.00 },
-    ],
-  },
-];
-
-// 配置 multer 用于订单附件上传
-const upload = multer({ 
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB for attachments
+const upload = multer({
+  limits: { fileSize: 50 * 1024 * 1024 },
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
-    // 允许图片和PDF附件
     const allowedTypes = ['.png', '.jpg', '.jpeg', '.pdf'];
     const ext = path.extname(file.originalname).toLowerCase();
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('不支持的文件格式，仅支持 PNG/JPG/PDF'));
+      cb(new Error('Unsupported attachment format. Use PNG, JPG, JPEG, or PDF.'));
     }
   },
 });
 
-// GET /api/orders - 获取订单列表（支持筛选和搜索）
-router.get('/', async (req, res) => {
+const allowedTransitions = {
+  draft: ['pending_review', 'cancelled'],
+  pending_review: ['in_progress', 'cancelled'],
+  in_progress: ['completed', 'cancelled'],
+  completed: [],
+  cancelled: [],
+};
+
+const toNumber = (value, fallback = 0) => {
+  const number = Number.parseFloat(value);
+  return Number.isFinite(number) ? number : fallback;
+};
+
+const normalizeOrderItem = (item = {}, index = 0) => {
+  const quantity = toNumber(item.quantity ?? item.qty, 0);
+  const unitPrice = toNumber(item.unitPrice ?? item.unit_price, 0);
+  return {
+    id: item.id ? String(item.id) : String(index + 1),
+    modelId: item.modelId || item.model_asset_id || item.modelAssetId || '',
+    modelName: item.modelName || item.model_name || '',
+    materialType: item.materialType || item.material_type || '',
+    color: item.color || '',
+    layerHeightMm: item.layerHeightMm || item.layer_height_mm || '',
+    quantity,
+    unitPrice,
+    subtotal: toNumber(item.subtotal, quantity * unitPrice),
+    externalFileUrl: item.externalFileUrl || item.external_file_url || '',
+    notes: item.notes || '',
+  };
+};
+
+const normalizeOrderPayload = (payload = {}, existing = null) => {
+  const timestamp = now();
+  const items = Array.isArray(payload.items || payload.orderItems)
+    ? (payload.items || payload.orderItems).map(normalizeOrderItem)
+    : existing?.items || [];
+  const total = payload.total == null
+    ? items.reduce((sum, item) => sum + item.subtotal, 0)
+    : toNumber(payload.total, 0);
+  const customer = payload.customer || {
+    id: payload.customerId || existing?.customer?.id || '',
+    name: payload.customerName || existing?.customer?.name || '',
+    email: payload.customerEmail || existing?.customer?.email || '',
+    phone: payload.customerPhone || existing?.customer?.phone || '',
+  };
+
+  return {
+    ...(existing || {}),
+    ...payload,
+    customer,
+    items,
+    total,
+    currency: payload.currency || existing?.currency || 'CNY',
+    status: payload.status || existing?.status || 'pending_review',
+    dueDate: payload.dueDate || payload.due_date || existing?.dueDate || null,
+    notes: payload.notes || existing?.notes || '',
+    attachments: payload.attachments || existing?.attachments || [],
+    createdAt: existing?.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+};
+
+const filterOrders = (orders, query = {}) => {
+  let filteredOrders = [...orders];
+
+  if (query.status && query.status !== 'all') {
+    filteredOrders = filteredOrders.filter((order) => order.status === query.status);
+  }
+
+  if (query.search) {
+    const searchTerm = String(query.search).trim().toLowerCase();
+    filteredOrders = filteredOrders.filter((order) => (
+      (order.customer?.name || '').toLowerCase().includes(searchTerm)
+      || String(order.id).includes(searchTerm)
+      || (order.notes || '').toLowerCase().includes(searchTerm)
+    ));
+  }
+
+  if (query.dateFrom) {
+    filteredOrders = filteredOrders.filter((order) => String(order.createdAt || '') >= String(query.dateFrom));
+  }
+
+  if (query.dateTo) {
+    filteredOrders = filteredOrders.filter((order) => String(order.createdAt || '') <= String(query.dateTo));
+  }
+
+  return filteredOrders;
+};
+
+const exportRows = (orders) => orders.flatMap((order) => {
+  const items = order.items?.length ? order.items : [{}];
+  return items.map((item) => ({
+    orderId: order.id,
+    customerName: order.customer?.name || '',
+    customerEmail: order.customer?.email || '',
+    customerPhone: order.customer?.phone || '',
+    status: order.status,
+    total: order.total,
+    currency: order.currency,
+    dueDate: order.dueDate || '',
+    createdAt: order.createdAt || '',
+    updatedAt: order.updatedAt || '',
+    itemModelName: item.modelName || '',
+    itemMaterialType: item.materialType || '',
+    itemColor: item.color || '',
+    itemQuantity: item.quantity || '',
+    itemUnitPrice: item.unitPrice || '',
+    itemSubtotal: item.subtotal || '',
+    notes: order.notes || '',
+  }));
+});
+
+router.get('/export', requireRoles('owner'), async (req, res) => {
   try {
-    let filteredOrders = [...mockOrders];
+    const result = await withData((data) => {
+      const orders = filterOrders(data.orders, req.query);
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: null,
+        action: 'export',
+        diff: { count: orders.length, query: req.query },
+      });
+      return orders;
+    });
 
-    // 状态筛选
-    if (req.query.status && req.query.status !== 'all') {
-      filteredOrders = filteredOrders.filter(order => order.status === req.query.status);
+    const csv = toCsv([
+      { key: 'orderId', label: 'order_id' },
+      { key: 'customerName', label: 'customer_name' },
+      { key: 'customerEmail', label: 'customer_email' },
+      { key: 'customerPhone', label: 'customer_phone' },
+      { key: 'status', label: 'status' },
+      { key: 'total', label: 'total' },
+      { key: 'currency', label: 'currency' },
+      { key: 'dueDate', label: 'due_date' },
+      { key: 'createdAt', label: 'created_at' },
+      { key: 'updatedAt', label: 'updated_at' },
+      { key: 'itemModelName', label: 'item_model_name' },
+      { key: 'itemMaterialType', label: 'item_material_type' },
+      { key: 'itemColor', label: 'item_color' },
+      { key: 'itemQuantity', label: 'item_quantity' },
+      { key: 'itemUnitPrice', label: 'item_unit_price' },
+      { key: 'itemSubtotal', label: 'item_subtotal' },
+      { key: 'notes', label: 'notes' },
+    ], exportRows(result));
+
+    const filename = `orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    if (req.query.download === '1' || req.query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(csv);
     }
 
-    // 搜索（客户名称或订单号）
-    if (req.query.search) {
-      const searchTerm = req.query.search.toLowerCase();
-      filteredOrders = filteredOrders.filter(order => 
-        (order.customer?.name || '').toLowerCase().includes(searchTerm) ||
-        order.id.toString().includes(searchTerm)
-      );
-    }
-
-    // 分页（可选）
-    const page = parseInt(req.query.page) || 1;
-    const pageSize = parseInt(req.query.pageSize) || 100;
-    const start = (page - 1) * pageSize;
-    const end = start + pageSize;
-
-    res.json({
-      items: filteredOrders.slice(start, end),
-      total: filteredOrders.length,
-      page,
-      pageSize,
+    return res.json({
+      filename,
+      contentType: 'text/csv',
+      count: result.length,
+      content: csv,
     });
   } catch (error) {
-    res.status(500).json({ error: '获取订单列表失败' });
+    console.error('Export orders failed:', error);
+    return res.status(500).json({ error: 'Export orders failed' });
   }
 });
 
-// GET /api/orders/:id - 获取单个订单
-router.get('/:id', async (req, res) => {
+router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const order = mockOrders.find(o => o.id === req.params.id);
-    if (!order) {
-      return res.status(404).json({ error: '订单不存在' });
-    }
-    res.json(order);
+    const imported = await withData((data) => {
+      const incomingOrders = Array.isArray(req.body.orders)
+        ? req.body.orders
+        : fromCsv(req.body.csv).map((row) => ({
+          customer: {
+            name: row.customer_name || row.customerName,
+            email: row.customer_email || row.customerEmail,
+            phone: row.customer_phone || row.customerPhone,
+          },
+          status: row.status || 'pending_review',
+          total: row.total,
+          currency: row.currency || 'CNY',
+          dueDate: row.due_date || row.dueDate,
+          notes: row.notes,
+          items: [
+            {
+              modelName: row.item_model_name || row.itemModelName,
+              materialType: row.item_material_type || row.itemMaterialType,
+              color: row.item_color || row.itemColor,
+              quantity: row.item_quantity || row.itemQuantity,
+              unitPrice: row.item_unit_price || row.itemUnitPrice,
+            },
+          ],
+        }));
+
+      const created = incomingOrders.map((orderPayload) => {
+        const order = normalizeOrderPayload(orderPayload);
+        order.id = nextId(data.orders);
+        data.orders.push(order);
+        return order;
+      });
+
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: null,
+        action: 'import',
+        diff: { count: created.length },
+      });
+
+      return created;
+    });
+
+    res.status(201).json({ imported: imported.length, items: imported });
   } catch (error) {
-    res.status(500).json({ error: '获取订单失败' });
+    console.error('Import orders failed:', error);
+    res.status(400).json({ error: 'Import orders failed' });
   }
 });
 
-// POST /api/orders - 创建订单
-router.post('/', async (req, res) => {
-  try {
-    const newOrder = {
-      id: String(mockOrders.length + 1),
-      ...req.body,
-      createdAt: new Date().toISOString().split('T')[0],
-      status: req.body.status || 'in_progress', // 默认状态为执行中
-      // 附件文件路径应该在 req.body 中（前端先上传附件获得fileKey）
-    };
-    mockOrders.push(newOrder);
-    res.status(201).json(newOrder);
-  } catch (error) {
-    res.status(500).json({ error: '创建订单失败' });
-  }
-});
-
-// POST /api/orders/upload-attachment - 上传订单附件
-router.post('/upload-attachment', upload.single('file'), async (req, res) => {
+router.post('/upload-attachment', requireRoles('owner', 'staff'), upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: '没有上传文件' });
+      return res.status(400).json({ error: 'No file uploaded' });
     }
-    
-    // 保存附件到本地存储
+
     const result = await saveFile(
       req.file.buffer,
       req.file.originalname,
       'orders/attachments'
     );
-    
-    res.json({
+
+    return res.json({
       success: true,
       fileKey: result.filePath,
       fileUrl: getFileUrl(result.filePath),
@@ -150,81 +257,186 @@ router.post('/upload-attachment', upload.single('file'), async (req, res) => {
       originalName: req.file.originalname,
     });
   } catch (error) {
-    console.error('附件上传失败:', error);
-    res.status(500).json({ error: '附件上传失败: ' + error.message });
+    console.error('Attachment upload failed:', error);
+    return res.status(500).json({ error: `Attachment upload failed: ${error.message}` });
   }
 });
 
-// PATCH /api/orders/:id - 更新订单
-router.patch('/:id', async (req, res) => {
+router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
   try {
-    const orderIndex = mockOrders.findIndex(o => o.id === req.params.id);
-    if (orderIndex === -1) {
-      return res.status(404).json({ error: '订单不存在' });
-    }
-    mockOrders[orderIndex] = { ...mockOrders[orderIndex], ...req.body };
-    res.json(mockOrders[orderIndex]);
+    const result = await withData((data) => {
+      const filteredOrders = filterOrders(data.orders, req.query);
+      const page = Number.parseInt(req.query.page, 10) || 1;
+      const pageSize = Number.parseInt(req.query.pageSize, 10) || 100;
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+
+      return {
+        items: filteredOrders.slice(start, end),
+        total: filteredOrders.length,
+        page,
+        pageSize,
+      };
+    }, { write: false });
+
+    res.json(result);
   } catch (error) {
-    res.status(500).json({ error: '更新订单失败' });
+    console.error('Get orders failed:', error);
+    res.status(500).json({ error: 'Get orders failed' });
   }
 });
 
-// DELETE /api/orders/:id - 删除订单
-router.delete('/:id', async (req, res) => {
+router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const orderIndex = mockOrders.findIndex(o => o.id === req.params.id);
-    if (orderIndex === -1) {
-      return res.status(404).json({ error: '订单不存在' });
+    const created = await withData((data) => {
+      const newOrder = normalizeOrderPayload(req.body);
+      newOrder.id = nextId(data.orders);
+      data.orders.push(newOrder);
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: newOrder.id,
+        action: 'create',
+        diff: newOrder,
+      });
+      return newOrder;
+    });
+
+    res.status(201).json(created);
+  } catch (error) {
+    console.error('Create order failed:', error);
+    res.status(500).json({ error: 'Create order failed' });
+  }
+});
+
+router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
+  try {
+    const logs = await withData((data) => data.auditLogs.filter((log) => (
+      log.entity === 'orders' && log.entityId === String(req.params.id)
+    )), { write: false });
+    res.json({ items: logs, total: logs.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Get order audit failed' });
+  }
+});
+
+router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
+  try {
+    const order = await withData((data) => data.orders.find((item) => item.id === String(req.params.id)), { write: false });
+    if (!order) {
+      return res.status(404).json({ error: 'Order not found' });
     }
-    
-    const order = mockOrders[orderIndex];
-    
-    // 删除关联的附件文件
-    if (order.attachments) {
-      for (const attachment of order.attachments) {
-        if (attachment.fileKey) {
-          try {
-            await deleteFile(attachment.fileKey);
-          } catch (error) {
-            console.error('删除附件失败:', error);
+    return res.json(order);
+  } catch (error) {
+    return res.status(500).json({ error: 'Get order failed' });
+  }
+});
+
+router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    const updated = await withData((data) => {
+      const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
+      if (orderIndex === -1) {
+        return null;
+      }
+      const before = data.orders[orderIndex];
+      const order = normalizeOrderPayload(req.body, before);
+      data.orders[orderIndex] = order;
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: order.id,
+        action: 'update',
+        diff: { before, after: order },
+      });
+      return order;
+    });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Order not found' });
+    }
+    return res.json(updated);
+  } catch (error) {
+    return res.status(500).json({ error: 'Update order failed' });
+  }
+});
+
+router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    const deleted = await withData(async (data) => {
+      const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
+      if (orderIndex === -1) {
+        return null;
+      }
+
+      const [order] = data.orders.splice(orderIndex, 1);
+      if (order.attachments) {
+        for (const attachment of order.attachments) {
+          if (attachment.fileKey) {
+            try {
+              await deleteFile(attachment.fileKey);
+            } catch (error) {
+              console.error('Delete attachment failed:', error);
+            }
           }
         }
       }
+
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: order.id,
+        action: 'delete',
+        diff: order,
+      });
+      return order;
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Order not found' });
     }
-    
-    mockOrders.splice(orderIndex, 1);
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: '删除订单失败' });
+    return res.status(500).json({ error: 'Delete order failed' });
   }
 });
 
-// PATCH /api/orders/:id/status - 更新订单状态
-router.patch('/:id/status', async (req, res) => {
+router.patch('/:id/status', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const orderIndex = mockOrders.findIndex(o => o.id === req.params.id);
-    if (orderIndex === -1) {
-      return res.status(404).json({ error: '订单不存在' });
-    }
-    mockOrders[orderIndex].status = req.body.status;
-    if (req.body.reason) {
-      mockOrders[orderIndex].statusReason = req.body.reason;
-    }
-    mockOrders[orderIndex].updatedAt = new Date().toISOString();
-    res.json(mockOrders[orderIndex]);
-  } catch (error) {
-    res.status(500).json({ error: '更新订单状态失败' });
-  }
-});
+    const result = await withData((data) => {
+      const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
+      if (orderIndex === -1) {
+        return { status: 404, body: { error: 'Order not found' } };
+      }
 
-// GET /api/orders/export - 导出订单（CSV）
-router.get('/export', async (req, res) => {
-  try {
-    // TODO: 实现CSV导出逻辑
-    // 可以生成CSV文件并保存到本地存储，然后返回下载URL
-    res.json({ message: '导出功能开发中' });
+      const order = data.orders[orderIndex];
+      const nextStatus = req.body.status;
+      const validNextStatuses = allowedTransitions[order.status] || [];
+      if (order.status !== nextStatus && !validNextStatuses.includes(nextStatus)) {
+        return {
+          status: 400,
+          body: {
+            error: 'Invalid status transition',
+            currentStatus: order.status,
+            nextStatus,
+            allowed: validNextStatuses,
+          },
+        };
+      }
+
+      const before = { status: order.status, statusReason: order.statusReason };
+      order.status = nextStatus;
+      order.statusReason = req.body.reason || '';
+      order.updatedAt = now();
+      appendAudit(data, {
+        entity: 'orders',
+        entityId: order.id,
+        action: 'status',
+        diff: { before, after: { status: order.status, statusReason: order.statusReason } },
+      });
+      return { status: 200, body: order };
+    });
+
+    return res.status(result.status).json(result.body);
   } catch (error) {
-    res.status(500).json({ error: '导出订单失败' });
+    return res.status(500).json({ error: 'Update order status failed' });
   }
 });
 

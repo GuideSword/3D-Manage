@@ -1,104 +1,266 @@
 const express = require('express');
 const router = express.Router();
+const { withData, nextId, appendAudit, now } = require('../utils/store');
+const { toCsv, fromCsv } = require('../utils/csv');
+const { requireRoles } = require('../middleware/auth');
 
-// 临时模拟物料数据
-const mockMaterials = [];
+const toNumber = (value, fallback = null) => {
+  if (value == null || value === '') {
+    return fallback;
+  }
+  const number = Number.parseFloat(value);
+  return Number.isFinite(number) ? number : fallback;
+};
 
-router.get('/', async (req, res) => {
-  try {
-    let filteredMaterials = [...mockMaterials];
-    
-    // 如果提供了搜索参数，进行过滤
-    if (req.query.search) {
-      const searchTerm = req.query.search.trim().toLowerCase();
-      if (searchTerm) {
-        filteredMaterials = mockMaterials.filter(material => {
-          // 搜索字段：类型、品牌、颜色
-          const type = String(material.type || material.materialType || '').toLowerCase();
-          const brand = String(material.brand || '').toLowerCase();
-          const color = String(material.color || '').toLowerCase();
-          
-          // 检查每个字段是否包含完整的搜索词（精确匹配）
-          // 对于颜色字段，进行更严格的匹配，避免"金色"匹配到"红色"
-          const typeMatch = type && type.includes(searchTerm);
-          const brandMatch = brand && brand.includes(searchTerm);
-          const colorMatch = color && color.includes(searchTerm);
-          
-          // 只有当颜色完全匹配时才返回true（避免"金"字符匹配到"红"色中的"色"）
-          // 如果搜索词是单个字符，需要完全匹配；如果是多个字符，使用includes
-          if (searchTerm.length === 1) {
-            // 单字符搜索：必须是精确匹配
-            return (type && type === searchTerm) || 
-                   (brand && brand === searchTerm) || 
-                   (color && color === searchTerm);
-          } else {
-            // 多字符搜索：必须包含完整搜索词
-            return typeMatch || brandMatch || colorMatch;
-          }
-        });
-      }
+const normalizeMaterialPayload = (payload = {}, existing = null) => {
+  const timestamp = now();
+  return {
+    ...(existing || {}),
+    ...payload,
+    type: payload.type || payload.materialType || existing?.type || '',
+    materialType: payload.materialType || payload.type || existing?.materialType || existing?.type || '',
+    brand: payload.brand || existing?.brand || '',
+    diameter: toNumber(payload.diameter ?? payload.diameter_mm, existing?.diameter || 1.75),
+    color: payload.color || existing?.color || '',
+    density: toNumber(payload.density, existing?.density || null),
+    unitPrice: toNumber(payload.unitPrice ?? payload.unit_price, existing?.unitPrice || null),
+    unit: payload.unit || existing?.unit || 'kg',
+    notes: payload.notes || existing?.notes || '',
+    createdAt: existing?.createdAt || timestamp,
+    updatedAt: timestamp,
+  };
+};
+
+const filterMaterials = (materials, query = {}) => {
+  let filteredMaterials = [...materials];
+
+  if (query.search) {
+    const searchTerm = String(query.search).trim().toLowerCase();
+    if (searchTerm) {
+      filteredMaterials = filteredMaterials.filter((material) => {
+        const type = String(material.type || material.materialType || '').toLowerCase();
+        const brand = String(material.brand || '').toLowerCase();
+        const color = String(material.color || '').toLowerCase();
+        const notes = String(material.notes || '').toLowerCase();
+        return type.includes(searchTerm)
+          || brand.includes(searchTerm)
+          || color.includes(searchTerm)
+          || notes.includes(searchTerm);
+      });
     }
-    
-    res.json({ items: filteredMaterials, total: filteredMaterials.length });
+  }
+
+  if (query.type) {
+    filteredMaterials = filteredMaterials.filter((material) => (
+      (material.type || material.materialType) === query.type
+    ));
+  }
+
+  return filteredMaterials;
+};
+
+router.get('/export', requireRoles('owner'), async (req, res) => {
+  try {
+    const materials = await withData((data) => {
+      const filteredMaterials = filterMaterials(data.materials, req.query);
+      appendAudit(data, {
+        entity: 'materials',
+        entityId: null,
+        action: 'export',
+        diff: { count: filteredMaterials.length, query: req.query },
+      });
+      return filteredMaterials;
+    });
+
+    const csv = toCsv([
+      { key: 'id', label: 'id' },
+      { key: 'type', label: 'type' },
+      { key: 'brand', label: 'brand' },
+      { key: 'diameter', label: 'diameter' },
+      { key: 'color', label: 'color' },
+      { key: 'density', label: 'density' },
+      { key: 'unitPrice', label: 'unit_price' },
+      { key: 'unit', label: 'unit' },
+      { key: 'createdAt', label: 'created_at' },
+      { key: 'updatedAt', label: 'updated_at' },
+      { key: 'notes', label: 'notes' },
+    ], materials);
+
+    const filename = `materials-${new Date().toISOString().slice(0, 10)}.csv`;
+    if (req.query.download === '1' || req.query.format === 'csv') {
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      return res.send(csv);
+    }
+
+    return res.json({ filename, contentType: 'text/csv', count: materials.length, content: csv });
   } catch (error) {
-    res.status(500).json({ error: '获取物料列表失败' });
+    console.error('Export materials failed:', error);
+    return res.status(500).json({ error: 'Export materials failed' });
   }
 });
 
-router.post('/', async (req, res) => {
+router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const newMaterial = {
-      id: String(mockMaterials.length + 1),
-      ...req.body,
-      createdAt: new Date().toISOString().split('T')[0],
-    };
-    mockMaterials.push(newMaterial);
-    res.status(201).json(newMaterial);
+    const imported = await withData((data) => {
+      const incomingMaterials = Array.isArray(req.body.materials)
+        ? req.body.materials
+        : fromCsv(req.body.csv).map((row) => ({
+          type: row.type || row.material_type,
+          brand: row.brand,
+          diameter: row.diameter || row.diameter_mm,
+          color: row.color,
+          density: row.density,
+          unitPrice: row.unit_price || row.unitPrice,
+          unit: row.unit || 'kg',
+          notes: row.notes,
+        }));
+
+      const created = incomingMaterials.map((materialPayload) => {
+        const material = normalizeMaterialPayload(materialPayload);
+        material.id = nextId(data.materials);
+        data.materials.push(material);
+        return material;
+      });
+
+      appendAudit(data, {
+        entity: 'materials',
+        entityId: null,
+        action: 'import',
+        diff: { count: created.length },
+      });
+      return created;
+    });
+
+    res.status(201).json({ imported: imported.length, items: imported });
   } catch (error) {
-    res.status(500).json({ error: '创建物料失败' });
+    console.error('Import materials failed:', error);
+    res.status(400).json({ error: 'Import materials failed' });
   }
 });
 
-// GET /api/materials/:id - 获取单个物料
-router.get('/:id', async (req, res) => {
+router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
   try {
-    const material = mockMaterials.find(m => m.id === req.params.id);
+    const result = await withData((data) => {
+      const filteredMaterials = filterMaterials(data.materials, req.query);
+      const page = Number.parseInt(req.query.page, 10) || 1;
+      const pageSize = Number.parseInt(req.query.pageSize, 10) || 100;
+      const start = (page - 1) * pageSize;
+      const end = start + pageSize;
+      return {
+        items: filteredMaterials.slice(start, end),
+        total: filteredMaterials.length,
+        page,
+        pageSize,
+      };
+    }, { write: false });
+
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: 'Get materials failed' });
+  }
+});
+
+router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    const created = await withData((data) => {
+      const material = normalizeMaterialPayload(req.body);
+      material.id = nextId(data.materials);
+      data.materials.push(material);
+      appendAudit(data, {
+        entity: 'materials',
+        entityId: material.id,
+        action: 'create',
+        diff: material,
+      });
+      return material;
+    });
+    res.status(201).json(created);
+  } catch (error) {
+    res.status(500).json({ error: 'Create material failed' });
+  }
+});
+
+router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
+  try {
+    const logs = await withData((data) => data.auditLogs.filter((log) => (
+      log.entity === 'materials' && log.entityId === String(req.params.id)
+    )), { write: false });
+    res.json({ items: logs, total: logs.length });
+  } catch (error) {
+    res.status(500).json({ error: 'Get material audit failed' });
+  }
+});
+
+router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
+  try {
+    const material = await withData((data) => data.materials.find((item) => item.id === String(req.params.id)), { write: false });
     if (!material) {
-      return res.status(404).json({ error: '物料不存在' });
+      return res.status(404).json({ error: 'Material not found' });
     }
-    res.json(material);
+    return res.json(material);
   } catch (error) {
-    res.status(500).json({ error: '获取物料失败' });
+    return res.status(500).json({ error: 'Get material failed' });
   }
 });
 
-// PATCH /api/materials/:id - 更新物料
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const index = mockMaterials.findIndex(m => m.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ error: '物料不存在' });
+    const updated = await withData((data) => {
+      const materialIndex = data.materials.findIndex((item) => item.id === String(req.params.id));
+      if (materialIndex === -1) {
+        return null;
+      }
+
+      const before = data.materials[materialIndex];
+      const material = normalizeMaterialPayload(req.body, before);
+      data.materials[materialIndex] = material;
+      appendAudit(data, {
+        entity: 'materials',
+        entityId: material.id,
+        action: 'update',
+        diff: { before, after: material },
+      });
+      return material;
+    });
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Material not found' });
     }
-    mockMaterials[index] = { ...mockMaterials[index], ...req.body, updatedAt: new Date().toISOString().split('T')[0] };
-    res.json(mockMaterials[index]);
+    return res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: '更新物料失败' });
+    return res.status(500).json({ error: 'Update material failed' });
   }
 });
 
-// DELETE /api/materials/:id - 删除物料
-router.delete('/:id', async (req, res) => {
+router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const index = mockMaterials.findIndex(m => m.id === req.params.id);
-    if (index === -1) {
-      return res.status(404).json({ error: '物料不存在' });
+    const deleted = await withData((data) => {
+      const materialIndex = data.materials.findIndex((item) => item.id === String(req.params.id));
+      if (materialIndex === -1) {
+        return null;
+      }
+
+      const [material] = data.materials.splice(materialIndex, 1);
+      const relatedLots = data.stockLots.filter((lot) => String(lot.materialId || lot.material_id) === String(material.id));
+      data.stockLots = data.stockLots.filter((lot) => String(lot.materialId || lot.material_id) !== String(material.id));
+
+      appendAudit(data, {
+        entity: 'materials',
+        entityId: material.id,
+        action: 'delete',
+        diff: { material, removedStockLots: relatedLots.length },
+      });
+      return material;
+    });
+
+    if (!deleted) {
+      return res.status(404).json({ error: 'Material not found' });
     }
-    mockMaterials.splice(index, 1);
-    res.json({ success: true });
+    return res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: '删除物料失败' });
+    return res.status(500).json({ error: 'Delete material failed' });
   }
 });
 
 module.exports = router;
-

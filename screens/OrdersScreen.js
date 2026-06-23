@@ -15,9 +15,9 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, ORDER_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ROUTES } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { ordersAPI } from '../utils/api';
+import { ordersAPI, isAuthRequiredError } from '../utils/api';
 
-const OrdersScreen = ({ navigation }) => {
+const OrdersScreen = ({ navigation, route }) => {
   const [orders, setOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -42,6 +42,9 @@ const OrdersScreen = ({ navigation }) => {
       // 假设API返回格式为 { items: [...], total: 100 }
       setOrders(response.items || response || []);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取订单失败:', error);
       Alert.alert('错误', '获取订单列表失败，请检查网络连接');
       // 失败时使用空数组，避免显示旧数据
@@ -70,6 +73,9 @@ const OrdersScreen = ({ navigation }) => {
               // 重新获取订单列表
               await fetchOrders();
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除订单失败');
             } finally {
               setDeletingId(null);
@@ -88,6 +94,12 @@ const OrdersScreen = ({ navigation }) => {
   useEffect(() => {
     fetchOrders();
   }, [filterStatus, searchQuery]);
+
+  useEffect(() => {
+    if (route?.params?.status) {
+      setFilterStatus(route.params.status);
+    }
+  }, [route?.params?.status]);
 
   const OrderCard = ({ order }) => {
     const customerName = order.customer?.name || order.customerName || '未知客户';
@@ -191,10 +203,6 @@ const OrdersScreen = ({ navigation }) => {
         </Text>
       </TouchableOpacity>
       {Object.entries(ORDER_STATUS_LABELS)
-        .filter(([status]) => 
-          status !== ORDER_STATUSES.DRAFT && 
-          status !== ORDER_STATUSES.PENDING_REVIEW
-        )
         .map(([status, label]) => (
           <TouchableOpacity
             key={status}
@@ -283,10 +291,6 @@ const OrdersScreen = ({ navigation }) => {
                 </Text>
               </TouchableOpacity>
               {Object.entries(ORDER_STATUS_LABELS)
-                .filter(([status]) => 
-                  status !== ORDER_STATUSES.DRAFT && 
-                  status !== ORDER_STATUSES.PENDING_REVIEW
-                )
                 .map(([status, label]) => (
                   <TouchableOpacity
                     key={status}
@@ -574,4 +578,3 @@ const styles = StyleSheet.create({
 });
 
 export default OrdersScreen;
-

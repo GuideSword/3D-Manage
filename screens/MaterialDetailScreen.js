@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, ROUTES } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { materialsAPI, stockAPI } from '../utils/api';
+import { materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
 
 const MaterialDetailScreen = ({ route, navigation }) => {
   const { materialId } = route.params || {};
@@ -43,6 +43,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
           materialData = null;
         }
       } catch (err) {
+        if (isAuthRequiredError(err)) {
+          throw err;
+        }
         console.error('获取物料详情失败:', err);
         // 如果API不支持/:id路由，尝试从列表获取
         if (err.status === 404 || err.message?.includes('Route not found') || err.message?.includes('404')) {
@@ -50,6 +53,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
             const allMaterials = await materialsAPI.getAll();
             materialData = allMaterials.find(m => m.id === materialId || String(m.id) === String(materialId));
           } catch (listErr) {
+            if (isAuthRequiredError(listErr)) {
+              throw listErr;
+            }
             console.error('从列表获取物料失败:', listErr);
             materialData = null;
           }
@@ -61,6 +67,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
       try {
         lotsData = await stockAPI.getLots({ materialId }) || [];
       } catch (err) {
+        if (isAuthRequiredError(err)) {
+          throw err;
+        }
         console.error('获取库存批次失败:', err);
         lotsData = [];
       }
@@ -78,6 +87,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
         return;
       }
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取物料详情失败:', error);
       Alert.alert('错误', '获取物料详情失败，请检查网络连接', [
         {
@@ -112,6 +124,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
                 },
               ]);
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除物料失败');
             } finally {
               setDeleting(false);
@@ -448,4 +463,3 @@ const styles = StyleSheet.create({
 });
 
 export default MaterialDetailScreen;
-

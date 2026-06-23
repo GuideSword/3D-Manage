@@ -1,13 +1,38 @@
 import { API_CONFIG } from '../constants';
-import * as SecureStore from 'expo-secure-store';
+import storage from './storage';
+
+let unauthorizedHandler = null;
+
+export const setUnauthorizedHandler = (handler) => {
+  unauthorizedHandler = typeof handler === 'function' ? handler : null;
+  return () => {
+    if (unauthorizedHandler === handler) {
+      unauthorizedHandler = null;
+    }
+  };
+};
+
+export const isAuthRequiredError = (error) => Boolean(error?.authRequired);
+
+const isLoginEndpoint = (endpoint) => (
+  endpoint === '/auth/login' || endpoint === '/auth/register'
+);
 
 // 获取认证token
 const getAuthToken = async () => {
   try {
-    return await SecureStore.getItemAsync('jwtToken');
+    return await storage.getItem('jwtToken');
   } catch (error) {
-    console.error('获取token失败:', error);
+    console.warn('获取 token 失败:', error?.message || error);
     return null;
+  }
+};
+
+const clearAuthToken = async () => {
+  try {
+    await storage.deleteItem('jwtToken');
+  } catch (error) {
+    console.warn('清除 token 失败:', error?.message || error);
   }
 };
 
@@ -15,14 +40,16 @@ const getAuthToken = async () => {
 const apiRequest = async (endpoint, options = {}) => {
   const token = await getAuthToken();
   const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+  const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
+  const { headers: optionHeaders = {}, ...requestOptions } = options;
   
   const defaultOptions = {
+    ...requestOptions,
     headers: {
-      'Content-Type': 'application/json',
+      ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token && { 'Authorization': `Bearer ${token}` }),
-      ...options.headers,
+      ...optionHeaders,
     },
-    ...options,
   };
 
   try {
@@ -34,21 +61,71 @@ const apiRequest = async (endpoint, options = {}) => {
       const error = new Error(errorMessage);
       error.status = response.status;
       error.data = errorData;
+
+      if (response.status === 401 && !isLoginEndpoint(endpoint)) {
+        error.authRequired = true;
+        await clearAuthToken();
+        if (unauthorizedHandler) {
+          unauthorizedHandler();
+        }
+      }
+
       throw error;
     }
 
     return await response.json();
   } catch (error) {
-    console.error('API请求失败:', error);
+    if (!isAuthRequiredError(error)) {
+      console.error('API请求失败:', error);
+    }
     throw error;
   }
+};
+
+const buildQuery = (params = {}) => {
+  const filteredParams = Object.fromEntries(
+    Object.entries(params).filter(([, value]) => value !== undefined && value !== null && value !== '')
+  );
+  return new URLSearchParams(filteredParams).toString();
+};
+
+export const authAPI = {
+  getToken: async () => getAuthToken(),
+
+  login: async (credentials) => {
+    const result = await apiRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(credentials),
+    });
+    if (result.token) {
+      await storage.setItem('jwtToken', result.token);
+    }
+    return result;
+  },
+
+  register: async (userData) => {
+    const result = await apiRequest('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
+    if (result.token) {
+      await storage.setItem('jwtToken', result.token);
+    }
+    return result;
+  },
+
+  me: async () => apiRequest('/auth/me'),
+
+  logout: async () => {
+    await storage.deleteItem('jwtToken');
+  },
 };
 
 // 订单API
 export const ordersAPI = {
   // 获取订单列表
   getAll: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQuery(params);
     const endpoint = `/orders${queryString ? `?${queryString}` : ''}`;
     return apiRequest(endpoint);
   },
@@ -91,9 +168,25 @@ export const ordersAPI = {
 
   // 导出订单
   export: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQuery(params);
     const endpoint = `/orders/export${queryString ? `?${queryString}` : ''}`;
     return apiRequest(endpoint);
+  },
+
+  import: async (payload) => {
+    return apiRequest('/orders/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  uploadAttachment: async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return apiRequest('/orders/upload-attachment', {
+      method: 'POST',
+      body: formData,
+    });
   },
 };
 
@@ -101,7 +194,7 @@ export const ordersAPI = {
 export const modelsAPI = {
   // 获取模型列表
   getAll: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQuery(params);
     const endpoint = `/models${queryString ? `?${queryString}` : ''}`;
     const response = await apiRequest(endpoint);
     return response.items || response || [];
@@ -120,10 +213,51 @@ export const modelsAPI = {
     });
   },
 
+  update: async (id, modelData) => {
+    return apiRequest(`/models/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(modelData),
+    });
+  },
+
   // 删除模型
   delete: async (id) => {
     return apiRequest(`/models/${id}`, {
       method: 'DELETE',
+    });
+  },
+
+  export: async (params = {}) => {
+    const queryString = buildQuery(params);
+    const endpoint = `/models/export${queryString ? `?${queryString}` : ''}`;
+    return apiRequest(endpoint);
+  },
+
+  import: async (payload) => {
+    return apiRequest('/models/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  uploadFile: async (file, metadata = {}) => {
+    const formData = new FormData();
+    Object.entries(metadata).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        formData.append(key, String(value));
+      }
+    });
+    formData.append('file', file);
+    return apiRequest('/models/upload', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  addVersion: async (id, versionData) => {
+    return apiRequest(`/models/${id}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(versionData),
     });
   },
 };
@@ -132,7 +266,7 @@ export const modelsAPI = {
 export const materialsAPI = {
   // 获取材质列表
   getAll: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQuery(params);
     const endpoint = `/materials${queryString ? `?${queryString}` : ''}`;
     const response = await apiRequest(endpoint);
     return response.items || response || [];
@@ -165,13 +299,26 @@ export const materialsAPI = {
       method: 'DELETE',
     });
   },
+
+  export: async (params = {}) => {
+    const queryString = buildQuery(params);
+    const endpoint = `/materials/export${queryString ? `?${queryString}` : ''}`;
+    return apiRequest(endpoint);
+  },
+
+  import: async (payload) => {
+    return apiRequest('/materials/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 // 库存API
 export const stockAPI = {
   // 获取库存批次列表
   getLots: async (params = {}) => {
-    const queryString = new URLSearchParams(params).toString();
+    const queryString = buildQuery(params);
     const endpoint = `/stock/lots${queryString ? `?${queryString}` : ''}`;
     const response = await apiRequest(endpoint);
     return response.items || response || [];
@@ -212,7 +359,26 @@ export const stockAPI = {
       body: JSON.stringify(transactionData),
     });
   },
+
+  getTransactions: async (params = {}) => {
+    const queryString = buildQuery(params);
+    const endpoint = `/stock/inventory/txns${queryString ? `?${queryString}` : ''}`;
+    const response = await apiRequest(endpoint);
+    return response.items || response || [];
+  },
+
+  export: async (params = {}) => {
+    const queryString = buildQuery(params);
+    const endpoint = `/stock/export${queryString ? `?${queryString}` : ''}`;
+    return apiRequest(endpoint);
+  },
+
+  importLots: async (payload) => {
+    return apiRequest('/stock/import', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
 };
 
 export default apiRequest;
-

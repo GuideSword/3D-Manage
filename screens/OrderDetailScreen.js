@@ -13,7 +13,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, ORDER_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ROUTES } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { ordersAPI } from '../utils/api';
+import { ordersAPI, isAuthRequiredError } from '../utils/api';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { orderId } = route.params;
@@ -29,6 +29,9 @@ const OrderDetailScreen = ({ route, navigation }) => {
       const data = await ordersAPI.getById(orderId);
       setOrder(data);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取订单详情失败:', error);
       Alert.alert('错误', '获取订单详情失败，请检查网络连接');
     } finally {
@@ -56,6 +59,9 @@ const OrderDetailScreen = ({ route, navigation }) => {
               Alert.alert('成功', '订单状态已更新');
               await fetchOrderDetail();
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '更新订单状态失败');
             } finally {
               setUpdating(false);
@@ -86,6 +92,9 @@ const OrderDetailScreen = ({ route, navigation }) => {
                 },
               ]);
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除订单失败');
             }
           },
@@ -128,6 +137,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
 
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
+  const attachments = order.attachments || [];
   const total = order.total || 0;
   const currency = order.currency || 'CNY';
 
@@ -136,11 +146,17 @@ const OrderDetailScreen = ({ route, navigation }) => {
     const actions = [];
     const currentStatus = order.status;
 
+    if (currentStatus === ORDER_STATUSES.DRAFT) {
+      actions.push({ label: '提交审核', status: ORDER_STATUSES.PENDING_REVIEW, color: COLORS.warning });
+    }
+    if (currentStatus === ORDER_STATUSES.PENDING_REVIEW) {
+      actions.push({ label: '开始执行', status: ORDER_STATUSES.IN_PROGRESS, color: COLORS.primary });
+    }
     // 执行中的订单可以标记为完成
     if (currentStatus === ORDER_STATUSES.IN_PROGRESS) {
       actions.push({ label: '标记完成', status: ORDER_STATUSES.COMPLETED, color: COLORS.success });
     }
-    // 未完成的订单可以取消
+    // 非终态订单可以取消
     if (currentStatus !== ORDER_STATUSES.COMPLETED && currentStatus !== ORDER_STATUSES.CANCELLED) {
       actions.push({ label: '取消订单', status: ORDER_STATUSES.CANCELLED, color: COLORS.danger });
     }
@@ -221,6 +237,23 @@ const OrderDetailScreen = ({ route, navigation }) => {
           <Card style={styles.section}>
             <Text style={styles.sectionTitle}>备注</Text>
             <Text style={styles.notesText}>{order.notes}</Text>
+          </Card>
+        )}
+
+        {attachments.length > 0 && (
+          <Card style={styles.section}>
+            <Text style={styles.sectionTitle}>附件</Text>
+            {attachments.map((attachment, index) => (
+              <View key={attachment.fileKey || index} style={styles.attachmentItem}>
+                <Ionicons name="attach-outline" size={18} color={COLORS.primary} />
+                <View style={styles.attachmentTextGroup}>
+                  <Text style={styles.attachmentName}>{attachment.originalName || attachment.fileKey}</Text>
+                  {attachment.size ? (
+                    <Text style={styles.attachmentMeta}>{Math.round(attachment.size / 1024)} KB</Text>
+                  ) : null}
+                </View>
+              </View>
+            ))}
           </Card>
         )}
 
@@ -386,6 +419,27 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     lineHeight: 24,
   },
+  attachmentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  attachmentTextGroup: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  attachmentName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: COLORS.text,
+  },
+  attachmentMeta: {
+    fontSize: 13,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
   actionButton: {
     marginTop: 12,
   },
@@ -395,5 +449,3 @@ const styles = StyleSheet.create({
 });
 
 export default OrderDetailScreen;
-
-

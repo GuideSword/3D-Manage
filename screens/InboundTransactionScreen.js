@@ -8,10 +8,11 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, INVENTORY_TXN_TYPES } from '../constants';
 import { Card, Button, Input, Picker } from '../components';
-import { materialsAPI, stockAPI } from '../utils/api';
+import { materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
 
 const InboundTransactionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
@@ -37,12 +38,21 @@ const InboundTransactionScreen = ({ navigation }) => {
     try {
       setLoadingData(true);
       const [materialsData, lotsData] = await Promise.all([
-        materialsAPI.getAll().catch(() => []),
-        stockAPI.getLots().catch(() => []),
+        materialsAPI.getAll().catch((error) => {
+          if (isAuthRequiredError(error)) throw error;
+          return [];
+        }),
+        stockAPI.getLots().catch((error) => {
+          if (isAuthRequiredError(error)) throw error;
+          return [];
+        }),
       ]);
       setMaterials(materialsData || []);
       setStockLots(lotsData || []);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('加载数据失败:', error);
       Alert.alert('错误', '加载数据失败，请检查网络连接');
     } finally {
@@ -166,6 +176,9 @@ const InboundTransactionScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('入库失败:', error);
       Alert.alert('错误', '入库操作失败，请检查网络连接或稍后重试');
     } finally {
@@ -368,11 +381,18 @@ const styles = StyleSheet.create({
   },
   transactionTypeButtonActive: {
     backgroundColor: COLORS.background,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
+      },
+      default: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.1,
+        shadowRadius: 2,
+        elevation: 2,
+      },
+    }),
   },
   transactionTypeText: {
     fontSize: 14,
@@ -413,7 +433,5 @@ const styles = StyleSheet.create({
 });
 
 export default InboundTransactionScreen;
-
-
 
 

@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Alert } from 'react-native';
-import * as SecureStore from 'expo-secure-store';
+import storage from '../utils/storage';
 import { Input, Button } from '../components';
 import { COLORS, API_CONFIG } from '../constants';
+import { useAuth } from '../context/AuthContext';
 
 const OSSConfigScreen = () => {
+  const { signOut } = useAuth();
   const [config, setConfig] = useState({ accessKeyId: '', secretAccessKey: '', bucket: '', region: 'oss-cn-hangzhou' });
   const [loading, setLoading] = useState(false);
 
@@ -12,14 +14,14 @@ const OSSConfigScreen = () => {
 
   const loadConfig = async () => {
     try {
-      const storedConfig = await SecureStore.getItemAsync('ossConfig');
+      const storedConfig = await storage.getItem('ossConfig');
       if (storedConfig) setConfig(JSON.parse(storedConfig));
     } catch (error) { console.error('加载 OSS 配置失败:', error); }
   };
 
   const saveConfig = async () => {
     try {
-      await SecureStore.setItemAsync('ossConfig', JSON.stringify(config));
+      await storage.setItem('ossConfig', JSON.stringify(config));
       Alert.alert('成功', '配置已保存');
     } catch (error) { Alert.alert('错误', '保存配置失败'); }
   };
@@ -27,8 +29,8 @@ const OSSConfigScreen = () => {
   const testConnection = async () => {
     setLoading(true);
     try {
-      const token = await SecureStore.getItemAsync('jwtToken');
-      const response = await fetch(`${API_CONFIG.BASE_URL}/api/oss/test-connection`, {
+      const token = await storage.getItem('jwtToken');
+      const response = await fetch(`${API_CONFIG.BASE_URL}/oss/test-connection`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
         body: JSON.stringify(config),
@@ -36,6 +38,8 @@ const OSSConfigScreen = () => {
       if (response.ok) {
         const result = await response.json();
         Alert.alert('成功', `OSS 连接正常！Bucket 列表: ${result.buckets.join(', ')}`);
+      } else if (response.status === 401) {
+        await signOut();
       } else {
         const error = await response.json();
         Alert.alert('失败', error.error || '连接测试失败');

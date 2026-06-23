@@ -1,3 +1,5 @@
+import Constants from 'expo-constants';
+
 // 颜色常量
 export const COLORS = {
   primary: '#007AFF',
@@ -107,9 +109,54 @@ export const UPLOAD_LIMITS = {
 };
 
 // API 基础配置
-// 已配置为远程服务器地址
+const PUBLIC_API_BASE_URL = 'http://101.37.28.116:3001/api';
+
+const getExpoHost = () => {
+  const candidates = [
+    Constants.expoConfig?.hostUri,
+    Constants.manifest?.debuggerHost,
+    Constants.manifest?.hostUri,
+    Constants.manifest2?.extra?.expoClient?.hostUri,
+    Constants.linkingUri,
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+
+    const hostWithPort = String(candidate)
+      .replace(/^[a-zA-Z][a-zA-Z\d+.-]*:\/\//, '')
+      .split('/')[0];
+    const host = hostWithPort.split(':')[0];
+
+    if (host) {
+      return host;
+    }
+  }
+
+  return null;
+};
+
+const getDefaultApiBaseUrl = () => {
+  const envApiBaseUrl =
+    typeof process !== 'undefined' ? process.env?.EXPO_PUBLIC_API_BASE_URL : undefined;
+  if (envApiBaseUrl) {
+    return envApiBaseUrl;
+  }
+
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    const expoHost = getExpoHost();
+    if (expoHost) {
+      return `http://${expoHost}:3001/api`;
+    }
+  }
+
+  return PUBLIC_API_BASE_URL;
+};
+
+const DEFAULT_API_BASE_URL = getDefaultApiBaseUrl();
+
 export const API_CONFIG = {
-  BASE_URL: 'http://101.37.28.116:3001/api', // 远程服务器地址
+  BASE_URL: DEFAULT_API_BASE_URL,
   TIMEOUT: 30000,
 };
 
@@ -127,6 +174,9 @@ export const ROUTES = {
   MODEL_DETAIL: 'ModelDetail',
   INBOUND_TRANSACTION: 'InboundTransaction',
   OUTBOUND_TRANSACTION: 'OutboundTransaction',
+  ADJUST_TRANSACTION: 'AdjustTransaction',
+  OSS_CONFIG: 'OSSConfig',
+  DATA_IMPORT: 'DataImport',
 };
 
 // 屏幕标题
@@ -138,5 +188,9 @@ export const SCREEN_TITLES = {
   [ROUTES.ORDER_DETAIL]: '订单详情',
   [ROUTES.MODEL_DETAIL]: '模型详情',
   [ROUTES.MATERIAL_DETAIL]: '耗材详情',
+  [ROUTES.INBOUND_TRANSACTION]: '入库操作',
+  [ROUTES.OUTBOUND_TRANSACTION]: '出库操作',
+  [ROUTES.ADJUST_TRANSACTION]: '库存盘点',
+  [ROUTES.OSS_CONFIG]: 'OSS 配置',
+  [ROUTES.DATA_IMPORT]: '数据导入',
 };
-

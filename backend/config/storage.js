@@ -4,94 +4,74 @@ const crypto = require('crypto');
 
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(__dirname, '../uploads');
 
-// 确保上传目录存在
 const ensureUploadDir = async (dirPath) => {
-  try {
-    await fs.mkdir(dirPath, { recursive: true });
-  } catch (error) {
-    if (error.code !== 'EEXIST') throw error;
-  }
+  await fs.mkdir(dirPath, { recursive: true });
 };
 
-// 生成文件保存路径
+const sanitizeSegment = (segment) => String(segment || '')
+  .replace(/[^a-zA-Z0-9._-]/g, '_')
+  .replace(/^_+$/, '');
+
+const sanitizeFolder = (folder) => String(folder || 'models')
+  .split(/[\\/]+/)
+  .map(sanitizeSegment)
+  .filter(Boolean)
+  .join(path.sep);
+
+const safeStoragePath = (relativePath) => {
+  const resolvedDir = path.resolve(UPLOAD_DIR);
+  const resolvedPath = path.resolve(path.join(UPLOAD_DIR, relativePath));
+  if (!resolvedPath.startsWith(resolvedDir)) {
+    throw new Error('Access denied: Invalid file path');
+  }
+  return resolvedPath;
+};
+
 const generateFilePath = (folder, filename) => {
   const timestamp = Date.now();
   const randomStr = crypto.randomBytes(8).toString('hex');
   const ext = path.extname(filename);
-  const baseName = path.basename(filename, ext);
-  // 使用安全的文件名（移除特殊字符）
-  const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, '_');
-  return path.join(folder, `${timestamp}-${randomStr}-${safeName}${ext}`);
+  const baseName = sanitizeSegment(path.basename(filename, ext)) || 'file';
+  return path.join(sanitizeFolder(folder), `${timestamp}-${randomStr}-${baseName}${ext}`);
 };
 
-// 保存上传的文件
 const saveFile = async (fileBuffer, originalFilename, folder = 'models') => {
-  const folderPath = path.join(UPLOAD_DIR, folder);
-  await ensureUploadDir(folderPath);
-  
-  const filePath = generateFilePath(folderPath, originalFilename);
-  await fs.writeFile(filePath, fileBuffer);
-  
-  // 计算SHA256
-  const hash = crypto.createHash('sha256');
-  hash.update(fileBuffer);
-  const sha256 = hash.digest('hex');
-  
-  // 返回相对路径（用于数据库存储）
-  const relativePath = path.relative(UPLOAD_DIR, filePath);
-  
+  const relativePath = generateFilePath(folder, originalFilename);
+  const fullPath = safeStoragePath(relativePath);
+  await ensureUploadDir(path.dirname(fullPath));
+  await fs.writeFile(fullPath, fileBuffer);
+
+  const sha256 = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
   return {
-    filePath: relativePath, // 存储这个到数据库
-    fullPath: filePath,
+    filePath: relativePath,
+    fullPath,
     sha256,
     size: fileBuffer.length,
   };
 };
 
-// 获取文件
 const getFile = async (filePath) => {
-  const fullPath = path.join(UPLOAD_DIR, filePath);
-  // 安全检查：防止路径遍历攻击
-  const resolvedPath = path.resolve(fullPath);
-  const resolvedDir = path.resolve(UPLOAD_DIR);
-  if (!resolvedPath.startsWith(resolvedDir)) {
-    throw new Error('Access denied: Invalid file path');
-  }
-  return await fs.readFile(resolvedPath);
+  const fullPath = safeStoragePath(filePath);
+  return fs.readFile(fullPath);
 };
 
-// 删除文件
 const deleteFileFromStorage = async (filePath) => {
   try {
-    const fullPath = path.join(UPLOAD_DIR, filePath);
-    // 安全检查
-    const resolvedPath = path.resolve(fullPath);
-    const resolvedDir = path.resolve(UPLOAD_DIR);
-    if (!resolvedPath.startsWith(resolvedDir)) {
-      throw new Error('Access denied: Invalid file path');
-    }
-    await fs.unlink(resolvedPath);
+    const fullPath = safeStoragePath(filePath);
+    await fs.unlink(fullPath);
     return { success: true };
   } catch (error) {
     if (error.code === 'ENOENT') {
-      // 文件不存在，认为删除成功
       return { success: true };
     }
     throw error;
   }
 };
 
-// 获取文件信息
 const getFileInfo = async (filePath) => {
-  const fullPath = path.join(UPLOAD_DIR, filePath);
-  // 安全检查
-  const resolvedPath = path.resolve(fullPath);
-  const resolvedDir = path.resolve(UPLOAD_DIR);
-  if (!resolvedPath.startsWith(resolvedDir)) {
-    throw new Error('Access denied: Invalid file path');
-  }
-  
-  const stats = await fs.stat(resolvedPath);
+  const fullPath = safeStoragePath(filePath);
+  const stats = await fs.stat(fullPath);
   return {
     size: stats.size,
     createdAt: stats.birthtime,
@@ -99,22 +79,18 @@ const getFileInfo = async (filePath) => {
   };
 };
 
-// 获取文件下载URL（直接返回服务器路径）
 const getFileUrl = (filePath) => {
-  // 返回相对于服务器的URL路径
-  // 将路径中的反斜杠替换为正斜杠（Windows兼容）
-  const normalizedPath = filePath.replace(/\\/g, '/');
+  const normalizedPath = String(filePath).replace(/\\/g, '/');
   return `/api/files/${normalizedPath}`;
 };
 
-// 初始化上传目录
 const initStorage = async () => {
   await ensureUploadDir(UPLOAD_DIR);
   await ensureUploadDir(path.join(UPLOAD_DIR, 'models'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'orders'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'stock'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'previews'));
-  console.log(`📁 文件存储目录已初始化: ${UPLOAD_DIR}`);
+  console.log(`File storage initialized: ${UPLOAD_DIR}`);
 };
 
 module.exports = {
@@ -126,5 +102,3 @@ module.exports = {
   UPLOAD_DIR,
   initStorage,
 };
-
-

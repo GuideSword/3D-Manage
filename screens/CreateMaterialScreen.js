@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { COLORS, ROUTES, MATERIAL_TYPES, UNITS } from '../constants';
 import { Card, Button, Input, Picker } from '../components';
-import { materialsAPI } from '../utils/api';
+import { materialsAPI, isAuthRequiredError } from '../utils/api';
 
 // 材质类型选项
 const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map(type => ({
@@ -109,6 +109,9 @@ const CreateMaterialScreen = ({ navigation }) => {
         ]
       );
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('创建物料失败:', error);
       Alert.alert('错误', '创建物料失败，请检查网络连接或稍后重试');
     } finally {
@@ -266,4 +269,3 @@ const styles = StyleSheet.create({
 });
 
 export default CreateMaterialScreen;
-

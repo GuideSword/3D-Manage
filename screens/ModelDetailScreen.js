@@ -11,9 +11,11 @@ import {
   RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import { COLORS, ROUTES } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { modelsAPI } from '../utils/api';
+import { modelsAPI, isAuthRequiredError } from '../utils/api';
+import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
 const ModelDetailScreen = ({ route, navigation }) => {
   const { modelId } = route.params || {};
@@ -21,6 +23,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   // 获取模型详情
   const fetchModelDetail = async () => {
@@ -42,6 +45,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
           modelData = null;
         }
       } catch (err) {
+        if (isAuthRequiredError(err)) {
+          throw err;
+        }
         console.error('获取模型详情失败:', err);
         // 如果API不支持/:id路由，尝试从列表获取
         if (err.status === 404 || err.message?.includes('Route not found') || err.message?.includes('404')) {
@@ -49,6 +55,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
             const allModels = await modelsAPI.getAll();
             modelData = allModels.find(m => m.id === modelId || String(m.id) === String(modelId));
           } catch (listErr) {
+            if (isAuthRequiredError(listErr)) {
+              throw listErr;
+            }
             console.error('从列表获取模型失败:', listErr);
             modelData = null;
           }
@@ -67,6 +76,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
         return;
       }
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取模型详情失败:', error);
       Alert.alert('错误', '获取模型详情失败，请检查网络连接', [
         {
@@ -101,6 +113,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
                 },
               ]);
             } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
               Alert.alert('错误', '删除模型失败');
             } finally {
               setDeleting(false);
@@ -118,6 +133,45 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchModelDetail();
+  };
+
+  const handleUploadVersion = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: '*/*',
+        copyToCacheDirectory: true,
+      });
+      if (result.canceled) {
+        return;
+      }
+      const asset = result.assets?.[0];
+      if (!validateExtension(asset, ['stl', 'obj', '3mf'])) {
+        Alert.alert('文件格式不支持', '请选择 STL、OBJ 或 3MF 模型文件');
+        return;
+      }
+
+      setUploading(true);
+      const uploadResult = await modelsAPI.uploadFile(
+        pickerAssetToFormFile(asset),
+        { assetId: modelId }
+      );
+      await modelsAPI.addVersion(modelId, {
+        fileKey: uploadResult.fileKey,
+        fileUrl: uploadResult.fileUrl,
+        fileSize: uploadResult.size,
+        sha256: uploadResult.sha256,
+        notes: `上传文件：${uploadResult.originalName || asset.name}`,
+      });
+      Alert.alert('成功', '模型新版本已上传');
+      await fetchModelDetail();
+    } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
+      Alert.alert('错误', error.message || '上传模型版本失败');
+    } finally {
+      setUploading(false);
+    }
   };
 
   if (loading && !model) {
@@ -243,6 +297,13 @@ const ModelDetailScreen = ({ route, navigation }) => {
 
         {/* 操作按钮 */}
         <Card style={styles.section}>
+          <Button
+            title={uploading ? '上传中...' : '上传新版本'}
+            onPress={handleUploadVersion}
+            style={styles.actionButton}
+            disabled={uploading}
+            loading={uploading}
+          />
           <Button
             title="删除模型"
             onPress={handleDelete}
@@ -399,13 +460,13 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontStyle: 'italic',
   },
+  actionButton: {
+    marginBottom: 12,
+  },
   deleteButton: {
     marginTop: 0,
   },
 });
 
 export default ModelDetailScreen;
-
-
-
 

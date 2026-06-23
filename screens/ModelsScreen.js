@@ -9,11 +9,13 @@ import {
   RefreshControl,
   Dimensions,
   ActivityIndicator,
+  TextInput,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants';
 import { Card, Button, Badge } from '../components';
-import { modelsAPI } from '../utils/api';
+import { modelsAPI, isAuthRequiredError } from '../utils/api';
 import { useFocusEffect } from '@react-navigation/native';
 
 const { width } = Dimensions.get('window');
@@ -23,14 +25,27 @@ const ModelsScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'grid'
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [visibilityFilter, setVisibilityFilter] = useState('all');
 
   // 获取模型列表
   const fetchModels = async () => {
     try {
       setLoading(true);
-      const data = await modelsAPI.getAll();
+      const params = {};
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (visibilityFilter !== 'all') {
+        params.visibility = visibilityFilter;
+      }
+      const data = await modelsAPI.getAll(params);
       setModels(data || []);
     } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
       console.error('获取模型列表失败:', error);
       setModels([]);
     } finally {
@@ -46,14 +61,22 @@ const ModelsScreen = ({ navigation }) => {
 
   useEffect(() => {
     fetchModels();
-  }, []);
+  }, [searchQuery, visibilityFilter]);
 
   // 当屏幕获得焦点时刷新数据
   useFocusEffect(
     useCallback(() => {
       fetchModels();
-    }, [])
+    }, [searchQuery, visibilityFilter])
   );
+
+  const cycleVisibilityFilter = () => {
+    setVisibilityFilter((current) => {
+      if (current === 'all') return 'team';
+      if (current === 'team') return 'private';
+      return 'all';
+    });
+  };
 
   const ModelCard = ({ model, isGrid = false }) => (
     <TouchableOpacity
@@ -119,11 +142,17 @@ const ModelsScreen = ({ navigation }) => {
               color={COLORS.primary}
             />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="search" size={24} color={COLORS.text} />
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={() => setShowSearch(!showSearch)}
+          >
+            <Ionicons name="search" size={24} color={showSearch ? COLORS.primary : COLORS.text} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerButton}>
-            <Ionicons name="filter" size={24} color={COLORS.text} />
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={cycleVisibilityFilter}
+          >
+            <Ionicons name="filter" size={24} color={visibilityFilter === 'all' ? COLORS.text : COLORS.primary} />
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.headerButton}
@@ -133,6 +162,34 @@ const ModelsScreen = ({ navigation }) => {
           </TouchableOpacity>
         </View>
       </View>
+
+      {showSearch && (
+        <View style={styles.searchContainer}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="搜索模型（名称、备注、标签）"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoFocus
+          />
+          {searchQuery ? (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={24} color={COLORS.textSecondary} />
+            </TouchableOpacity>
+          ) : null}
+        </View>
+      )}
+
+      {visibilityFilter !== 'all' && (
+        <View style={styles.filterHint}>
+          <Text style={styles.filterHintText}>
+            当前筛选：{visibilityFilter === 'team' ? '团队模型' : '私有模型'}
+          </Text>
+          <TouchableOpacity onPress={() => setVisibilityFilter('all')}>
+            <Text style={styles.filterClearText}>清除</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -161,7 +218,7 @@ const ModelsScreen = ({ navigation }) => {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Ionicons name="cube-outline" size={64} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>暂无模型</Text>
+              <Text style={styles.emptyText}>{searchQuery ? '未找到匹配的模型' : '暂无模型'}</Text>
               <Button
                 title="创建第一个模型"
                 onPress={() => navigation.navigate('CreateModel')}
@@ -213,6 +270,45 @@ const styles = StyleSheet.create({
   },
   headerButton: {
     padding: 4,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    backgroundColor: COLORS.surface,
+    marginRight: 8,
+  },
+  filterHint: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  filterHintText: {
+    fontSize: 14,
+    color: COLORS.text,
+  },
+  filterClearText: {
+    fontSize: 14,
+    color: COLORS.primary,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -319,17 +415,22 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: COLORS.dark,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    ...Platform.select({
+      web: {
+        boxShadow: '0 2px 4px rgba(28, 28, 30, 0.25)',
+      },
+      default: {
+        shadowColor: COLORS.dark,
+        shadowOffset: {
+          width: 0,
+          height: 2,
+        },
+        shadowOpacity: 0.25,
+        shadowRadius: 3.84,
+        elevation: 5,
+      },
+    }),
   },
 });
 
 export default ModelsScreen;
-
-
