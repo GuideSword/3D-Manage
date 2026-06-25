@@ -1,23 +1,24 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
   Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { COLORS } from '../constants';
-import { Card, Button, Input, Picker } from '../components';
-import { ordersAPI, modelsAPI, materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { Button, Card, Input, Picker } from '../components';
+import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI, stockAPI } from '../utils/api';
 import { validateExtension } from '../utils/upload';
 
 const IMPORT_OPTIONS = [
   { value: 'orders', label: '订单' },
   { value: 'models', label: '模型' },
-  { value: 'materials', label: '物料' },
+  { value: 'materials', label: '耗材' },
   { value: 'stockLots', label: '库存批次' },
 ];
 
@@ -100,7 +101,22 @@ const DataImportScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="document-attach-outline" size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>DATA IMPORT</Text>
+            <Text style={styles.title}>CSV 数据导入</Text>
+            <Text style={styles.subtitle}>选择导入目标后上传文件，或直接粘贴 CSV 内容。</Text>
+          </View>
+        </View>
+
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>导入目标</Text>
           <Picker
@@ -117,16 +133,22 @@ const DataImportScreen = ({ navigation }) => {
 
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>CSV 内容</Text>
-          <Text style={styles.headerText}>{currentHeader}</Text>
+          <View style={styles.headerBox}>
+            <Text style={styles.headerLabel}>示例表头</Text>
+            <Text style={styles.headerTextValue}>{currentHeader}</Text>
+          </View>
           {selectedFileName ? (
             <View style={styles.fileInfo}>
-              <Text style={styles.fileName}>{selectedFileName}</Text>
+              <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+              <Text style={styles.fileName} numberOfLines={1}>{selectedFileName}</Text>
             </View>
           ) : null}
           <Button
             title="选择 CSV 文件"
+            iconLeft="folder-open-outline"
             onPress={pickCsvFile}
             variant="outline"
+            fullWidth
             style={styles.fileButton}
           />
           <Input
@@ -143,15 +165,18 @@ const DataImportScreen = ({ navigation }) => {
         <View style={styles.buttonContainer}>
           <Button
             title={loading ? '导入中...' : '确认导入'}
+            iconLeft="cloud-upload-outline"
             onPress={handleImport}
             loading={loading}
             disabled={loading}
+            fullWidth
             style={styles.submitButton}
           />
           <Button
             title="取消"
             onPress={() => navigation.goBack()}
             variant="outline"
+            fullWidth
           />
         </View>
       </ScrollView>
@@ -167,46 +192,91 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  section: {
-    margin: 16,
-    padding: 16,
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 16,
+  header: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
   },
   headerText: {
-    fontSize: 12,
-    lineHeight: 18,
-    color: COLORS.textSecondary,
-    marginBottom: 12,
+    flex: 1,
   },
-  fileInfo: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    marginBottom: 12,
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
   },
-  fileName: {
-    fontSize: 15,
-    fontWeight: '600',
+  title: {
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
   },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  section: {
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
+  },
+  sectionTitle: {
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+  headerBox: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+    marginBottom: SPACING.md,
+  },
+  headerLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+    marginBottom: SPACING.xs,
+  },
+  headerTextValue: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  fileInfo: {
+    minHeight: 42,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primarySoft,
+    marginBottom: SPACING.md,
+  },
+  fileName: {
+    flex: 1,
+    ...TYPOGRAPHY.meta,
+    color: COLORS.primaryDark,
+  },
   fileButton: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   csvInput: {
     minHeight: 180,
     textAlignVertical: 'top',
   },
   buttonContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    marginTop: SPACING.sm,
   },
   submitButton: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
 });
 

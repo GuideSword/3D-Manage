@@ -1,30 +1,45 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
+  Alert,
   Platform,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
-import { useFocusEffect } from '@react-navigation/native';
-import { COLORS, ORDER_STATUSES, ROUTES } from '../constants';
-import { Card, Button, Input, Picker } from '../components';
-import { ordersAPI, modelsAPI, materialsAPI, isAuthRequiredError } from '../utils/api';
+import {
+  COLORS,
+  ORDER_STATUSES,
+  RADIUS,
+  ROUTES,
+  SPACING,
+  TYPOGRAPHY,
+} from '../constants';
+import { Button, Card, Input, Picker } from '../components';
+import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
-// 颜色选项
 const COLOR_OPTIONS = [
   { value: '金色', label: '金色' },
   { value: '红色', label: '红色' },
   { value: '其它颜色', label: '其它颜色' },
 ];
+
+const newOrderItem = () => ({
+  modelId: '',
+  materialType: '',
+  color: '',
+  customColor: '',
+  quantity: '',
+  unitPrice: '',
+});
 
 const CreateOrderScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
@@ -33,7 +48,6 @@ const CreateOrderScreen = ({ navigation }) => {
   const [models, setModels] = useState([]);
   const [materials, setMaterials] = useState([]);
   const [selectedAttachment, setSelectedAttachment] = useState(null);
-  
   const [formData, setFormData] = useState({
     customerName: '',
     customerEmail: '',
@@ -42,17 +56,12 @@ const CreateOrderScreen = ({ navigation }) => {
     currency: 'CNY',
     notes: '',
   });
-  
-  const [items, setItems] = useState([
-    { modelId: '', materialType: '', color: '', customColor: '', quantity: '', unitPrice: '' },
-  ]);
+  const [items, setItems] = useState([newOrderItem()]);
 
-  // 加载模型和材质列表
   useEffect(() => {
     loadOptions();
   }, []);
 
-  // 当屏幕获得焦点时刷新模型列表（确保从模型管理页面返回时能获取最新数据）
   useFocusEffect(
     useCallback(() => {
       loadOptions();
@@ -72,24 +81,20 @@ const CreateOrderScreen = ({ navigation }) => {
           return [];
         }),
       ]);
-      
-      // 直接使用API返回的数据，不合并默认选项
       setModels(modelsData || []);
-      
-      // 从物料列表中提取材质类型（去重）
       const apiMaterialTypes = Array.from(
-        new Set((materialsData || []).map((m) => m.type || m.materialType).filter(Boolean))
+        new Set((materialsData || []).map((material) => material.type || material.materialType).filter(Boolean))
       );
-      // 保存完整的物料列表用于后续使用
-      setMaterials(materialsData && materialsData.length > 0 
-        ? materialsData 
-        : apiMaterialTypes.map((type) => ({ type, id: type })));
+      setMaterials(
+        materialsData && materialsData.length > 0
+          ? materialsData
+          : apiMaterialTypes.map((type) => ({ type, id: type }))
+      );
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
       }
       console.error('加载选项失败:', error);
-      // API失败时设置为空数组
       setModels([]);
       setMaterials([]);
     } finally {
@@ -117,7 +122,6 @@ const CreateOrderScreen = ({ navigation }) => {
     }
   };
 
-  // 格式化日期为 YYYY-MM-DD
   const formatDate = (date) => {
     if (!date) return '';
     const year = date.getFullYear();
@@ -126,7 +130,6 @@ const CreateOrderScreen = ({ navigation }) => {
     return `${year}-${month}-${day}`;
   };
 
-  // 处理日期选择
   const handleDateChange = (event, selectedDate) => {
     setShowDatePicker(Platform.OS === 'ios');
     if (selectedDate) {
@@ -134,70 +137,56 @@ const CreateOrderScreen = ({ navigation }) => {
     }
   };
 
-  // 添加订单项
   const addOrderItem = () => {
-    setItems([...items, { modelId: '', materialType: '', color: '', customColor: '', quantity: '', unitPrice: '' }]);
+    setItems([...items, newOrderItem()]);
   };
 
-  // 删除订单项
   const removeOrderItem = (index) => {
     if (items.length > 1) {
-      const newItems = items.filter((_, i) => i !== index);
-      setItems(newItems);
+      setItems(items.filter((_, itemIndex) => itemIndex !== index));
     }
   };
 
-  // 更新订单项
   const updateOrderItem = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
-    
-    // 如果选择颜色为"其它颜色"，保持customColor字段以便用户输入
-    // 如果选择其他颜色，清空customColor
-    if (field === 'color') {
-      if (value === '其它颜色') {
-        // 保持customColor字段，用户需要输入
-      } else {
-        // 选择预设颜色时，清空自定义颜色
-        newItems[index].customColor = '';
-      }
+    if (field === 'color' && value !== '其它颜色') {
+      newItems[index].customColor = '';
     }
-    
     setItems(newItems);
   };
 
-  // 验证表单
   const validateForm = () => {
     if (!formData.customerName.trim()) {
       Alert.alert('验证失败', '请输入客户名称');
       return false;
     }
 
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index];
+      const itemNumber = index + 1;
       if (!item.modelId) {
-        Alert.alert('验证失败', `请选择第 ${i + 1} 项的模型`);
+        Alert.alert('验证失败', `请选择第 ${itemNumber} 项的模型`);
         return false;
       }
       if (!item.materialType) {
-        Alert.alert('验证失败', `请选择第 ${i + 1} 项的材质类型`);
+        Alert.alert('验证失败', `请选择第 ${itemNumber} 项的材质类型`);
         return false;
       }
-      // 验证颜色：必须选择颜色，如果选择"其它颜色"则必须输入自定义颜色
       if (!item.color) {
-        Alert.alert('验证失败', `请选择第 ${i + 1} 项的颜色`);
+        Alert.alert('验证失败', `请选择第 ${itemNumber} 项的颜色`);
         return false;
       }
       if (item.color === '其它颜色' && !item.customColor.trim()) {
-        Alert.alert('验证失败', `请填写第 ${i + 1} 项的自定义颜色`);
+        Alert.alert('验证失败', `请填写第 ${itemNumber} 项的自定义颜色`);
         return false;
       }
       if (!item.quantity || parseFloat(item.quantity) <= 0) {
-        Alert.alert('验证失败', `请填写第 ${i + 1} 项的有效数量`);
+        Alert.alert('验证失败', `请填写第 ${itemNumber} 项的有效数量`);
         return false;
       }
       if (!item.unitPrice || parseFloat(item.unitPrice) <= 0) {
-        Alert.alert('验证失败', `请填写第 ${i + 1} 项的有效单价`);
+        Alert.alert('验证失败', `请填写第 ${itemNumber} 项的有效单价`);
         return false;
       }
     }
@@ -205,16 +194,14 @@ const CreateOrderScreen = ({ navigation }) => {
     return true;
   };
 
-  // 计算订单总额
-  const calculateTotal = () => {
-    return items.reduce((total, item) => {
+  const calculateTotal = () => (
+    items.reduce((total, item) => {
       const quantity = parseFloat(item.quantity) || 0;
       const unitPrice = parseFloat(item.unitPrice) || 0;
       return total + quantity * unitPrice;
-    }, 0);
-  };
+    }, 0)
+  );
 
-  // 提交订单
   const handleSubmit = async () => {
     if (!validateForm()) {
       return;
@@ -234,20 +221,14 @@ const CreateOrderScreen = ({ navigation }) => {
         });
       }
 
-      // 构建订单数据
       const orderItems = items.map((item) => {
-        // 查找模型信息
-        const model = models.find((m) => m.id === item.modelId || m.name === item.modelId);
-        // 材质类型直接使用item.materialType，因为它已经是类型字符串
-        const materialType = item.materialType;
-        // 确定颜色：如果选择"其它颜色"则使用customColor，否则使用选择的颜色
+        const model = models.find((entry) => entry.id === item.modelId || entry.name === item.modelId);
         const color = item.color === '其它颜色' ? item.customColor.trim() : item.color;
-        
         return {
           modelId: item.modelId,
           modelName: model?.name || item.modelId || '',
-          materialType: materialType,
-          color: color,
+          materialType: item.materialType,
+          color,
           quantity: parseFloat(item.quantity),
           unitPrice: parseFloat(item.unitPrice),
         };
@@ -268,27 +249,15 @@ const CreateOrderScreen = ({ navigation }) => {
         status: ORDER_STATUSES.PENDING_REVIEW,
       };
 
-      // 提交到API
       const newOrder = await ordersAPI.create(orderData);
 
-      Alert.alert(
-        '成功',
-        '订单创建成功！',
-        [
-          {
-            text: '查看订单',
-            onPress: () => {
-              navigation.replace(ROUTES.ORDER_DETAIL, { orderId: newOrder.id });
-            },
-          },
-          {
-            text: '返回列表',
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
-        ]
-      );
+      Alert.alert('成功', '订单创建成功', [
+        {
+          text: '查看订单',
+          onPress: () => navigation.replace(ROUTES.ORDER_DETAIL, { orderId: newOrder.id }),
+        },
+        { text: '返回列表', onPress: () => navigation.goBack() },
+      ]);
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -300,42 +269,29 @@ const CreateOrderScreen = ({ navigation }) => {
     }
   };
 
-  // 准备模型选项（显示名称和尺寸）
   const modelOptions = models.map((model) => {
     const name = model.name || `模型 ${model.id || '未知'}`;
     const dimensions = model.dimensions || '';
-    // 如果有尺寸信息，在标签中显示；否则只显示名称
-    const label = dimensions ? `${name} (${dimensions})` : name;
     return {
       value: model.id || model.name,
-      label: label,
+      label: dimensions ? `${name} (${dimensions})` : name,
     };
   });
 
-  // 准备材质选项（从物料列表中提取类型，去重）
   const materialOptions = Array.from(
     new Set(
       materials
-        .map((material) => {
-          // 如果material是对象，提取type字段；如果是字符串，直接使用
-          const type = typeof material === 'string' 
-            ? material 
-            : (material.type || material.materialType);
-          return type;
-        })
-        .filter(Boolean) // 过滤掉空值
+        .map((material) => (typeof material === 'string' ? material : (material.type || material.materialType)))
+        .filter(Boolean)
     )
-  ).map((type) => ({
-    value: type,
-    label: type,
-  }));
+  ).map((type) => ({ value: type, label: type }));
 
   if (loadingData) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
+          <Text style={styles.loadingText}>加载选项中...</Text>
         </View>
       </SafeAreaView>
     );
@@ -343,8 +299,22 @@ const CreateOrderScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-        {/* 客户信息 */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>NEW ORDER</Text>
+            <Text style={styles.title}>新建订单</Text>
+            <Text style={styles.subtitle}>录入客户信息、交期、附件和打印项目。</Text>
+          </View>
+        </View>
+
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>客户信息</Text>
           <Input
@@ -369,33 +339,32 @@ const CreateOrderScreen = ({ navigation }) => {
           />
         </Card>
 
-        {/* 订单信息 */}
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>订单信息</Text>
-          
-          {/* 截止日期选择器 */}
           <View style={styles.datePickerContainer}>
-            <Text style={styles.label}>截止日期</Text>
+            <Text style={styles.fieldLabel}>截止日期</Text>
             <TouchableOpacity
+              activeOpacity={0.82}
               style={styles.datePickerButton}
               onPress={() => setShowDatePicker(true)}
             >
               <Text style={[styles.datePickerText, !formData.dueDate && styles.placeholderText]}>
                 {formData.dueDate ? formatDate(formData.dueDate) : '请选择截止日期'}
               </Text>
-              <Ionicons name="calendar-outline" size={20} color={COLORS.textSecondary} />
+              <Ionicons name="calendar-outline" size={18} color={COLORS.textSecondary} />
             </TouchableOpacity>
-            {formData.dueDate && (
+            {formData.dueDate ? (
               <TouchableOpacity
+                activeOpacity={0.82}
                 style={styles.clearDateButton}
                 onPress={() => setFormData({ ...formData, dueDate: null })}
               >
-                <Ionicons name="close-circle" size={20} color={COLORS.textSecondary} />
+                <Ionicons name="close" size={16} color={COLORS.textSecondary} />
               </TouchableOpacity>
-            )}
+            ) : null}
           </View>
 
-          {showDatePicker && (
+          {showDatePicker ? (
             <DateTimePicker
               value={formData.dueDate || new Date()}
               mode="date"
@@ -403,7 +372,7 @@ const CreateOrderScreen = ({ navigation }) => {
               onChange={handleDateChange}
               minimumDate={new Date()}
             />
-          )}
+          ) : null}
 
           <Input
             label="备注"
@@ -415,31 +384,24 @@ const CreateOrderScreen = ({ navigation }) => {
           />
 
           <View style={styles.attachmentBlock}>
-            <Text style={styles.label}>附件</Text>
+            <Text style={styles.fieldLabel}>附件</Text>
             <Text style={styles.helperText}>支持 PNG、JPG、PDF，可上传客户图纸或确认文件。</Text>
-            {selectedAttachment && (
-              <View style={styles.fileInfo}>
-                <Text style={styles.fileName}>{selectedAttachment.name}</Text>
-                {selectedAttachment.size ? (
-                  <Text style={styles.fileMeta}>{Math.round(selectedAttachment.size / 1024)} KB</Text>
-                ) : null}
-              </View>
-            )}
+            {selectedAttachment ? <SelectedFile asset={selectedAttachment} /> : null}
             <Button
               title={selectedAttachment ? '重新选择附件' : '选择附件'}
+              iconLeft="attach-outline"
               onPress={pickAttachment}
               variant="outline"
-              style={styles.fileButton}
+              fullWidth
             />
           </View>
         </Card>
 
-        {/* 订单项 */}
         <Card style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>订单项目</Text>
-            <TouchableOpacity onPress={addOrderItem} style={styles.addButton}>
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
+            <TouchableOpacity activeOpacity={0.82} onPress={addOrderItem} style={styles.addButton}>
+              <Ionicons name="add" size={20} color={COLORS.primary} />
             </TouchableOpacity>
           </View>
 
@@ -447,14 +409,13 @@ const CreateOrderScreen = ({ navigation }) => {
             <View key={index} style={styles.orderItem}>
               <View style={styles.orderItemHeader}>
                 <Text style={styles.orderItemTitle}>项目 {index + 1}</Text>
-                {items.length > 1 && (
-                  <TouchableOpacity onPress={() => removeOrderItem(index)}>
-                    <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
+                {items.length > 1 ? (
+                  <TouchableOpacity onPress={() => removeOrderItem(index)} style={styles.removeButton}>
+                    <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
                   </TouchableOpacity>
-                )}
+                ) : null}
               </View>
 
-              {/* 模型选择 */}
               <Picker
                 label="模型 *"
                 placeholder="请选择模型"
@@ -462,8 +423,6 @@ const CreateOrderScreen = ({ navigation }) => {
                 onValueChange={(value) => updateOrderItem(index, 'modelId', value)}
                 options={modelOptions}
               />
-
-              {/* 材质类型选择 */}
               <Picker
                 label="材质类型 *"
                 placeholder="请选择材质类型"
@@ -471,8 +430,6 @@ const CreateOrderScreen = ({ navigation }) => {
                 onValueChange={(value) => updateOrderItem(index, 'materialType', value)}
                 options={materialOptions}
               />
-
-              {/* 颜色选择 */}
               <Picker
                 label="颜色 *"
                 placeholder="请选择颜色"
@@ -480,16 +437,14 @@ const CreateOrderScreen = ({ navigation }) => {
                 onValueChange={(value) => updateOrderItem(index, 'color', value)}
                 options={COLOR_OPTIONS}
               />
-              
-              {/* 当选择"其它颜色"时，显示自定义颜色输入框 */}
-              {item.color === '其它颜色' && (
+              {item.color === '其它颜色' ? (
                 <Input
                   label="请输入颜色 *"
                   placeholder="请输入颜色名称"
                   value={item.customColor}
                   onChangeText={(text) => updateOrderItem(index, 'customColor', text)}
                 />
-              )}
+              ) : null}
               <View style={styles.rowInputs}>
                 <View style={styles.halfInput}>
                   <Input
@@ -514,36 +469,44 @@ const CreateOrderScreen = ({ navigation }) => {
           ))}
         </Card>
 
-        {/* 订单总额 */}
-        <Card style={styles.section}>
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>订单总额</Text>
-            <Text style={styles.totalAmount}>
-              {formData.currency} {calculateTotal().toFixed(2)}
-            </Text>
-          </View>
+        <Card style={styles.totalSection}>
+          <Text style={styles.totalLabel}>订单总额</Text>
+          <Text style={styles.totalAmount}>
+            {formData.currency} {calculateTotal().toFixed(2)}
+          </Text>
         </Card>
 
-        {/* 提交按钮 */}
         <View style={styles.buttonContainer}>
           <Button
             title={loading ? '创建中...' : '创建订单'}
+            iconLeft="checkmark-outline"
             onPress={handleSubmit}
             disabled={loading}
             loading={loading}
+            fullWidth
             style={styles.submitButton}
           />
           <Button
             title="取消"
             onPress={() => navigation.goBack()}
             variant="outline"
-            style={styles.cancelButton}
+            fullWidth
           />
         </View>
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+const SelectedFile = ({ asset }) => (
+  <View style={styles.fileInfo}>
+    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+    <View style={styles.fileTextGroup}>
+      <Text style={styles.fileName} numberOfLines={1}>{asset.name}</Text>
+      {asset.size ? <Text style={styles.fileMeta}>{Math.round(asset.size / 1024)} KB</Text> : null}
+    </View>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -553,145 +516,198 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+  },
+  header: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  headerText: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
   },
   section: {
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 16,
   },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
+  fieldLabel: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
-    marginBottom: 4,
+    marginBottom: SPACING.xs,
   },
   helperText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
-    lineHeight: 20,
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   attachmentBlock: {
-    marginTop: 12,
+    marginTop: SPACING.md,
   },
   fileInfo: {
-    padding: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    marginBottom: 12,
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+    marginBottom: SPACING.md,
+  },
+  fileTextGroup: {
+    flex: 1,
+    minWidth: 0,
   },
   fileName: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
   },
   fileMeta: {
-    fontSize: 13,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    marginTop: 4,
-  },
-  fileButton: {
-    marginTop: 4,
+    marginTop: 2,
   },
   datePickerContainer: {
-    marginVertical: 8,
+    marginVertical: SPACING.sm,
     position: 'relative',
   },
   datePickerButton: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minHeight: 44,
-    backgroundColor: COLORS.background,
+    borderRadius: RADIUS.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.surfaceElevated,
   },
   datePickerText: {
-    fontSize: 16,
-    color: COLORS.text,
     flex: 1,
+    fontSize: 15,
+    color: COLORS.text,
   },
   placeholderText: {
-    color: COLORS.textSecondary,
+    color: COLORS.textTertiary,
   },
   clearDateButton: {
-    marginLeft: 8,
-    padding: 4,
+    position: 'absolute',
+    right: 36,
+    bottom: 9,
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceMuted,
   },
   addButton: {
-    padding: 4,
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  removeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.dangerSoft,
   },
   orderItem: {
-    marginBottom: 24,
-    paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    marginBottom: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
   },
   orderItemHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: SPACING.sm,
   },
   orderItemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
   },
   rowInputs: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: SPACING.md,
   },
   halfInput: {
-    width: '48%',
+    flex: 1,
+    minWidth: 0,
   },
-  totalRow: {
+  totalSection: {
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primarySoft,
   },
   totalLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.primaryDark,
   },
   totalAmount: {
     fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.primary,
+    lineHeight: 30,
+    fontWeight: '800',
+    color: COLORS.primaryDark,
   },
   buttonContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    marginTop: SPACING.sm,
   },
   submitButton: {
-    marginBottom: 12,
-  },
-  cancelButton: {
-    marginTop: 0,
+    marginBottom: SPACING.md,
   },
 });
 

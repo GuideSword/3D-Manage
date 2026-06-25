@@ -1,25 +1,33 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
-  Platform,
+  Alert,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, INVENTORY_TXN_TYPES } from '../constants';
-import { Card, Button, Input, Picker } from '../components';
-import { materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  COLORS,
+  INVENTORY_TXN_TYPES,
+  RADIUS,
+  SPACING,
+  STOCK_STATUS_LABELS,
+  STOCK_STATUSES,
+  TYPOGRAPHY,
+} from '../constants';
+import { Button, Card, Input, Picker } from '../components';
+import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const InboundTransactionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [materials, setMaterials] = useState([]);
   const [stockLots, setStockLots] = useState([]);
-  const [inTransactionType, setInTransactionType] = useState('existing'); // 'existing' or 'new'
+  const [inTransactionType, setInTransactionType] = useState('existing');
   const [formData, setFormData] = useState({
     lotId: '',
     materialId: '',
@@ -29,7 +37,6 @@ const InboundTransactionScreen = ({ navigation }) => {
     notes: '',
   });
 
-  // 加载数据
   useEffect(() => {
     loadData();
   }, []);
@@ -60,54 +67,48 @@ const InboundTransactionScreen = ({ navigation }) => {
     }
   };
 
-  // 准备物料选项
-  const materialOptions = useMemo(() => {
-    return materials.map(material => ({
+  const materialOptions = useMemo(() => (
+    materials.map((material) => ({
       value: material.id,
       label: `${material.type || material.materialType || '未知'} ${material.color || ''} - ${material.brand || ''}`.trim(),
-    }));
-  }, [materials]);
+    }))
+  ), [materials]);
 
-  // 准备批次选项（用于入库选择 - 显示所有非报废状态的批次）
-  const inLotOptions = useMemo(() => {
-    return stockLots
-      .filter(lot => (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED)
-      .map(lot => {
-        const material = materials.find(m => m.id === (lot.materialId || lot.material_id));
-        const materialName = material 
+  const inLotOptions = useMemo(() => (
+    stockLots
+      .filter((lot) => (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED)
+      .map((lot) => {
+        const material = materials.find((item) => item.id === (lot.materialId || lot.material_id));
+        const materialName = material
           ? `${material.type || material.materialType || '未知'} ${material.color || ''}`.trim()
-          : '未知物料';
+          : '未知耗材';
         const status = STOCK_STATUS_LABELS[lot.state || lot.status] || '未知';
         return {
           value: lot.id,
           label: `${lot.lotNo || lot.lot_no || '未知批次'} - ${materialName} (${status}, 库存: ${lot.qty || 0}g)`,
         };
-      });
-  }, [stockLots, materials]);
+      })
+  ), [stockLots, materials]);
 
-  // 获取物料的所有批次
-  const getMaterialLotsForIn = useCallback((materialId) => {
-    return stockLots.filter(lot => 
-      (lot.materialId || lot.material_id) === materialId && 
-      (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED
-    );
-  }, [stockLots]);
+  const getMaterialLotsForIn = useCallback((materialId) => (
+    stockLots.filter((lot) => (
+      (lot.materialId || lot.material_id) === materialId
+      && (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED
+    ))
+  ), [stockLots]);
 
-  // 处理物料选择变化
   const handleMaterialChange = useCallback((value) => {
-    setFormData(prev => ({ ...prev, materialId: value }));
-    // 检查该物料是否已有批次
+    setFormData((prev) => ({ ...prev, materialId: value }));
     const existingLots = getMaterialLotsForIn(value);
     if (existingLots.length > 0) {
       Alert.alert(
         '提示',
-        `该物料已有 ${existingLots.length} 个批次，您可以选择"选择现有批次"来入库`,
+        `该耗材已有 ${existingLots.length} 个批次，也可以选择“现有批次入库”。`,
         [{ text: '确定' }]
       );
     }
   }, [getMaterialLotsForIn]);
 
-  // 验证表单
   const validateForm = () => {
     if (inTransactionType === 'existing') {
       if (!formData.lotId) {
@@ -116,7 +117,7 @@ const InboundTransactionScreen = ({ navigation }) => {
       }
     } else {
       if (!formData.materialId) {
-        Alert.alert('验证失败', '请选择物料');
+        Alert.alert('验证失败', '请选择耗材');
         return false;
       }
       if (!formData.lotNo || !formData.lotNo.trim()) {
@@ -131,7 +132,6 @@ const InboundTransactionScreen = ({ navigation }) => {
     return true;
   };
 
-  // 提交入库操作
   const handleSubmit = async () => {
     if (!validateForm()) {
       return;
@@ -139,42 +139,30 @@ const InboundTransactionScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
-      
       let targetLotId = formData.lotId;
-      
-      // 如果是新建批次，先创建批次
+
       if (inTransactionType === 'new') {
         const newLot = await stockAPI.createLot({
           materialId: formData.materialId,
           lotNo: formData.lotNo.trim(),
           location: formData.location.trim() || undefined,
-          qty: 0, // 初始数量为0，然后通过入库操作增加
+          qty: 0,
           state: STOCK_STATUSES.IN_STOCK,
           notes: formData.notes.trim() || undefined,
         });
         targetLotId = newLot.id;
       }
-      
-      // 执行入库操作
+
       await stockAPI.inventoryTransaction({
         lotId: targetLotId,
         type: INVENTORY_TXN_TYPES.IN,
         qty: parseFloat(formData.qty),
         notes: formData.notes.trim() || undefined,
       });
-      
-      Alert.alert(
-        '成功',
-        '入库操作成功！',
-        [
-          {
-            text: '确定',
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
-        ]
-      );
+
+      Alert.alert('成功', '入库操作成功', [
+        { text: '确定', onPress: () => navigation.goBack() },
+      ]);
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -187,155 +175,183 @@ const InboundTransactionScreen = ({ navigation }) => {
   };
 
   if (loadingData) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <LoadingState text="加载库存数据中..." />;
   }
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-        {/* 入库类型选择 */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <FormHeader
+          icon="enter-outline"
+          eyebrow="INBOUND"
+          title="入库操作"
+          subtitle="向现有批次补充库存，或创建新批次后入库。"
+          color={COLORS.success}
+        />
+
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>入库类型</Text>
-          <View style={styles.transactionTypeContainer}>
-            <TouchableOpacity
-              style={[
-                styles.transactionTypeButton,
-                inTransactionType === 'existing' && styles.transactionTypeButtonActive,
-              ]}
+          <View style={styles.segmentedControl}>
+            <SegmentButton
+              label="现有批次"
+              active={inTransactionType === 'existing'}
               onPress={() => {
                 setInTransactionType('existing');
-                setFormData(prev => ({ ...prev, materialId: '', lotNo: '', location: '' }));
+                setFormData((prev) => ({ ...prev, materialId: '', lotNo: '', location: '' }));
               }}
-            >
-              <Text
-                style={[
-                  styles.transactionTypeText,
-                  inTransactionType === 'existing' && styles.transactionTypeTextActive,
-                ]}
-              >
-                选择现有批次
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[
-                styles.transactionTypeButton,
-                inTransactionType === 'new' && styles.transactionTypeButtonActive,
-              ]}
+            />
+            <SegmentButton
+              label="新建批次"
+              active={inTransactionType === 'new'}
               onPress={() => {
                 setInTransactionType('new');
-                setFormData(prev => ({ ...prev, lotId: '' }));
+                setFormData((prev) => ({ ...prev, lotId: '' }));
               }}
-            >
-              <Text
-                style={[
-                  styles.transactionTypeText,
-                  inTransactionType === 'new' && styles.transactionTypeTextActive,
-                ]}
-              >
-                新建批次入库
-              </Text>
-            </TouchableOpacity>
+            />
           </View>
         </Card>
 
-        {/* 批次/物料选择 */}
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>批次信息</Text>
-          
           {inTransactionType === 'existing' ? (
-            // 选择现有批次
-            <>
-              {inLotOptions.length === 0 ? (
-                <View style={styles.emptyOptionsContainer}>
-                  <Text style={styles.emptyOptionsText}>暂无可用批次</Text>
-                  <Text style={styles.emptyOptionsHint}>请选择"新建批次入库"来创建新批次</Text>
-                </View>
-              ) : (
-                <Picker
-                  label="选择批次 *"
-                  placeholder="请选择要入库的批次"
-                  value={formData.lotId}
-                  onValueChange={(value) => setFormData(prev => ({ ...prev, lotId: value }))}
-                  options={inLotOptions}
-                />
-              )}
-            </>
+            inLotOptions.length === 0 ? (
+              <EmptyOptions
+                title="暂无可用批次"
+                hint="请选择“新建批次”来创建库存批次。"
+              />
+            ) : (
+              <Picker
+                label="选择批次 *"
+                placeholder="请选择要入库的批次"
+                value={formData.lotId}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, lotId: value }))}
+                options={inLotOptions}
+              />
+            )
           ) : (
-            // 新建批次入库
             <>
               <Picker
-                label="选择物料 *"
-                placeholder="请选择物料"
+                label="选择耗材 *"
+                placeholder="请选择耗材"
                 value={formData.materialId}
                 onValueChange={handleMaterialChange}
                 options={materialOptions}
               />
               <Input
                 label="批次号 *"
-                placeholder="请输入批次号（如：LOT-2024-001）"
+                placeholder="例如 LOT-2026-001"
                 value={formData.lotNo}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, lotNo: text }))}
+                onChangeText={(text) => setFormData((prev) => ({ ...prev, lotNo: text }))}
               />
               <Input
                 label="位置"
-                placeholder="请输入存放位置（可选）"
+                placeholder="请输入存放位置"
                 value={formData.location}
-                onChangeText={(text) => setFormData(prev => ({ ...prev, location: text }))}
+                onChangeText={(text) => setFormData((prev) => ({ ...prev, location: text }))}
               />
             </>
           )}
         </Card>
 
-        {/* 入库信息 */}
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>入库信息</Text>
-          
           <Input
             label="入库数量 (g) *"
             placeholder="请输入入库数量"
             value={formData.qty}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, qty: text }))}
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, qty: text }))}
             keyboardType="decimal-pad"
           />
-
           <Input
             label="备注"
-            placeholder="请输入备注信息（可选）"
+            placeholder="请输入备注信息"
             value={formData.notes}
-            onChangeText={(text) => setFormData(prev => ({ ...prev, notes: text }))}
+            onChangeText={(text) => setFormData((prev) => ({ ...prev, notes: text }))}
             multiline
             numberOfLines={3}
           />
         </Card>
 
-        {/* 提交按钮 */}
-        <View style={styles.buttonContainer}>
-          <Button
-            title={loading ? '提交中...' : '确认入库'}
-            onPress={handleSubmit}
-            disabled={loading}
-            loading={loading}
-            variant="success"
-            style={styles.submitButton}
-          />
-          <Button
-            title="取消"
-            onPress={() => navigation.goBack()}
-            variant="outline"
-            style={styles.cancelButton}
-          />
-        </View>
+        <FormButtons
+          loading={loading}
+          submitTitle="确认入库"
+          loadingTitle="提交中..."
+          submitVariant="success"
+          submitIcon="checkmark-outline"
+          onSubmit={handleSubmit}
+          onCancel={() => navigation.goBack()}
+        />
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+const LoadingState = ({ text }) => (
+  <SafeAreaView style={styles.container}>
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color={COLORS.primary} />
+      <Text style={styles.loadingText}>{text}</Text>
+    </View>
+  </SafeAreaView>
+);
+
+const FormHeader = ({ icon, eyebrow, title, subtitle, color }) => (
+  <View style={styles.header}>
+    <View style={[styles.headerIcon, { backgroundColor: `${color}18` }]}>
+      <Ionicons name={icon} size={24} color={color} />
+    </View>
+    <View style={styles.headerText}>
+      <Text style={[styles.eyebrow, { color }]}>{eyebrow}</Text>
+      <Text style={styles.title}>{title}</Text>
+      <Text style={styles.subtitle}>{subtitle}</Text>
+    </View>
+  </View>
+);
+
+const SegmentButton = ({ label, active, onPress }) => (
+  <TouchableOpacity
+    activeOpacity={0.82}
+    onPress={onPress}
+    style={[styles.segmentButton, active && styles.segmentButtonActive]}
+  >
+    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const EmptyOptions = ({ title, hint }) => (
+  <View style={styles.emptyOptionsContainer}>
+    <Text style={styles.emptyOptionsText}>{title}</Text>
+    <Text style={styles.emptyOptionsHint}>{hint}</Text>
+  </View>
+);
+
+const FormButtons = ({
+  loading,
+  submitTitle,
+  loadingTitle,
+  submitVariant,
+  submitIcon,
+  onSubmit,
+  onCancel,
+}) => (
+  <View style={styles.buttonContainer}>
+    <Button
+      title={loading ? loadingTitle : submitTitle}
+      iconLeft={submitIcon}
+      onPress={onSubmit}
+      disabled={loading}
+      loading={loading}
+      variant={submitVariant}
+      fullWidth
+      style={styles.submitButton}
+    />
+    <Button title="取消" onPress={onCancel} variant="outline" fullWidth />
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -345,93 +361,104 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    padding: SPACING.xxl,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
+    marginTop: SPACING.md,
+  },
+  header: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    marginBottom: 2,
+  },
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
   },
   section: {
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 16,
+    marginBottom: SPACING.md,
   },
-  transactionTypeContainer: {
+  segmentedControl: {
     flexDirection: 'row',
+    gap: SPACING.sm,
+    padding: SPACING.xs,
+    borderRadius: RADIUS.lg,
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    padding: 4,
   },
-  transactionTypeButton: {
+  segmentButton: {
     flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 6,
+    minHeight: 38,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
   },
-  transactionTypeButtonActive: {
-    backgroundColor: COLORS.background,
-    ...Platform.select({
-      web: {
-        boxShadow: '0 1px 2px rgba(0, 0, 0, 0.1)',
-      },
-      default: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
-      },
-    }),
+  segmentButtonActive: {
+    backgroundColor: COLORS.surfaceElevated,
   },
-  transactionTypeText: {
-    fontSize: 14,
+  segmentText: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
-    fontWeight: '500',
   },
-  transactionTypeTextActive: {
+  segmentTextActive: {
     color: COLORS.primary,
-    fontWeight: '600',
   },
   emptyOptionsContainer: {
-    padding: 20,
+    padding: SPACING.xl,
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
+    backgroundColor: COLORS.surfaceMuted,
+    borderRadius: RADIUS.md,
   },
   emptyOptionsText: {
-    fontSize: 16,
-    fontWeight: '500',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
-    marginBottom: 8,
+    marginBottom: SPACING.xs,
   },
   emptyOptionsHint: {
-    fontSize: 14,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
     textAlign: 'center',
   },
   buttonContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    marginTop: SPACING.sm,
   },
   submitButton: {
-    marginBottom: 12,
-  },
-  cancelButton: {
-    marginTop: 0,
+    marginBottom: SPACING.md,
   },
 });
 
 export default InboundTransactionScreen;
-
-

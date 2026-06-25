@@ -1,27 +1,32 @@
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
   Alert,
-  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
-import { COLORS, ROUTES, MATERIAL_TYPES, UNITS } from '../constants';
-import { Card, Button, Input, Picker } from '../components';
-import { materialsAPI, isAuthRequiredError } from '../utils/api';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  COLORS,
+  MATERIAL_TYPES,
+  RADIUS,
+  ROUTES,
+  SPACING,
+  TYPOGRAPHY,
+  UNITS,
+} from '../constants';
+import { Button, Card, Input, Picker } from '../components';
+import { isAuthRequiredError, materialsAPI } from '../utils/api';
 
-// 材质类型选项
-const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map(type => ({
+const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map((type) => ({
   value: type,
   label: type,
 }));
 
-// 计量单位选项
-const UNIT_OPTIONS = Object.entries(UNITS).map(([key, value]) => ({
-  value: value,
+const UNIT_OPTIONS = Object.values(UNITS).map((value) => ({
+  value,
   label: value,
 }));
 
@@ -38,13 +43,11 @@ const CreateMaterialScreen = ({ navigation }) => {
     notes: '',
   });
 
-  // 验证表单
   const validateForm = () => {
     if (!formData.type) {
       Alert.alert('验证失败', '请选择材质类型');
       return false;
     }
-    // 如果选择了"其它材质"，必须输入自定义材质类型
     if (formData.type === MATERIAL_TYPES.OTHER && !customMaterialType.trim()) {
       Alert.alert('验证失败', '请输入材质类型');
       return false;
@@ -53,8 +56,7 @@ const CreateMaterialScreen = ({ navigation }) => {
       Alert.alert('验证失败', '请输入品牌');
       return false;
     }
-    // 直径验证：如果填写了，必须是有效数字；如果不填写，将使用默认值1.75
-    if (formData.diameter && (isNaN(parseFloat(formData.diameter)) || parseFloat(formData.diameter) <= 0)) {
+    if (formData.diameter && (Number.isNaN(parseFloat(formData.diameter)) || parseFloat(formData.diameter) <= 0)) {
       Alert.alert('验证失败', '请输入有效的直径（mm）');
       return false;
     }
@@ -69,7 +71,6 @@ const CreateMaterialScreen = ({ navigation }) => {
     return true;
   };
 
-  // 提交物料
   const handleSubmit = async () => {
     if (!validateForm()) {
       return;
@@ -77,7 +78,6 @@ const CreateMaterialScreen = ({ navigation }) => {
 
     try {
       setLoading(true);
-
       const materialData = {
         type: formData.type === MATERIAL_TYPES.OTHER ? customMaterialType.trim() : formData.type,
         brand: formData.brand.trim(),
@@ -92,28 +92,23 @@ const CreateMaterialScreen = ({ navigation }) => {
 
       Alert.alert(
         '成功',
-        '物料创建成功！',
+        '耗材创建成功',
         [
           {
-            text: '查看物料',
+            text: '查看耗材',
             onPress: () => {
               navigation.replace(ROUTES.MATERIAL_DETAIL, { materialId: newMaterial.id });
             },
           },
-          {
-            text: '返回列表',
-            onPress: () => {
-              navigation.goBack();
-            },
-          },
+          { text: '返回列表', onPress: () => navigation.goBack() },
         ]
       );
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
       }
-      console.error('创建物料失败:', error);
-      Alert.alert('错误', '创建物料失败，请检查网络连接或稍后重试');
+      console.error('创建耗材失败:', error);
+      Alert.alert('错误', '创建耗材失败，请检查网络连接或稍后重试');
     } finally {
       setLoading(false);
     }
@@ -121,61 +116,73 @@ const CreateMaterialScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-        {/* 基本信息 */}
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.header}>
+          <View style={styles.headerIcon}>
+            <Ionicons name="layers-outline" size={24} color={COLORS.accent} />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.eyebrow}>NEW MATERIAL</Text>
+            <Text style={styles.title}>新建耗材</Text>
+            <Text style={styles.subtitle}>录入材质、品牌、颜色和计价单位。</Text>
+          </View>
+        </View>
+
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
-          
           <Picker
             label="材质类型 *"
             placeholder="请选择材质类型"
             value={formData.type}
             onValueChange={(value) => {
               setFormData({ ...formData, type: value });
-              // 如果切换为非"其它材质"，清空自定义输入
               if (value !== MATERIAL_TYPES.OTHER) {
                 setCustomMaterialType('');
               }
             }}
             options={MATERIAL_TYPE_OPTIONS}
           />
-
-          {formData.type === MATERIAL_TYPES.OTHER && (
+          {formData.type === MATERIAL_TYPES.OTHER ? (
             <Input
-              label="请输入材质类型 *"
+              label="自定义材质类型 *"
               placeholder="请输入材质类型"
               value={customMaterialType}
-              onChangeText={(text) => setCustomMaterialType(text)}
+              onChangeText={setCustomMaterialType}
             />
-          )}
-
+          ) : null}
           <Input
             label="品牌 *"
             placeholder="请输入品牌名称"
             value={formData.brand}
             onChangeText={(text) => setFormData({ ...formData, brand: text })}
           />
-
-          <Input
-            label="直径 (mm)"
-            placeholder="请输入直径，默认1.75"
-            value={formData.diameter}
-            onChangeText={(text) => setFormData({ ...formData, diameter: text })}
-            keyboardType="decimal-pad"
-          />
-
-          <Input
-            label="颜色 *"
-            placeholder="请输入颜色"
-            value={formData.color}
-            onChangeText={(text) => setFormData({ ...formData, color: text })}
-          />
+          <View style={styles.rowInputs}>
+            <View style={styles.halfInput}>
+              <Input
+                label="直径 (mm)"
+                placeholder="默认 1.75"
+                value={formData.diameter}
+                onChangeText={(text) => setFormData({ ...formData, diameter: text })}
+                keyboardType="decimal-pad"
+              />
+            </View>
+            <View style={styles.halfInput}>
+              <Input
+                label="颜色 *"
+                placeholder="请输入颜色"
+                value={formData.color}
+                onChangeText={(text) => setFormData({ ...formData, color: text })}
+              />
+            </View>
+          </View>
         </Card>
 
-        {/* 价格信息 */}
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>价格信息</Text>
-          
           <View style={styles.rowInputs}>
             <View style={styles.halfInput}>
               <Input
@@ -198,11 +205,11 @@ const CreateMaterialScreen = ({ navigation }) => {
           </View>
         </Card>
 
-        {/* 备注 */}
         <Card style={styles.section}>
+          <Text style={styles.sectionTitle}>备注</Text>
           <Input
             label="备注"
-            placeholder="物料备注信息"
+            placeholder="耗材备注信息"
             value={formData.notes}
             onChangeText={(text) => setFormData({ ...formData, notes: text })}
             multiline
@@ -210,20 +217,21 @@ const CreateMaterialScreen = ({ navigation }) => {
           />
         </Card>
 
-        {/* 提交按钮 */}
         <View style={styles.buttonContainer}>
           <Button
-            title={loading ? '创建中...' : '创建物料'}
+            title={loading ? '创建中...' : '创建耗材'}
+            iconLeft="checkmark-outline"
             onPress={handleSubmit}
             disabled={loading}
             loading={loading}
+            fullWidth
             style={styles.submitButton}
           />
           <Button
             title="取消"
             onPress={() => navigation.goBack()}
             variant="outline"
-            style={styles.cancelButton}
+            fullWidth
           />
         </View>
       </ScrollView>
@@ -239,32 +247,62 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  header: {
+    flexDirection: 'row',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  headerIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.accentSoft,
+  },
+  headerText: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.accent,
+    marginBottom: 2,
+  },
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
   section: {
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 16,
+    marginBottom: SPACING.md,
   },
   rowInputs: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    gap: SPACING.md,
   },
   halfInput: {
-    width: '48%',
+    flex: 1,
+    minWidth: 0,
   },
   buttonContainer: {
-    padding: 16,
-    paddingBottom: 32,
+    marginTop: SPACING.sm,
   },
   submitButton: {
-    marginBottom: 12,
-  },
-  cancelButton: {
-    marginTop: 0,
+    marginBottom: SPACING.md,
   },
 });
 
