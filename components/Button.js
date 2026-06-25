@@ -1,6 +1,7 @@
 import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { COLORS } from '../constants';
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 
 const Button = ({
   title,
@@ -9,172 +10,155 @@ const Button = ({
   size = 'medium',
   disabled = false,
   loading = false,
+  iconLeft,
+  iconRight,
+  fullWidth = false,
   style,
   textStyle,
   ...props
 }) => {
-  const getButtonStyle = () => {
-    const baseStyle = [styles.button];
-
-    // 尺寸样式
-    switch (size) {
-      case 'small':
-        baseStyle.push(styles.small);
-        break;
-      case 'large':
-        baseStyle.push(styles.large);
-        break;
-      default:
-        baseStyle.push(styles.medium);
-    }
-
-    // 变体样式
-    switch (variant) {
-      case 'secondary':
-        baseStyle.push(styles.secondary);
-        break;
-      case 'success':
-        baseStyle.push(styles.success);
-        break;
-      case 'warning':
-        baseStyle.push(styles.warning);
-        break;
-      case 'danger':
-        baseStyle.push(styles.danger);
-        break;
-      case 'outline':
-        baseStyle.push(styles.outline);
-        break;
-      default:
-        baseStyle.push(styles.primary);
-    }
-
-    if (disabled || loading) {
-      baseStyle.push(styles.disabled);
-    }
-
-    baseStyle.push(style);
-    return baseStyle;
-  };
-
-  const getTextStyle = () => {
-    const baseStyle = [styles.text];
-
-    switch (size) {
-      case 'small':
-        baseStyle.push(styles.smallText);
-        break;
-      case 'large':
-        baseStyle.push(styles.largeText);
-        break;
-      default:
-        baseStyle.push(styles.mediumText);
-    }
-
-    switch (variant) {
-      case 'outline':
-        baseStyle.push(styles.outlineText);
-        break;
-      default:
-        baseStyle.push(styles.defaultText);
-    }
-
-    baseStyle.push(textStyle);
-    return baseStyle;
-  };
+  const isInactive = disabled || loading;
+  const contentColor = getContentColor(variant, isInactive);
 
   return (
     <TouchableOpacity
-      style={getButtonStyle()}
-      onPress={disabled || loading ? undefined : onPress}
-      disabled={disabled || loading}
+      activeOpacity={0.82}
+      style={[
+        styles.button,
+        styles[size] || styles.medium,
+        styles[variant] || styles.primary,
+        fullWidth && styles.fullWidth,
+        isInactive && styles.disabled,
+        style,
+      ]}
+      onPress={isInactive ? undefined : onPress}
+      disabled={isInactive}
       {...props}
     >
       {loading ? (
-        <ActivityIndicator
-          size="small"
-          color={variant === 'outline' ? COLORS.primary : COLORS.background}
-        />
+        <ActivityIndicator size="small" color={contentColor} />
       ) : (
-        <Text style={getTextStyle()}>{title}</Text>
+        <View style={styles.content}>
+          {iconLeft ? (
+            <Ionicons name={iconLeft} size={getIconSize(size)} color={contentColor} />
+          ) : null}
+          {title ? (
+            <Text
+              style={[
+                styles.text,
+                styles[`${size}Text`] || styles.mediumText,
+                { color: contentColor },
+                textStyle,
+              ]}
+              numberOfLines={1}
+            >
+              {title}
+            </Text>
+          ) : null}
+          {iconRight ? (
+            <Ionicons name={iconRight} size={getIconSize(size)} color={contentColor} />
+          ) : null}
+        </View>
       )}
     </TouchableOpacity>
   );
 };
 
+const getContentColor = (variant, disabled) => {
+  if (disabled) return COLORS.textTertiary;
+  if (['outline', 'ghost', 'secondary'].includes(variant)) return COLORS.primary;
+  if (variant === 'warning') return COLORS.background;
+  return COLORS.surfaceElevated;
+};
+
+const getIconSize = (size) => {
+  if (size === 'small') return 16;
+  if (size === 'large') return 20;
+  return 18;
+};
+
 const styles = StyleSheet.create({
   button: {
-    borderRadius: 8,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
-
-  // 尺寸
+  fullWidth: {
+    alignSelf: 'stretch',
+  },
   small: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minHeight: 32,
+    minHeight: 34,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
   },
   medium: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
     minHeight: 44,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: 10,
   },
   large: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    minHeight: 52,
+    minHeight: 50,
+    paddingHorizontal: SPACING.xl,
+    paddingVertical: SPACING.md,
   },
-
-  // 变体
   primary: {
     backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
   },
   secondary: {
-    backgroundColor: COLORS.secondary,
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primarySoft,
   },
   success: {
     backgroundColor: COLORS.success,
+    borderColor: COLORS.success,
   },
   warning: {
     backgroundColor: COLORS.warning,
+    borderColor: COLORS.warning,
   },
   danger: {
     backgroundColor: COLORS.danger,
+    borderColor: COLORS.danger,
   },
   outline: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderColor: COLORS.borderStrong,
+  },
+  ghost: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: 'transparent',
   },
-
   disabled: {
-    opacity: 0.5,
+    backgroundColor: COLORS.surface,
+    borderColor: COLORS.border,
+    opacity: 1,
   },
-
-  // 文字样式
+  content: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    maxWidth: '100%',
+  },
   text: {
-    fontWeight: '600',
+    fontWeight: '700',
     textAlign: 'center',
   },
   smallText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.caption,
   },
   mediumText: {
-    fontSize: 16,
+    fontSize: 15,
+    lineHeight: 20,
   },
   largeText: {
-    fontSize: 18,
-  },
-  defaultText: {
-    color: COLORS.background,
-  },
-  outlineText: {
-    color: COLORS.primary,
+    fontSize: 16,
+    lineHeight: 22,
   },
 });
 
 export default Button;
-
-

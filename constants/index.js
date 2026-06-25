@@ -1,24 +1,76 @@
 import Constants from 'expo-constants';
 
-// 颜色常量
 export const COLORS = {
-  primary: '#007AFF',
-  secondary: '#5AC8FA',
-  success: '#34C759',
-  warning: '#FF9500',
-  danger: '#FF3B30',
-  info: '#5AC8FA',
-  light: '#F2F2F7',
-  dark: '#1C1C1E',
-  background: '#FFFFFF',
-  surface: '#F2F2F7',
-  text: '#1C1C1E',
-  textSecondary: '#8E8E93',
-  border: '#C6C6C8',
-  disabled: '#C6C6C8',
+  primary: '#2563EB',
+  primaryDark: '#1D4ED8',
+  primarySoft: '#DBEAFE',
+  accent: '#0F766E',
+  accentSoft: '#CCFBF1',
+  secondary: '#0F766E',
+  success: '#16A34A',
+  successSoft: '#DCFCE7',
+  warning: '#D97706',
+  warningSoft: '#FEF3C7',
+  danger: '#DC2626',
+  dangerSoft: '#FEE2E2',
+  info: '#0284C7',
+  infoSoft: '#E0F2FE',
+  light: '#F6F8FB',
+  dark: '#111827',
+  background: '#F6F8FB',
+  surface: '#EEF2F7',
+  surfaceElevated: '#FFFFFF',
+  surfaceMuted: '#F8FAFC',
+  text: '#111827',
+  textSecondary: '#64748B',
+  textTertiary: '#94A3B8',
+  border: '#E2E8F0',
+  borderStrong: '#CBD5E1',
+  disabled: '#CBD5E1',
 };
 
-// 订单状态
+export const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+};
+
+export const RADIUS = {
+  sm: 6,
+  md: 8,
+  lg: 10,
+  xl: 14,
+  pill: 999,
+};
+
+export const TYPOGRAPHY = {
+  screenTitle: { fontSize: 24, fontWeight: '700', lineHeight: 30 },
+  sectionTitle: { fontSize: 17, fontWeight: '700', lineHeight: 22 },
+  body: { fontSize: 15, fontWeight: '400', lineHeight: 21 },
+  meta: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
+  caption: { fontSize: 12, fontWeight: '500', lineHeight: 16 },
+};
+
+export const SHADOWS = {
+  card: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    elevation: 1,
+  },
+  floating: {
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 18,
+    elevation: 6,
+  },
+};
+
 export const ORDER_STATUSES = {
   DRAFT: 'draft',
   PENDING_REVIEW: 'pending_review',
@@ -43,7 +95,6 @@ export const ORDER_STATUS_COLORS = {
   [ORDER_STATUSES.CANCELLED]: COLORS.danger,
 };
 
-// 库存状态
 export const STOCK_STATUSES = {
   IN_STOCK: 'in_stock',
   SCRAPPED: 'scrapped',
@@ -56,7 +107,6 @@ export const STOCK_STATUS_LABELS = {
   [STOCK_STATUSES.FROZEN]: '冻结',
 };
 
-// 库存操作类型
 export const INVENTORY_TXN_TYPES = {
   IN: 'in',
   OUT: 'out',
@@ -71,7 +121,6 @@ export const INVENTORY_TXN_LABELS = {
   [INVENTORY_TXN_TYPES.SCRAP]: '报废',
 };
 
-// 权限角色
 export const ROLES = {
   OWNER: 'owner',
   STAFF: 'staff',
@@ -84,7 +133,6 @@ export const ROLE_LABELS = {
   [ROLES.VIEWER]: '查看者',
 };
 
-// 材料类型
 export const MATERIAL_TYPES = {
   PLA: 'PLA',
   PETG: 'PETG',
@@ -93,7 +141,6 @@ export const MATERIAL_TYPES = {
   OTHER: '其它材质',
 };
 
-// 计量单位
 export const UNITS = {
   GRAM: 'g',
   KILOGRAM: 'kg',
@@ -101,14 +148,12 @@ export const UNITS = {
   PIECE: '个',
 };
 
-// 文件上传限制
 export const UPLOAD_LIMITS = {
-  MAX_FILE_SIZE: 500 * 1024 * 1024, // 500MB
-  CHUNK_SIZE: 5 * 1024 * 1024, // 5MB
-  URL_EXPIRY: 10 * 60 * 1000, // 10分钟
+  MAX_FILE_SIZE: 500 * 1024 * 1024,
+  CHUNK_SIZE: 5 * 1024 * 1024,
+  URL_EXPIRY: 10 * 60 * 1000,
 };
 
-// API 基础配置
 const PUBLIC_API_BASE_URL = 'http://101.37.28.116:3001/api';
 
 const getExpoHost = () => {
@@ -160,7 +205,6 @@ export const API_CONFIG = {
   TIMEOUT: 30000,
 };
 
-// 导航路由名称
 export const ROUTES = {
   HOME: 'Home',
   ORDERS: 'Orders',
@@ -179,15 +223,17 @@ export const ROUTES = {
   DATA_IMPORT: 'DataImport',
 };
 
-// 屏幕标题
 export const SCREEN_TITLES = {
   [ROUTES.HOME]: '首页',
-  [ROUTES.ORDERS]: '订单管理',
-  [ROUTES.MODELS]: '模型管理',
-  [ROUTES.MATERIALS]: '耗材管理',
+  [ROUTES.ORDERS]: '订单',
+  [ROUTES.MODELS]: '模型',
+  [ROUTES.MATERIALS]: '耗材',
   [ROUTES.ORDER_DETAIL]: '订单详情',
+  [ROUTES.CREATE_ORDER]: '新建订单',
   [ROUTES.MODEL_DETAIL]: '模型详情',
+  [ROUTES.CREATE_MODEL]: '新建模型',
   [ROUTES.MATERIAL_DETAIL]: '耗材详情',
+  [ROUTES.CREATE_MATERIAL]: '新建耗材',
   [ROUTES.INBOUND_TRANSACTION]: '入库操作',
   [ROUTES.OUTBOUND_TRANSACTION]: '出库操作',
   [ROUTES.ADJUST_TRANSACTION]: '库存盘点',

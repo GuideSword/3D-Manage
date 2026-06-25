@@ -1,124 +1,97 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { COLORS } from '../constants';
+import { StyleSheet, Text, View } from 'react-native';
+import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 
 const Badge = ({
   text,
   color = COLORS.primary,
-  variant = 'filled', // filled, outline
-  size = 'medium', // small, medium, large
+  variant = 'soft',
+  size = 'medium',
   style,
   textStyle,
   ...props
 }) => {
-  const getContainerStyle = () => {
-    const baseStyle = [styles.container];
-
-    // 尺寸样式
-    switch (size) {
-      case 'small':
-        baseStyle.push(styles.small);
-        break;
-      case 'large':
-        baseStyle.push(styles.large);
-        break;
-      default:
-        baseStyle.push(styles.medium);
-    }
-
-    // 变体样式
-    if (variant === 'outline') {
-      baseStyle.push(styles.outline);
-    } else {
-      baseStyle.push({ backgroundColor: color });
-    }
-
-    baseStyle.push(style);
-    return baseStyle;
-  };
-
-  const getTextStyle = () => {
-    const baseStyle = [styles.text];
-
-    switch (size) {
-      case 'small':
-        baseStyle.push(styles.smallText);
-        break;
-      case 'large':
-        baseStyle.push(styles.largeText);
-        break;
-      default:
-        baseStyle.push(styles.mediumText);
-    }
-
-    if (variant === 'outline') {
-      baseStyle.push({ color });
-    } else {
-      baseStyle.push(styles.filledText);
-    }
-
-    baseStyle.push(textStyle);
-    return baseStyle;
-  };
-
   return (
-    <View style={getContainerStyle()} {...props}>
-      <Text style={getTextStyle()}>{text}</Text>
+    <View
+      style={[
+        styles.container,
+        styles[size] || styles.medium,
+        getVariantStyle(variant, color),
+        style,
+      ]}
+      {...props}
+    >
+      <Text
+        style={[
+          styles.text,
+          styles[`${size}Text`] || styles.mediumText,
+          getTextStyle(variant, color),
+          textStyle,
+        ]}
+        numberOfLines={1}
+      >
+        {text}
+      </Text>
     </View>
   );
 };
 
+const getVariantStyle = (variant, color) => {
+  if (variant === 'filled') {
+    return { backgroundColor: color, borderColor: color };
+  }
+  if (variant === 'outline') {
+    return { backgroundColor: 'transparent', borderColor: color };
+  }
+  return { backgroundColor: `${color}18`, borderColor: `${color}24` };
+};
+
+const getTextStyle = (variant, color) => {
+  if (variant === 'filled') {
+    return { color: COLORS.surfaceElevated };
+  }
+  return { color };
+};
+
 const styles = StyleSheet.create({
   container: {
-    borderRadius: 12,
+    maxWidth: '100%',
+    borderRadius: RADIUS.pill,
+    borderWidth: 1,
     alignSelf: 'flex-start',
     alignItems: 'center',
     justifyContent: 'center',
   },
-
-  // 尺寸
   small: {
-    paddingHorizontal: 6,
+    minHeight: 22,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
-    minHeight: 20,
   },
   medium: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    minHeight: 24,
+    minHeight: 26,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 3,
   },
   large: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    minHeight: 28,
+    minHeight: 30,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
   },
-
-  // 变体
-  outline: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: 'transparent',
-  },
-
-  // 文字样式
   text: {
-    fontWeight: '500',
+    fontWeight: '700',
     textAlign: 'center',
   },
   smallText: {
-    fontSize: 12,
+    ...TYPOGRAPHY.caption,
   },
   mediumText: {
-    fontSize: 14,
+    fontSize: 13,
+    lineHeight: 18,
   },
   largeText: {
-    fontSize: 16,
-  },
-  filledText: {
-    color: COLORS.background,
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 
 export default Badge;
-
-

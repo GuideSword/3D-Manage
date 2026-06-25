@@ -1,10 +1,33 @@
 import React from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
-import { COLORS } from '../constants';
+import { Platform, StyleSheet, View } from 'react-native';
+import { COLORS, RADIUS, SHADOWS, SPACING } from '../constants';
 
-const Card = ({ children, style, ...props }) => {
+const paddingStyles = {
+  none: { padding: 0 },
+  small: { padding: SPACING.md },
+  medium: { padding: SPACING.lg },
+  large: { padding: SPACING.xl },
+};
+
+const Card = ({
+  children,
+  style,
+  variant = 'default',
+  padding = 'medium',
+  interactive = false,
+  ...props
+}) => {
   return (
-    <View style={[styles.card, style]} {...props}>
+    <View
+      style={[
+        styles.card,
+        styles[variant] || styles.default,
+        paddingStyles[padding] || paddingStyles.medium,
+        interactive && styles.interactive,
+        style,
+      ]}
+      {...props}
+    >
       {children}
     </View>
   );
@@ -12,28 +35,31 @@ const Card = ({ children, style, ...props }) => {
 
 const styles = StyleSheet.create({
   card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    padding: 16,
-    marginVertical: 4,
-    marginHorizontal: 8,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    marginVertical: SPACING.xs,
+    marginHorizontal: SPACING.sm,
+  },
+  default: {
+    backgroundColor: COLORS.surfaceElevated,
     ...Platform.select({
       web: {
-        boxShadow: '0 1px 3px rgba(28, 28, 30, 0.22)',
+        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
       },
-      default: {
-        shadowColor: COLORS.dark,
-        shadowOffset: {
-          width: 0,
-          height: 1,
-        },
-        shadowOpacity: 0.22,
-        shadowRadius: 2.22,
-        elevation: 3,
-      },
+      default: SHADOWS.card,
     }),
+  },
+  muted: {
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  section: {
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  interactive: {
+    backgroundColor: COLORS.surfaceElevated,
+    borderColor: COLORS.borderStrong,
   },
 });
 
 export default Card;
-
