@@ -1,5 +1,5 @@
 param(
-  [int]$BackendPort = 3002,
+  [int]$BackendPort = 3001,
   [int]$FrontendPort = 8081
 )
 
@@ -8,8 +8,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $Root 'backend'
 $ExpoDir = Join-Path $Root '.expo'
-$BackendOutLog = Join-Path $BackendDir 'backend-3002.out.log'
-$BackendErrLog = Join-Path $BackendDir 'backend-3002.err.log'
+$BackendOutLog = Join-Path $BackendDir "backend-$BackendPort.out.log"
+$BackendErrLog = Join-Path $BackendDir "backend-$BackendPort.err.log"
 $FrontendOutLog = Join-Path $ExpoDir 'expo-web.out.log'
 $FrontendErrLog = Join-Path $ExpoDir 'expo-web.err.log'
 
