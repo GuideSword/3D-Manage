@@ -152,6 +152,7 @@ const OrdersScreen = ({ navigation, route }) => {
       {showFilter ? (
         <ScrollView
           horizontal
+          style={styles.filterScroll}
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.filterBar}
         >
@@ -406,12 +407,15 @@ const styles = StyleSheet.create({
   },
   filterBar: {
     paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
     paddingBottom: SPACING.md,
     gap: SPACING.sm,
+    alignItems: 'center',
   },
   filterChip: {
-    minHeight: 34,
+    height: 34,
     maxWidth: 108,
+    alignSelf: 'center',
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING.md,
@@ -423,6 +427,10 @@ const styles = StyleSheet.create({
   filterChipText: {
     ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
+  },
+  filterScroll: {
+    flexGrow: 0,
+    maxHeight: 52,
   },
   loadingContainer: {
     flex: 1,

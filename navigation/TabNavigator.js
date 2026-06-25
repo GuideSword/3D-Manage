@@ -33,15 +33,16 @@ const TabNavigator = () => {
         tabBarLabelStyle: {
           fontSize: 12,
           fontWeight: '700',
-          marginTop: 2,
+          marginTop: 1,
+          marginBottom: Platform.OS === 'web' ? 8 : 2,
         },
         tabBarIconStyle: {
-          marginTop: 4,
+          marginTop: 2,
         },
         tabBarStyle: {
-          height: Platform.OS === 'web' ? 64 : 66,
-          paddingTop: SPACING.xs,
-          paddingBottom: Platform.OS === 'ios' ? 16 : SPACING.sm,
+          height: Platform.OS === 'web' ? 76 : 72,
+          paddingTop: SPACING.sm,
+          paddingBottom: Platform.OS === 'ios' ? 18 : SPACING.sm,
           backgroundColor: COLORS.surfaceElevated,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
