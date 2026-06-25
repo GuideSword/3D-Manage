@@ -15,7 +15,7 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import OSSConfigScreen from '../screens/OSSConfigScreen';
 import DataImportScreen from '../screens/DataImportScreen';
-import { COLORS, SCREEN_TITLES, ROUTES } from '../constants';
+import { COLORS, ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator();
@@ -34,11 +34,17 @@ const AppNavigator = () => {
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: COLORS.primary,
+            backgroundColor: COLORS.surfaceElevated,
           },
-          headerTintColor: COLORS.background,
+          headerTintColor: COLORS.primary,
           headerTitleStyle: {
-            fontWeight: 'bold',
+            color: COLORS.text,
+            fontWeight: '700',
+          },
+          headerShadowVisible: true,
+          headerBackTitleVisible: false,
+          contentStyle: {
+            backgroundColor: COLORS.background,
           },
         }}
       >
@@ -52,57 +58,57 @@ const AppNavigator = () => {
             <Stack.Screen
               name="OrderDetail"
               component={OrderDetailScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.ORDER_DETAIL] || '订单详情' }}
+              options={{ title: SCREEN_TITLES[ROUTES.ORDER_DETAIL] }}
             />
             <Stack.Screen
               name="CreateOrder"
               component={CreateOrderScreen}
-              options={{ title: '新建订单' }}
+              options={{ title: SCREEN_TITLES[ROUTES.CREATE_ORDER] }}
             />
             <Stack.Screen
               name="MaterialDetail"
               component={MaterialDetailScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.MATERIAL_DETAIL] || '物料详情' }}
+              options={{ title: SCREEN_TITLES[ROUTES.MATERIAL_DETAIL] }}
             />
             <Stack.Screen
               name="CreateMaterial"
               component={CreateMaterialScreen}
-              options={{ title: '新建物料' }}
+              options={{ title: SCREEN_TITLES[ROUTES.CREATE_MATERIAL] }}
             />
             <Stack.Screen
               name="CreateModel"
               component={CreateModelScreen}
-              options={{ title: '新建模型' }}
+              options={{ title: SCREEN_TITLES[ROUTES.CREATE_MODEL] }}
             />
             <Stack.Screen
               name="ModelDetail"
               component={ModelDetailScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.MODEL_DETAIL] || '模型详情' }}
+              options={{ title: SCREEN_TITLES[ROUTES.MODEL_DETAIL] }}
             />
             <Stack.Screen
               name={ROUTES.INBOUND_TRANSACTION}
               component={InboundTransactionScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.INBOUND_TRANSACTION] || '入库操作' }}
+              options={{ title: SCREEN_TITLES[ROUTES.INBOUND_TRANSACTION] }}
             />
             <Stack.Screen
               name={ROUTES.OUTBOUND_TRANSACTION}
               component={OutboundTransactionScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.OUTBOUND_TRANSACTION] || '出库操作' }}
+              options={{ title: SCREEN_TITLES[ROUTES.OUTBOUND_TRANSACTION] }}
             />
             <Stack.Screen
               name={ROUTES.ADJUST_TRANSACTION}
               component={AdjustTransactionScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.ADJUST_TRANSACTION] || '库存盘点' }}
+              options={{ title: SCREEN_TITLES[ROUTES.ADJUST_TRANSACTION] }}
             />
             <Stack.Screen
               name={ROUTES.OSS_CONFIG}
               component={OSSConfigScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.OSS_CONFIG] || 'OSS 配置' }}
+              options={{ title: SCREEN_TITLES[ROUTES.OSS_CONFIG] }}
             />
             <Stack.Screen
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] || '数据导入' }}
+              options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
             />
           </>
         )}

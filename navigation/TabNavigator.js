@@ -1,9 +1,8 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, ROUTES, SCREEN_TITLES } from '../constants';
-
-// 导入屏幕组件（暂时使用占位符，后续创建）
+import { COLORS, ROUTES, SCREEN_TITLES, SPACING } from '../constants';
 import HomeScreen from '../screens/HomeScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import ModelsScreen from '../screens/ModelsScreen';
@@ -12,23 +11,52 @@ import SettingsScreen from '../screens/SettingsScreen';
 
 const Tab = createBottomTabNavigator();
 
+const getTabIcon = (focused, activeName, inactiveName, color, size) => (
+  <Ionicons name={focused ? activeName : inactiveName} size={size} color={color} />
+);
+
 const TabNavigator = () => {
   return (
     <Tab.Navigator
       screenOptions={{
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textSecondary,
+        tabBarInactiveTintColor: COLORS.textTertiary,
         headerStyle: {
-          backgroundColor: COLORS.primary,
+          backgroundColor: COLORS.surfaceElevated,
         },
-        headerTintColor: COLORS.background,
+        headerTintColor: COLORS.primary,
         headerTitleStyle: {
-          fontWeight: 'bold',
+          color: COLORS.text,
+          fontWeight: '700',
+        },
+        headerShadowVisible: true,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: '700',
+          marginTop: 2,
+        },
+        tabBarIconStyle: {
+          marginTop: 4,
         },
         tabBarStyle: {
-          backgroundColor: COLORS.background,
+          height: Platform.OS === 'web' ? 64 : 66,
+          paddingTop: SPACING.xs,
+          paddingBottom: Platform.OS === 'ios' ? 16 : SPACING.sm,
+          backgroundColor: COLORS.surfaceElevated,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
+          ...Platform.select({
+            web: {
+              boxShadow: '0 -4px 18px rgba(15, 23, 42, 0.06)',
+            },
+            default: {
+              shadowColor: '#0F172A',
+              shadowOffset: { width: 0, height: -3 },
+              shadowOpacity: 0.06,
+              shadowRadius: 10,
+              elevation: 8,
+            },
+          }),
         },
       }}
     >
@@ -38,7 +66,7 @@ const TabNavigator = () => {
         options={{
           title: SCREEN_TITLES[ROUTES.HOME],
           tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons name={focused ? 'home' : 'home-outline'} size={size} color={color} />
+            getTabIcon(focused, 'home', 'home-outline', color, size)
           ),
         }}
       />
@@ -48,7 +76,7 @@ const TabNavigator = () => {
         options={{
           title: SCREEN_TITLES[ROUTES.ORDERS],
           tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons name={focused ? 'document-text' : 'document-text-outline'} size={size} color={color} />
+            getTabIcon(focused, 'document-text', 'document-text-outline', color, size)
           ),
         }}
       />
@@ -58,7 +86,7 @@ const TabNavigator = () => {
         options={{
           title: SCREEN_TITLES[ROUTES.MODELS],
           tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons name={focused ? 'cube' : 'cube-outline'} size={size} color={color} />
+            getTabIcon(focused, 'cube', 'cube-outline', color, size)
           ),
         }}
       />
@@ -68,7 +96,7 @@ const TabNavigator = () => {
         options={{
           title: SCREEN_TITLES[ROUTES.MATERIALS],
           tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons name={focused ? 'layers' : 'layers-outline'} size={size} color={color} />
+            getTabIcon(focused, 'layers', 'layers-outline', color, size)
           ),
         }}
       />
@@ -78,7 +106,7 @@ const TabNavigator = () => {
         options={{
           title: '设置',
           tabBarIcon: ({ focused, color, size }) => (
-            <Ionicons name={focused ? 'settings' : 'settings-outline'} size={size} color={color} />
+            getTabIcon(focused, 'settings', 'settings-outline', color, size)
           ),
         }}
       />
