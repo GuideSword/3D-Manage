@@ -1,25 +1,28 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  SafeAreaView,
-  RefreshControl,
-  Dimensions,
   ActivityIndicator,
-  TextInput,
-  Platform,
+  FlatList,
   Image,
+  RefreshControl,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { COLORS, API_CONFIG } from '../constants';
-import { Card, Button, Badge } from '../components';
-import { authAPI, modelsAPI, isAuthRequiredError } from '../utils/api';
 import { useFocusEffect } from '@react-navigation/native';
-
-const { width } = Dimensions.get('window');
+import { Ionicons } from '@expo/vector-icons';
+import {
+  API_CONFIG,
+  COLORS,
+  RADIUS,
+  ROUTES,
+  SPACING,
+  TYPOGRAPHY,
+} from '../constants';
+import { Badge, Button, Card } from '../components';
+import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -111,360 +114,430 @@ const ModelsScreen = ({ navigation }) => {
     });
   };
 
-  const ModelCard = ({ model, isGrid = false }) => {
-    const preferredImage = getPreferredImage(model);
-    const imageSource = buildImageSource(preferredImage, authToken);
-    const sourceLabel = SOURCE_LABELS[model.source] || model.source || '未知';
-
-    return (
-      <TouchableOpacity
-        onPress={() => navigation.navigate('ModelDetail', { modelId: model.id })}
-        style={isGrid ? styles.gridCardContainer : styles.listCardContainer}
-      >
-        <Card style={isGrid ? styles.gridCard : styles.listCard}>
-          <View style={styles.previewBox}>
-            {imageSource ? (
-              <Image source={imageSource} style={styles.previewImage} resizeMode="cover" />
-            ) : (
-              <Ionicons name="cube-outline" size={48} color={COLORS.textSecondary} />
-            )}
-          </View>
-
-          <View style={styles.modelInfo}>
-            <View style={styles.modelHeader}>
-              <Text style={styles.modelName} numberOfLines={1}>
-                {model.name}
-              </Text>
-              <Badge text={sourceLabel} color={COLORS.primary} size="small" />
-            </View>
-
-            {model.description ? (
-              <Text style={styles.description} numberOfLines={2}>
-                {model.description}
-              </Text>
-            ) : null}
-
-            <View style={styles.modelMeta}>
-              <Text style={styles.metaText}>文件: {(model.files || []).length}</Text>
-              <Text style={styles.metaText}>图片: {(model.images || []).length}</Text>
-            </View>
-
-            {(model.createdAt || model.updatedAt) && (
-              <Text style={styles.modelDate}>
-                {model.updatedAt ? `更新: ${new Date(model.updatedAt).toLocaleString('zh-CN')}` : `创建: ${new Date(model.createdAt).toLocaleString('zh-CN')}`}
-              </Text>
-            )}
-          </View>
-        </Card>
-      </TouchableOpacity>
-    );
-  };
-
-  const renderModel = ({ item }) => (
-    <ModelCard model={item} isGrid={viewMode === 'grid'} />
-  );
-
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>模型管理</Text>
+        <View style={styles.titleGroup}>
+          <Text style={styles.eyebrow}>MODEL LIBRARY</Text>
+          <Text style={styles.title}>模型</Text>
+        </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.viewModeButton}
+          <IconButton
+            icon={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
+            active
             onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-          >
-            <Ionicons
-              name={viewMode === 'list' ? 'grid' : 'list'}
-              size={24}
-              color={COLORS.primary}
-            />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => setShowSearch(!showSearch)}
-          >
-            <Ionicons name="search" size={24} color={showSearch ? COLORS.primary : COLORS.text} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerButton}
+          />
+          <IconButton
+            icon="search"
+            active={showSearch}
+            onPress={() => setShowSearch((value) => !value)}
+          />
+          <IconButton
+            icon="filter"
+            active={sourceFilter !== 'all'}
             onPress={cycleSourceFilter}
-          >
-            <Ionicons name="filter" size={24} color={sourceFilter === 'all' ? COLORS.text : COLORS.primary} />
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => navigation.navigate('CreateModel')}
-          >
-            <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-          </TouchableOpacity>
+          />
+          <IconButton
+            icon="add"
+            active
+            onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
+          />
         </View>
       </View>
 
-      {showSearch && (
+      {showSearch ? (
         <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={COLORS.textTertiary} />
           <TextInput
             style={styles.searchInput}
             placeholder="搜索模型名称、描述或文件名"
+            placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={24} color={COLORS.textSecondary} />
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
+              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           ) : null}
         </View>
-      )}
+      ) : null}
 
-      {sourceFilter !== 'all' && (
+      {sourceFilter !== 'all' ? (
         <View style={styles.filterHint}>
-          <Text style={styles.filterHintText}>
-            当前筛选：{SOURCE_LABELS[sourceFilter] || sourceFilter}
-          </Text>
+          <View style={styles.filterHintLeft}>
+            <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
+            <Text style={styles.filterHintText}>
+              当前筛选：{SOURCE_LABELS[sourceFilter] || sourceFilter}
+            </Text>
+          </View>
           <TouchableOpacity onPress={() => setSourceFilter('all')}>
             <Text style={styles.filterClearText}>清除</Text>
           </TouchableOpacity>
         </View>
-      )}
+      ) : null}
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
+          <Text style={styles.loadingText}>加载模型中...</Text>
         </View>
       ) : (
         <FlatList
           data={models}
           keyExtractor={(item) => String(item.id)}
-          renderItem={renderModel}
+          renderItem={({ item }) => (
+            <ModelCard
+              model={item}
+              isGrid={viewMode === 'grid'}
+              token={authToken}
+              onPress={() => navigation.navigate(ROUTES.MODEL_DETAIL, { modelId: item.id })}
+            />
+          )}
           key={viewMode}
           numColumns={viewMode === 'grid' ? 2 : 1}
-          refreshControl={
+          refreshControl={(
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
               colors={[COLORS.primary]}
               tintColor={COLORS.primary}
             />
-          }
+          )}
           contentContainerStyle={[
             styles.listContainer,
             models.length === 0 && styles.emptyListContainer,
           ]}
-          ListEmptyComponent={
+          ListEmptyComponent={(
             <View style={styles.emptyContainer}>
-              <Ionicons name="cube-outline" size={64} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>{searchQuery ? '未找到匹配的模型' : '暂无模型'}</Text>
+              <Ionicons name="cube-outline" size={54} color={COLORS.textTertiary} />
+              <Text style={styles.emptyTitle}>
+                {searchQuery ? '没有匹配的模型' : '暂无模型'}
+              </Text>
+              <Text style={styles.emptyText}>
+                上传 STL、OBJ 或 3MF 文件后，这里会成为你的模型资产库。
+              </Text>
               <Button
                 title="创建第一个模型"
-                onPress={() => navigation.navigate('CreateModel')}
+                iconLeft="add"
+                onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
                 style={styles.uploadButton}
               />
             </View>
-          }
+          )}
         />
       )}
 
       <TouchableOpacity
+        activeOpacity={0.84}
         style={styles.fab}
-        onPress={() => navigation.navigate('CreateModel')}
+        onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
       >
-        <Ionicons name="add" size={24} color={COLORS.background} />
+        <Ionicons name="add" size={24} color={COLORS.surfaceElevated} />
       </TouchableOpacity>
     </SafeAreaView>
   );
 };
 
+const IconButton = ({ icon, active = false, onPress }) => (
+  <TouchableOpacity
+    activeOpacity={0.82}
+    style={[styles.headerButton, active && styles.headerButtonActive]}
+    onPress={onPress}
+  >
+    <Ionicons name={icon} size={20} color={active ? COLORS.primary : COLORS.textSecondary} />
+  </TouchableOpacity>
+);
+
+const ModelCard = ({ model, isGrid, token, onPress }) => {
+  const preferredImage = getPreferredImage(model);
+  const imageSource = buildImageSource(preferredImage, token);
+  const sourceLabel = SOURCE_LABELS[model.source] || model.source || '未知';
+  const updatedLabel = model.updatedAt
+    ? `更新：${new Date(model.updatedAt).toLocaleDateString('zh-CN')}`
+    : model.createdAt
+      ? `创建：${new Date(model.createdAt).toLocaleDateString('zh-CN')}`
+      : '暂无日期';
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.84}
+      onPress={onPress}
+      style={isGrid ? styles.gridCardContainer : styles.listCardContainer}
+    >
+      <Card padding="none" style={isGrid ? styles.gridCard : styles.listCard} interactive>
+        <View style={isGrid ? styles.gridPreviewBox : styles.listPreviewBox}>
+          {imageSource ? (
+            <Image source={imageSource} style={styles.previewImage} resizeMode="cover" />
+          ) : (
+            <View style={styles.previewFallback}>
+              <Ionicons name="cube-outline" size={isGrid ? 42 : 34} color={COLORS.textTertiary} />
+            </View>
+          )}
+        </View>
+
+        <View style={isGrid ? styles.gridModelInfo : styles.listModelInfo}>
+          <View style={styles.modelHeader}>
+            <Text style={styles.modelName} numberOfLines={1}>
+              {model.name || '未命名模型'}
+            </Text>
+            <Badge text={sourceLabel} color={COLORS.accent} size="small" />
+          </View>
+
+          {model.description ? (
+            <Text style={styles.description} numberOfLines={isGrid ? 2 : 1}>
+              {model.description}
+            </Text>
+          ) : null}
+
+          <View style={styles.modelMeta}>
+            <MetaPill icon="document-outline" label={`${(model.files || []).length} 文件`} />
+            <MetaPill icon="image-outline" label={`${(model.images || []).length} 图片`} />
+          </View>
+          <Text style={styles.modelDate} numberOfLines={1}>{updatedLabel}</Text>
+        </View>
+      </Card>
+    </TouchableOpacity>
+  );
+};
+
+const MetaPill = ({ icon, label }) => (
+  <View style={styles.metaPill}>
+    <Ionicons name={icon} size={13} color={COLORS.textSecondary} />
+    <Text style={styles.metaPillText} numberOfLines={1}>{label}</Text>
+  </View>
+);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  titleGroup: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-  },
-  viewModeButton: {
-    padding: 4,
+    gap: SPACING.sm,
   },
   headerButton: {
-    padding: 4,
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  headerButtonActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primarySoft,
   },
   searchContainer: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceElevated,
   },
   searchInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
-    backgroundColor: COLORS.surface,
-    marginRight: 8,
+    minHeight: 44,
+    fontSize: 15,
+    color: COLORS.text,
+  },
+  searchClear: {
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceMuted,
   },
   filterHint: {
+    minHeight: 40,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.primarySoft,
+  },
+  filterHintLeft: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   filterHintText: {
-    fontSize: 14,
-    color: COLORS.text,
+    ...TYPOGRAPHY.meta,
+    color: COLORS.primaryDark,
   },
   filterClearText: {
-    fontSize: 14,
+    ...TYPOGRAPHY.caption,
     color: COLORS.primary,
-    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    justifyContent: 'center',
+    gap: SPACING.md,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
   },
   listContainer: {
-    padding: 16,
+    padding: SPACING.lg,
+    paddingTop: 0,
+    paddingBottom: 88,
   },
   emptyListContainer: {
     flexGrow: 1,
+    justifyContent: 'center',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  emptyTitle: {
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.text,
+    marginTop: SPACING.md,
+  },
+  emptyText: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
+  },
+  uploadButton: {
+    marginTop: SPACING.lg,
   },
   listCardContainer: {
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
   gridCardContainer: {
-    width: (width - 44) / 2,
-    marginBottom: 12,
-    marginHorizontal: 6,
+    flex: 1,
+    maxWidth: '50%',
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.xs,
   },
   listCard: {
+    minHeight: 132,
     flexDirection: 'row',
-  },
-  gridCard: {},
-  previewBox: {
-    width: 80,
-    height: 80,
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 12,
     overflow: 'hidden',
+    marginHorizontal: 0,
+  },
+  gridCard: {
+    minHeight: 238,
+    overflow: 'hidden',
+    marginHorizontal: 0,
+  },
+  listPreviewBox: {
+    width: 118,
+    minHeight: 132,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  gridPreviewBox: {
+    width: '100%',
+    aspectRatio: 1.22,
+    backgroundColor: COLORS.surfaceMuted,
   },
   previewImage: {
     width: '100%',
     height: '100%',
   },
-  modelInfo: {
+  previewFallback: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  listModelInfo: {
+    flex: 1,
+    padding: SPACING.md,
+  },
+  gridModelInfo: {
+    padding: SPACING.md,
   },
   modelHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
+    gap: SPACING.sm,
   },
   modelName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
     flex: 1,
-    marginRight: 8,
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.text,
   },
   description: {
-    fontSize: 13,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
-    lineHeight: 18,
-    marginBottom: 8,
+    marginTop: SPACING.xs,
   },
   modelMeta: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
   },
-  metaText: {
-    fontSize: 12,
+  metaPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    minHeight: 26,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.pill,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  metaPillText: {
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    marginRight: 12,
   },
   modelDate: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: 64,
-  },
-  emptyText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    marginTop: 16,
-    marginBottom: 24,
-  },
-  uploadButton: {
-    minWidth: 200,
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+    marginTop: SPACING.md,
   },
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 20,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
+    right: SPACING.xl,
+    bottom: SPACING.xl,
+    width: 54,
+    height: 54,
+    borderRadius: RADIUS.pill,
     alignItems: 'center',
-    ...Platform.select({
-      web: {
-        boxShadow: '0 2px 4px rgba(28, 28, 30, 0.25)',
-      },
-      default: {
-        shadowColor: COLORS.dark,
-        shadowOffset: {
-          width: 0,
-          height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 3.84,
-        elevation: 5,
-      },
-    }),
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
   },
 });
 

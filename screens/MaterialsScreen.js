@@ -1,34 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  SafeAreaView,
-  RefreshControl,
-  ScrollView,
   ActivityIndicator,
   Alert,
+  FlatList,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
   TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
-import { COLORS, STOCK_STATUSES, STOCK_STATUS_LABELS, INVENTORY_TXN_TYPES, INVENTORY_TXN_LABELS, ROUTES } from '../constants';
-import { Card, Button, Badge } from '../components';
-import { materialsAPI, stockAPI, isAuthRequiredError } from '../utils/api';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  COLORS,
+  RADIUS,
+  ROUTES,
+  SPACING,
+  STOCK_STATUS_LABELS,
+  STOCK_STATUSES,
+  TYPOGRAPHY,
+} from '../constants';
+import { Badge, Card } from '../components';
+import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialsScreen = ({ navigation, route }) => {
   const [materials, setMaterials] = useState([]);
   const [stockLots, setStockLots] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('materials'); // 'materials' or 'inventory'
+  const [activeTab, setActiveTab] = useState('materials');
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingId, setDeletingId] = useState(null);
 
-  // 获取物料列表
   const fetchMaterials = async () => {
     try {
       setLoading(true);
@@ -37,17 +44,16 @@ const MaterialsScreen = ({ navigation, route }) => {
         params.search = searchQuery.trim();
       }
       const data = await materialsAPI.getAll(params);
-      // 如果后端没有过滤，前端再次过滤确保准确性
       let filteredData = data || [];
       if (searchQuery && searchQuery.trim()) {
         const searchTerm = searchQuery.trim().toLowerCase();
-        filteredData = (data || []).filter(material => {
+        filteredData = (data || []).filter((material) => {
           const type = (material.type || material.materialType || '').toLowerCase();
           const brand = (material.brand || '').toLowerCase();
           const color = (material.color || '').toLowerCase();
-          return type.includes(searchTerm) || 
-                 brand.includes(searchTerm) || 
-                 color.includes(searchTerm);
+          return type.includes(searchTerm)
+            || brand.includes(searchTerm)
+            || color.includes(searchTerm);
         });
       }
       setMaterials(filteredData);
@@ -55,8 +61,8 @@ const MaterialsScreen = ({ navigation, route }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
-      console.error('获取物料列表失败:', error);
-      Alert.alert('错误', '获取物料列表失败，请检查网络连接');
+      console.error('获取耗材失败:', error);
+      Alert.alert('错误', '获取耗材列表失败，请检查网络连接');
       setMaterials([]);
     } finally {
       setLoading(false);
@@ -64,7 +70,6 @@ const MaterialsScreen = ({ navigation, route }) => {
     }
   };
 
-  // 获取库存批次列表
   const fetchStockLots = async () => {
     try {
       const data = await stockAPI.getLots();
@@ -79,7 +84,6 @@ const MaterialsScreen = ({ navigation, route }) => {
     }
   };
 
-  // 加载数据
   const loadData = async () => {
     await Promise.all([fetchMaterials(), fetchStockLots()]);
   };
@@ -99,18 +103,16 @@ const MaterialsScreen = ({ navigation, route }) => {
     }
   }, [route?.params?.activeTab]);
 
-  // 当屏幕获得焦点时刷新数据
   useFocusEffect(
     React.useCallback(() => {
       loadData();
     }, [])
   );
 
-  // 删除物料
   const handleDeleteMaterial = async (materialId) => {
     Alert.alert(
       '确认删除',
-      '确定要删除这个物料吗？',
+      '确定要删除这个耗材吗？',
       [
         { text: '取消', style: 'cancel' },
         {
@@ -120,13 +122,13 @@ const MaterialsScreen = ({ navigation, route }) => {
             try {
               setDeletingId(materialId);
               await materialsAPI.delete(materialId);
-              Alert.alert('成功', '物料已删除');
+              Alert.alert('成功', '耗材已删除');
               await fetchMaterials();
             } catch (error) {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '删除物料失败');
+              Alert.alert('错误', '删除耗材失败');
             } finally {
               setDeletingId(null);
             }
@@ -136,94 +138,6 @@ const MaterialsScreen = ({ navigation, route }) => {
     );
   };
 
-  // 获取物料的批次列表
-  const getMaterialLots = (materialId) => {
-    return stockLots.filter(lot => lot.materialId === materialId || lot.material_id === materialId);
-  };
-
-  // 计算物料总库存
-  const getMaterialTotalQty = (materialId) => {
-    const lots = getMaterialLots(materialId);
-    return lots.reduce((sum, lot) => sum + (lot.qty || 0), 0);
-  };
-
-  const MaterialCard = ({ material }) => {
-    const materialLots = getMaterialLots(material.id);
-    const totalQty = getMaterialTotalQty(material.id);
-
-    return (
-      <Card style={styles.materialCard}>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('MaterialDetail', { materialId: material.id })}
-          activeOpacity={0.7}
-        >
-          <View style={styles.materialHeader}>
-            <View style={styles.materialBasic}>
-              <Text style={styles.materialType}>{material.type || material.materialType || '未知'}</Text>
-              <Text style={styles.materialBrand}>{material.brand || ''}</Text>
-            </View>
-            <View style={styles.headerRight}>
-              <TouchableOpacity
-                style={styles.deleteButton}
-                onPress={(e) => {
-                  e.stopPropagation();
-                  handleDeleteMaterial(material.id);
-                }}
-                disabled={deletingId === material.id}
-              >
-                {deletingId === material.id ? (
-                  <ActivityIndicator size="small" color={COLORS.danger} />
-                ) : (
-                  <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-
-          <View style={styles.materialSpecs}>
-            {material.diameter && (
-              <Text style={styles.specText}>直径: {material.diameter}mm</Text>
-            )}
-            {material.color && (
-              <Text style={styles.specText}>颜色: {material.color}</Text>
-            )}
-          </View>
-
-          <View style={styles.materialDetails}>
-            {material.density && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>密度:</Text>
-                <Text style={styles.detailValue}>{material.density} g/cm³</Text>
-              </View>
-            )}
-            {(material.unitPrice || material.unit_price) && (
-              <View style={styles.detailRow}>
-                <Text style={styles.detailLabel}>单价:</Text>
-                <Text style={styles.detailValue}>
-                  {material.unitPrice || material.unit_price}CNY/{material.unit || 'kg'}
-                </Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.lotsSummary}>
-            <Text style={styles.lotsTitle}>库存批次: {materialLots.length}个</Text>
-            <View style={styles.totalQty}>
-              <Text style={styles.totalQtyLabel}>总库存:</Text>
-              <Text style={styles.totalQtyValue}>{totalQty}g</Text>
-            </View>
-          </View>
-
-          {material.notes && (
-            <Text style={styles.materialNotes}>{material.notes}</Text>
-          )}
-        </TouchableOpacity>
-      </Card>
-    );
-  };
-
-
-  // 删除批次
   const handleDeleteLot = async (lotId) => {
     Alert.alert(
       '确认删除',
@@ -253,493 +167,656 @@ const MaterialsScreen = ({ navigation, route }) => {
     );
   };
 
-  const LotCard = ({ lot, material }) => (
-    <Card style={styles.lotCard}>
-      <View style={styles.lotHeader}>
-        <View style={styles.lotBasic}>
-          <Text style={styles.lotNo}>{lot.lotNo || lot.lot_no || '未知批次'}</Text>
-          {lot.serialNo || lot.serial_no ? (
-            <Text style={styles.serialNo}>{lot.serialNo || lot.serial_no}</Text>
-          ) : null}
-        </View>
-        <View style={styles.lotHeaderRight}>
-          <Badge
-            text={STOCK_STATUS_LABELS[lot.state || lot.status] || '未知'}
-            color={(lot.state || lot.status) === STOCK_STATUSES.IN_STOCK ? COLORS.success : COLORS.warning}
-            size="small"
-          />
-          <TouchableOpacity
-            style={styles.deleteButton}
-            onPress={() => handleDeleteLot(lot.id)}
-            disabled={deletingId === lot.id}
-          >
-            {deletingId === lot.id ? (
-              <ActivityIndicator size="small" color={COLORS.danger} />
-            ) : (
-              <Ionicons name="trash-outline" size={20} color={COLORS.danger} />
-            )}
-          </TouchableOpacity>
-        </View>
-      </View>
-
-      <View style={styles.lotDetails}>
-        {lot.location && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>位置:</Text>
-            <Text style={styles.detailValue}>{lot.location}</Text>
-          </View>
-        )}
-        <View style={styles.detailRow}>
-          <Text style={styles.detailLabel}>数量:</Text>
-          <Text style={styles.detailValue}>{lot.qty || 0}g</Text>
-        </View>
-        {material && (material.type || material.materialType) && (
-          <View style={styles.detailRow}>
-            <Text style={styles.detailLabel}>物料:</Text>
-            <Text style={styles.detailValue}>
-              {material.type || material.materialType} {material.color || ''}
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {lot.notes && (
-        <Text style={styles.lotNotes}>{lot.notes}</Text>
-      )}
-    </Card>
+  const getMaterialLots = (materialId) => (
+    stockLots.filter((lot) => lot.materialId === materialId || lot.material_id === materialId)
   );
 
-  const InventoryPanel = () => (
-    <Card style={styles.inventoryPanel}>
-      <Text style={styles.panelTitle}>库存操作</Text>
-      <View style={styles.inventoryActions}>
-        <TouchableOpacity 
-          style={styles.inventoryButton} 
-          onPress={() => navigation.navigate(ROUTES.INBOUND_TRANSACTION)}
-        >
-          <Ionicons name="add-circle" size={20} color={COLORS.success} />
-          <Text style={styles.inventoryButtonText}>入库</Text>
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.inventoryButton} 
-          onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
-        >
-          <Ionicons name="remove-circle" size={20} color={COLORS.danger} />
-          <Text style={styles.inventoryButtonText}>出库</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.inventoryButton}
-          onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
-        >
-          <Ionicons name="swap-horizontal" size={20} color={COLORS.warning} />
-          <Text style={styles.inventoryButtonText}>盘点</Text>
-        </TouchableOpacity>
-      </View>
-    </Card>
+  const getMaterialTotalQty = (materialId) => (
+    getMaterialLots(materialId).reduce((sum, lot) => sum + (lot.qty || 0), 0)
   );
 
-
-  const TabSelector = () => (
-    <View style={styles.tabContainer}>
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'materials' && styles.activeTab]}
-        onPress={() => setActiveTab('materials')}
-      >
-        <Text style={[styles.tabText, activeTab === 'materials' && styles.activeTabText]}>
-          物料主数据
-        </Text>
-      </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.tab, activeTab === 'inventory' && styles.activeTab]}
-        onPress={() => setActiveTab('inventory')}
-      >
-        <Text style={[styles.tabText, activeTab === 'inventory' && styles.activeTabText]}>
-          库存管理
-        </Text>
-      </TouchableOpacity>
-    </View>
+  const findMaterial = (materialId) => (
+    materials.find((material) => material.id === materialId || String(material.id) === String(materialId))
   );
-
-  const renderContent = () => {
-    if (activeTab === 'materials') {
-      if (loading && !refreshing) {
-        return (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color={COLORS.primary} />
-            <Text style={styles.loadingText}>加载中...</Text>
-          </View>
-        );
-      }
-      return (
-        <FlatList
-          data={materials}
-          keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => <MaterialCard material={item} />}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[COLORS.primary]}
-              tintColor={COLORS.primary}
-            />
-          }
-          contentContainerStyle={[
-            styles.listContainer,
-            materials.length === 0 && styles.emptyListContainer,
-          ]}
-          ListEmptyComponent={
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cube-outline" size={64} color={COLORS.textSecondary} />
-              <Text style={styles.emptyText}>
-                {searchQuery ? '未找到匹配的物料' : '暂无物料'}
-              </Text>
-            </View>
-          }
-        />
-      );
-    } else {
-      return (
-        <ScrollView
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              colors={[COLORS.primary]}
-              tintColor={COLORS.primary}
-            />
-          }
-          contentContainerStyle={styles.inventoryContainer}
-        >
-          <InventoryPanel />
-
-          <View style={styles.lotsList}>
-            <Text style={styles.sectionTitle}>库存批次</Text>
-            {stockLots.length > 0 ? (
-              stockLots.map(lot => {
-                // 查找关联的物料
-                const material = materials.find(m => m.id === (lot.materialId || lot.material_id));
-                return <LotCard key={lot.id} lot={lot} material={material || {}} />;
-              })
-            ) : (
-              <View style={styles.emptyContainer}>
-                <Ionicons name="cube-outline" size={64} color={COLORS.textSecondary} />
-                <Text style={styles.emptyText}>暂无库存批次</Text>
-              </View>
-            )}
-          </View>
-        </ScrollView>
-      );
-    }
-  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>耗材管理</Text>
+        <View style={styles.titleGroup}>
+          <Text style={styles.eyebrow}>MATERIAL STOCK</Text>
+          <Text style={styles.title}>耗材</Text>
+        </View>
         <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={() => setShowSearch(!showSearch)}
-          >
-            <Ionicons name="search" size={24} color={showSearch ? COLORS.primary : COLORS.text} />
-          </TouchableOpacity>
-          {activeTab === 'materials' && (
-            <TouchableOpacity
-              style={styles.headerButton}
-              onPress={() => {
-                navigation.navigate('CreateMaterial');
-              }}
-            >
-              <Ionicons name="add-circle" size={24} color={COLORS.primary} />
-            </TouchableOpacity>
-          )}
+          <IconButton
+            icon="search"
+            active={showSearch}
+            onPress={() => setShowSearch((value) => !value)}
+          />
+          {activeTab === 'materials' ? (
+            <IconButton
+              icon="add"
+              active
+              onPress={() => navigation.navigate(ROUTES.CREATE_MATERIAL)}
+            />
+          ) : null}
         </View>
       </View>
 
-      {/* 搜索框 */}
-      {showSearch && (
+      <View style={styles.segmentedControl}>
+        <SegmentButton
+          label="耗材"
+          icon="layers-outline"
+          active={activeTab === 'materials'}
+          onPress={() => setActiveTab('materials')}
+        />
+        <SegmentButton
+          label="库存"
+          icon="archive-outline"
+          active={activeTab === 'inventory'}
+          onPress={() => setActiveTab('inventory')}
+        />
+      </View>
+
+      {showSearch ? (
         <View style={styles.searchContainer}>
+          <Ionicons name="search" size={18} color={COLORS.textTertiary} />
           <TextInput
             style={styles.searchInput}
-            placeholder="搜索物料（类型、品牌、颜色）"
+            placeholder="搜索材质、品牌或颜色"
+            placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
             autoFocus
           />
           {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')}>
-              <Ionicons name="close-circle" size={24} color={COLORS.textSecondary} />
+            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
+              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
             </TouchableOpacity>
           ) : null}
         </View>
-      )}
+      ) : null}
 
-      <TabSelector />
-      {renderContent()}
+      {activeTab === 'materials' ? (
+        renderMaterialsList({
+          loading,
+          refreshing,
+          materials,
+          onRefresh,
+          navigation,
+          deletingId,
+          handleDeleteMaterial,
+          getMaterialLots,
+          getMaterialTotalQty,
+          searchQuery,
+        })
+      ) : (
+        renderInventoryList({
+          stockLots,
+          materials,
+          refreshing,
+          onRefresh,
+          navigation,
+          deletingId,
+          handleDeleteLot,
+          findMaterial,
+        })
+      )}
     </SafeAreaView>
   );
+};
+
+const renderMaterialsList = ({
+  loading,
+  refreshing,
+  materials,
+  onRefresh,
+  navigation,
+  deletingId,
+  handleDeleteMaterial,
+  getMaterialLots,
+  getMaterialTotalQty,
+  searchQuery,
+}) => {
+  if (loading && !refreshing) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.primary} />
+        <Text style={styles.loadingText}>加载耗材中...</Text>
+      </View>
+    );
+  }
+
+  return (
+    <FlatList
+      data={materials}
+      keyExtractor={(item) => String(item.id)}
+      renderItem={({ item }) => (
+        <MaterialCard
+          material={item}
+          totalQty={getMaterialTotalQty(item.id)}
+          lotCount={getMaterialLots(item.id).length}
+          deletingId={deletingId}
+          onDelete={handleDeleteMaterial}
+          onPress={() => navigation.navigate(ROUTES.MATERIAL_DETAIL, { materialId: item.id })}
+        />
+      )}
+      refreshControl={(
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[COLORS.primary]}
+          tintColor={COLORS.primary}
+        />
+      )}
+      contentContainerStyle={[
+        styles.listContainer,
+        materials.length === 0 && styles.emptyListContainer,
+      ]}
+      ListEmptyComponent={(
+        <View style={styles.emptyContainer}>
+          <Ionicons name="layers-outline" size={50} color={COLORS.textTertiary} />
+          <Text style={styles.emptyTitle}>{searchQuery ? '没有匹配的耗材' : '暂无耗材'}</Text>
+          <Text style={styles.emptyText}>新增耗材后，可以在这里管理规格、库存和批次。</Text>
+        </View>
+      )}
+    />
+  );
+};
+
+const renderInventoryList = ({
+  stockLots,
+  materials,
+  refreshing,
+  onRefresh,
+  navigation,
+  deletingId,
+  handleDeleteLot,
+  findMaterial,
+}) => (
+  <ScrollView
+    style={styles.inventoryScroll}
+    contentContainerStyle={styles.inventoryContent}
+    refreshControl={(
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        colors={[COLORS.primary]}
+        tintColor={COLORS.primary}
+      />
+    )}
+  >
+    <InventoryActions navigation={navigation} />
+    {stockLots.length > 0 ? stockLots.map((lot) => (
+      <LotCard
+        key={lot.id}
+        lot={lot}
+        material={findMaterial(lot.materialId || lot.material_id) || {}}
+        deletingId={deletingId}
+        onDelete={handleDeleteLot}
+      />
+    )) : (
+      <View style={styles.emptyContainer}>
+        <Ionicons name="archive-outline" size={50} color={COLORS.textTertiary} />
+        <Text style={styles.emptyTitle}>暂无库存批次</Text>
+        <Text style={styles.emptyText}>
+          {materials.length > 0 ? '执行入库后会生成库存批次。' : '请先新增耗材，再执行入库。'}
+        </Text>
+      </View>
+    )}
+  </ScrollView>
+);
+
+const IconButton = ({ icon, active = false, onPress }) => (
+  <TouchableOpacity
+    activeOpacity={0.82}
+    style={[styles.headerButton, active && styles.headerButtonActive]}
+    onPress={onPress}
+  >
+    <Ionicons name={icon} size={20} color={active ? COLORS.primary : COLORS.textSecondary} />
+  </TouchableOpacity>
+);
+
+const SegmentButton = ({ label, icon, active, onPress }) => (
+  <TouchableOpacity
+    activeOpacity={0.82}
+    onPress={onPress}
+    style={[styles.segmentButton, active && styles.segmentButtonActive]}
+  >
+    <Ionicons name={icon} size={16} color={active ? COLORS.primary : COLORS.textSecondary} />
+    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+  </TouchableOpacity>
+);
+
+const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPress }) => {
+  const materialType = material.type || material.materialType || '未知材质';
+
+  return (
+    <TouchableOpacity activeOpacity={0.84} onPress={onPress}>
+      <Card style={styles.materialCard} interactive>
+        <View style={styles.cardHeader}>
+          <View style={styles.materialIdentity}>
+            <View style={styles.materialSwatch} />
+            <View style={styles.materialTitleGroup}>
+              <Text style={styles.materialType} numberOfLines={1}>{materialType}</Text>
+              <Text style={styles.materialBrand} numberOfLines={1}>{material.brand || '未设置品牌'}</Text>
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={(event) => {
+              event.stopPropagation?.();
+              onDelete(material.id);
+            }}
+            disabled={deletingId === material.id}
+          >
+            {deletingId === material.id ? (
+              <ActivityIndicator size="small" color={COLORS.danger} />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+            )}
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.specRow}>
+          <InfoPill label="颜色" value={material.color || '未设置'} />
+          <InfoPill label="直径" value={material.diameter ? `${material.diameter}mm` : '未设置'} />
+        </View>
+
+        <View style={styles.stockSummary}>
+          <SummaryItem label="总库存" value={`${totalQty}g`} />
+          <SummaryItem label="批次" value={`${lotCount} 个`} />
+          <SummaryItem label="单价" value={(material.unitPrice || material.unit_price) ? `${material.unitPrice || material.unit_price} CNY/${material.unit || 'kg'}` : '未设置'} />
+        </View>
+
+        {material.notes ? (
+          <Text style={styles.materialNotes} numberOfLines={2}>{material.notes}</Text>
+        ) : null}
+      </Card>
+    </TouchableOpacity>
+  );
+};
+
+const LotCard = ({ lot, material, deletingId, onDelete }) => {
+  const state = lot.state || lot.status;
+  const statusColor = getStockStatusColor(state);
+  const materialLabel = [
+    material.type || material.materialType,
+    material.brand,
+    material.color,
+  ].filter(Boolean).join(' · ') || '未知耗材';
+
+  return (
+    <Card style={styles.lotCard} interactive>
+      <View style={styles.cardHeader}>
+        <View style={styles.lotIdentity}>
+          <Text style={styles.lotNo} numberOfLines={1}>{lot.lotNo || lot.lot_no || '未知批次'}</Text>
+          <Text style={styles.lotMaterial} numberOfLines={1}>{materialLabel}</Text>
+        </View>
+        <View style={styles.lotRight}>
+          <Badge text={STOCK_STATUS_LABELS[state] || '未知'} color={statusColor} size="small" />
+          <TouchableOpacity
+            style={styles.deleteButton}
+            onPress={() => onDelete(lot.id)}
+            disabled={deletingId === lot.id}
+          >
+            {deletingId === lot.id ? (
+              <ActivityIndicator size="small" color={COLORS.danger} />
+            ) : (
+              <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+            )}
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View style={styles.stockSummary}>
+        <SummaryItem label="数量" value={`${lot.qty || 0}g`} />
+        <SummaryItem label="序列号" value={lot.serialNo || lot.serial_no || '未设置'} />
+        <SummaryItem label="入库" value={lot.createdAt ? new Date(lot.createdAt).toLocaleDateString('zh-CN') : '未知'} />
+      </View>
+    </Card>
+  );
+};
+
+const InventoryActions = ({ navigation }) => (
+  <Card style={styles.inventoryPanel}>
+    <Text style={styles.inventoryTitle}>库存操作</Text>
+    <View style={styles.inventoryActionRow}>
+      <InventoryAction
+        title="入库"
+        icon="enter-outline"
+        color={COLORS.success}
+        onPress={() => navigation.navigate(ROUTES.INBOUND_TRANSACTION)}
+      />
+      <InventoryAction
+        title="出库"
+        icon="exit-outline"
+        color={COLORS.warning}
+        onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
+      />
+      <InventoryAction
+        title="盘点"
+        icon="swap-horizontal-outline"
+        color={COLORS.primary}
+        onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
+      />
+    </View>
+  </Card>
+);
+
+const InventoryAction = ({ title, icon, color, onPress }) => (
+  <TouchableOpacity activeOpacity={0.82} style={styles.inventoryAction} onPress={onPress}>
+    <View style={[styles.inventoryActionIcon, { backgroundColor: `${color}18` }]}>
+      <Ionicons name={icon} size={20} color={color} />
+    </View>
+    <Text style={styles.inventoryActionText}>{title}</Text>
+  </TouchableOpacity>
+);
+
+const InfoPill = ({ label, value }) => (
+  <View style={styles.infoPill}>
+    <Text style={styles.infoPillLabel}>{label}</Text>
+    <Text style={styles.infoPillValue} numberOfLines={1}>{value}</Text>
+  </View>
+);
+
+const SummaryItem = ({ label, value }) => (
+  <View style={styles.summaryItem}>
+    <Text style={styles.summaryLabel}>{label}</Text>
+    <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
+  </View>
+);
+
+const getStockStatusColor = (state) => {
+  if (state === STOCK_STATUSES.IN_STOCK) return COLORS.success;
+  if (state === STOCK_STATUSES.SCRAPPED) return COLORS.danger;
+  return COLORS.warning;
 };
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.background,
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+  },
+  titleGroup: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
   },
   headerActions: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   headerButton: {
-    padding: 4,
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  headerRight: {
+  headerButtonActive: {
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.primarySoft,
+  },
+  segmentedControl: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    padding: SPACING.xs,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surface,
+  },
+  segmentButton: {
+    flex: 1,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    borderRadius: RADIUS.md,
+  },
+  segmentButtonActive: {
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  segmentText: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.textSecondary,
+  },
+  segmentTextActive: {
+    color: COLORS.primary,
   },
   searchContainer: {
+    minHeight: 46,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.surfaceElevated,
   },
   searchInput: {
     flex: 1,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    fontSize: 16,
+    minHeight: 44,
+    fontSize: 15,
     color: COLORS.text,
-    backgroundColor: COLORS.background,
+  },
+  searchClear: {
+    width: 28,
+    height: 28,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceMuted,
   },
   loadingContainer: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: 32,
+    justifyContent: 'center',
+    gap: SPACING.md,
   },
   loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
   },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-    minHeight: 300,
-  },
-  emptyText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: COLORS.textSecondary,
+  listContainer: {
+    padding: SPACING.lg,
+    paddingTop: 0,
+    paddingBottom: SPACING.xxl,
   },
   emptyListContainer: {
     flexGrow: 1,
+    justifyContent: 'center',
   },
-  tabContainer: {
-    flexDirection: 'row',
-    backgroundColor: COLORS.background,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
+  emptyContainer: {
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
   },
-  activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: COLORS.primary,
+  emptyTitle: {
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.text,
+    marginTop: SPACING.md,
   },
-  tabText: {
-    fontSize: 16,
+  emptyText: {
+    ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-  },
-  activeTabText: {
-    color: COLORS.primary,
-    fontWeight: '600',
-  },
-  listContainer: {
-    padding: 16,
-  },
-  inventoryContainer: {
-    padding: 16,
+    textAlign: 'center',
+    marginTop: SPACING.xs,
   },
   materialCard: {
-    marginBottom: 12,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
-  materialHeader: {
+  cardHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    gap: SPACING.md,
   },
-  materialBasic: {
+  materialIdentity: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  materialSwatch: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.accentSoft,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  materialTitleGroup: {
     flex: 1,
   },
   materialType: {
-    fontSize: 18,
-    fontWeight: 'bold',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
   },
   materialBrand: {
-    fontSize: 14,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  materialSpecs: {
-    alignItems: 'flex-end',
-  },
-  specText: {
-    fontSize: 14,
-    color: COLORS.text,
-    marginBottom: 2,
-  },
-  materialDetails: {
-    marginBottom: 12,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-  },
-  detailValue: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.text,
-  },
-  lotsSummary: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  deleteButton: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
-    marginBottom: 8,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    justifyContent: 'center',
+    backgroundColor: COLORS.dangerSoft,
   },
-  lotsTitle: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: COLORS.text,
-  },
-  totalQty: {
+  specRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
   },
-  totalQtyLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginRight: 4,
+  infoPill: {
+    flex: 1,
+    minWidth: 0,
+    padding: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
   },
-  totalQtyValue: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: COLORS.primary,
+  infoPillLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+  },
+  infoPillValue: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.text,
+    marginTop: 2,
+  },
+  stockSummary: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  summaryItem: {
+    flex: 1,
+    minWidth: 0,
+    padding: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  summaryLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+  },
+  summaryValue: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.text,
+    marginTop: 2,
   },
   materialNotes: {
-    fontSize: 13,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
-    fontStyle: 'italic',
+    marginTop: SPACING.md,
+  },
+  inventoryScroll: {
+    flex: 1,
+  },
+  inventoryContent: {
+    padding: SPACING.lg,
+    paddingTop: 0,
+    paddingBottom: SPACING.xxl,
   },
   inventoryPanel: {
-    marginBottom: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
-  panelTitle: {
-    fontSize: 16,
-    fontWeight: '600',
+  inventoryTitle: {
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
-  inventoryActions: {
+  inventoryActionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    gap: SPACING.sm,
   },
-  inventoryButton: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
+  inventoryAction: {
     flex: 1,
-    marginHorizontal: 4,
+    minHeight: 82,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
   },
-  inventoryButtonText: {
-    fontSize: 12,
+  inventoryActionIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: SPACING.sm,
+  },
+  inventoryActionText: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
-    marginTop: 4,
-  },
-  lotsList: {
-    // 批次列表样式
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
-    marginBottom: 12,
   },
   lotCard: {
-    marginBottom: 8,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
-  lotHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  lotHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  lotBasic: {
+  lotIdentity: {
     flex: 1,
   },
   lotNo: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
   },
-  serialNo: {
-    fontSize: 14,
+  lotMaterial: {
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  lotDetails: {
-    marginBottom: 8,
-  },
-  lotNotes: {
-    fontSize: 13,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-  },
-  deleteButton: {
-    padding: 4,
+  lotRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
 });
 

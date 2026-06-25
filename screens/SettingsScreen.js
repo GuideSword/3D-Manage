@@ -1,8 +1,17 @@
 import React from 'react';
-import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
-import { API_CONFIG, COLORS, ROLE_LABELS, ROUTES } from '../constants';
-import { Button } from '../components';
+import { Ionicons } from '@expo/vector-icons';
+import {
+  API_CONFIG,
+  COLORS,
+  RADIUS,
+  ROLE_LABELS,
+  ROUTES,
+  SPACING,
+  TYPOGRAPHY,
+} from '../constants';
+import { Card } from '../components';
 import { useAuth } from '../context/AuthContext';
 
 const SettingsScreen = () => {
@@ -15,108 +24,183 @@ const SettingsScreen = () => {
   };
 
   return (
-    <ScrollView style={styles.container} keyboardShouldPersistTaps="handled">
-      <Text style={styles.title}>设置</Text>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled"
+    >
+      <View style={styles.header}>
+        <Text style={styles.eyebrow}>SETTINGS</Text>
+        <Text style={styles.title}>设置</Text>
+      </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>账号与权限</Text>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>当前用户</Text>
-          <Text style={styles.infoValue}>
-            {user?.name || user?.email || '未知用户'}
-          </Text>
-          {user?.email && (
-            <Text style={styles.infoHint}>{user.email}</Text>
-          )}
-          <Text style={styles.infoHint}>
-            角色：{ROLE_LABELS[user?.role] || user?.role || '未知'}
-          </Text>
-          <Button
-            title="退出登录"
-            onPress={handleLogout}
-            variant="outline"
-            style={styles.sectionButton}
+        <Card style={styles.card} padding="none">
+          <InfoRow
+            icon="person-circle-outline"
+            label="当前用户"
+            value={user?.name || user?.email || '未知用户'}
+            hint={user?.email}
           />
-        </View>
+          <InfoRow
+            icon="shield-checkmark-outline"
+            label="角色"
+            value={ROLE_LABELS[user?.role] || user?.role || '未知'}
+          />
+        </Card>
       </View>
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>服务器配置</Text>
-        <View style={styles.infoCard}>
-          <Text style={styles.infoLabel}>API 地址:</Text>
-          <Text style={styles.infoValue}>{API_CONFIG.BASE_URL}</Text>
-        </View>
-        <Text style={styles.infoHint}>
-          可通过 EXPO_PUBLIC_API_BASE_URL 配置开发环境 API 地址
-        </Text>
+        <Card style={styles.card} padding="none">
+          <InfoRow
+            icon="server-outline"
+            label="API 地址"
+            value={API_CONFIG.BASE_URL}
+            hint="可通过 EXPO_PUBLIC_API_BASE_URL 配置开发环境 API 地址"
+          />
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>文件存储</Text>
-        <Button
-          title="OSS 配置"
-          onPress={() => navigation.navigate(ROUTES.OSS_CONFIG)}
-          variant="outline"
-        />
+        <Text style={styles.sectionTitle}>工具</Text>
+        <Card style={styles.card} padding="none">
+          <ActionRow
+            icon="cloud-upload-outline"
+            label="OSS 配置"
+            hint="配置模型文件和图片存储"
+            onPress={() => navigation.navigate(ROUTES.OSS_CONFIG)}
+          />
+          <ActionRow
+            icon="document-attach-outline"
+            label="CSV 导入"
+            hint="批量导入订单、耗材或库存数据"
+            onPress={() => navigation.navigate(ROUTES.DATA_IMPORT)}
+          />
+        </Card>
       </View>
 
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>数据维护</Text>
-        <Button
-          title="CSV 导入"
-          onPress={() => navigation.navigate(ROUTES.DATA_IMPORT)}
-          variant="outline"
-        />
+        <Text style={styles.sectionTitle}>会话</Text>
+        <TouchableOpacity activeOpacity={0.82} style={styles.logoutButton} onPress={handleLogout}>
+          <Ionicons name="log-out-outline" size={20} color={COLORS.danger} />
+          <Text style={styles.logoutText}>退出登录</Text>
+        </TouchableOpacity>
       </View>
     </ScrollView>
   );
 };
 
+const InfoRow = ({ icon, label, value, hint }) => (
+  <View style={styles.row}>
+    <View style={styles.rowIcon}>
+      <Ionicons name={icon} size={19} color={COLORS.primary} />
+    </View>
+    <View style={styles.rowTextGroup}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue} numberOfLines={1}>{value}</Text>
+      {hint ? <Text style={styles.rowHint} numberOfLines={2}>{hint}</Text> : null}
+    </View>
+  </View>
+);
+
+const ActionRow = ({ icon, label, hint, onPress }) => (
+  <TouchableOpacity activeOpacity={0.82} style={styles.row} onPress={onPress}>
+    <View style={styles.rowIcon}>
+      <Ionicons name={icon} size={19} color={COLORS.primary} />
+    </View>
+    <View style={styles.rowTextGroup}>
+      <Text style={styles.rowValue}>{label}</Text>
+      <Text style={styles.rowHint} numberOfLines={1}>{hint}</Text>
+    </View>
+    <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: COLORS.background,
   },
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  header: {
+    marginBottom: SPACING.xl,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
+  },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: SPACING.xl,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 12,
+    marginBottom: SPACING.md,
   },
-  infoCard: {
-    padding: 16,
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    marginBottom: 8,
+  card: {
+    marginHorizontal: 0,
+    overflow: 'hidden',
   },
-  infoLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
+  row: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
-  infoValue: {
-    fontSize: 16,
+  rowIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  rowTextGroup: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rowLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+    marginBottom: 2,
+  },
+  rowValue: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
-    fontWeight: '500',
   },
-  infoHint: {
-    fontSize: 12,
+  rowHint: {
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    fontStyle: 'italic',
-    marginTop: 4,
+    marginTop: 2,
   },
-  sectionButton: {
-    marginTop: 12,
+  logoutButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+    borderRadius: RADIUS.md,
+    borderWidth: 1,
+    borderColor: COLORS.dangerSoft,
+    backgroundColor: COLORS.dangerSoft,
+  },
+  logoutText: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.danger,
   },
 });
 
