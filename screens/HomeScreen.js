@@ -1,20 +1,27 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  RefreshControl,
-  TouchableOpacity,
-  Alert,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, ROUTES, ORDER_STATUSES } from '../constants';
+import {
+  COLORS,
+  ORDER_STATUSES,
+  RADIUS,
+  ROUTES,
+  SPACING,
+  TYPOGRAPHY,
+} from '../constants';
 import { Card } from '../components';
-import { ordersAPI, stockAPI, isAuthRequiredError } from '../utils/api';
+import { isAuthRequiredError, ordersAPI, stockAPI } from '../utils/api';
 
 const LOW_STOCK_THRESHOLD_GRAMS = 100;
 
@@ -112,43 +119,13 @@ const HomeScreen = () => {
     }
   };
 
-  const StatCard = ({ title, value, subtitle, color, icon, onPress }) => (
-    <TouchableOpacity activeOpacity={0.75} onPress={onPress} style={styles.statCardWrapper}>
-      <Card style={styles.statCard}>
-        <View style={styles.statHeader}>
-          <View style={[styles.iconBadge, { backgroundColor: color }]}>
-            <Ionicons name={icon} size={18} color={COLORS.background} />
-          </View>
-          <Text style={styles.statTitle}>{title}</Text>
-        </View>
-        <Text style={[styles.statValue, { color }]}>{loading && !refreshing ? '...' : value}</Text>
-        <Text style={styles.statSubtitle}>{subtitle}</Text>
-      </Card>
-    </TouchableOpacity>
-  );
-
-  const ActionCard = ({ title, icon, onPress, disabled = false }) => (
-    <TouchableOpacity
-      style={styles.actionCardWrapper}
-      onPress={disabled ? undefined : onPress}
-      activeOpacity={0.75}
-      disabled={disabled}
-    >
-      <Card style={[styles.actionCard, disabled && styles.disabledCard]}>
-        {disabled ? (
-          <ActivityIndicator size="small" color={COLORS.primary} />
-        ) : (
-          <Ionicons name={icon} size={24} color={COLORS.primary} />
-        )}
-        <Text style={styles.actionText}>{title}</Text>
-      </Card>
-    </TouchableOpacity>
-  );
+  const displayValue = (value) => (loading && !refreshing ? '...' : value);
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
+        contentContainerStyle={styles.content}
         refreshControl={(
           <RefreshControl
             refreshing={refreshing}
@@ -158,15 +135,32 @@ const HomeScreen = () => {
           />
         )}
       >
-        <View style={styles.header}>
-          <Text style={styles.welcomeText}>欢迎使用</Text>
-          <Text style={styles.appTitle}>3D打印管理系统</Text>
+        <View style={styles.hero}>
+          <View style={styles.heroTextGroup}>
+            <Text style={styles.eyebrow}>运营概览</Text>
+            <Text style={styles.title}>欢迎回来</Text>
+            <Text style={styles.subtitle}>
+              关注待审核订单、生产进度和库存风险。
+            </Text>
+          </View>
+          <TouchableOpacity
+            activeOpacity={0.82}
+            onPress={handleExport}
+            disabled={exporting}
+            style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
+          >
+            {exporting ? (
+              <ActivityIndicator size="small" color={COLORS.primary} />
+            ) : (
+              <Ionicons name="download-outline" size={19} color={COLORS.primary} />
+            )}
+          </TouchableOpacity>
         </View>
 
-        <View style={styles.statsContainer}>
+        <View style={styles.statsGrid}>
           <StatCard
             title="待审核订单"
-            value={stats.pendingReview}
+            value={displayValue(stats.pendingReview)}
             subtitle="需要确认后进入执行"
             color={COLORS.warning}
             icon="time-outline"
@@ -174,7 +168,7 @@ const HomeScreen = () => {
           />
           <StatCard
             title="执行中订单"
-            value={stats.inProgress}
+            value={displayValue(stats.inProgress)}
             subtitle="正在生产或准备中"
             color={COLORS.primary}
             icon="construct-outline"
@@ -182,7 +176,7 @@ const HomeScreen = () => {
           />
           <StatCard
             title="低库存批次"
-            value={stats.lowStock}
+            value={displayValue(stats.lowStock)}
             subtitle={`低于 ${LOW_STOCK_THRESHOLD_GRAMS}g`}
             color={COLORS.danger}
             icon="alert-circle-outline"
@@ -190,8 +184,10 @@ const HomeScreen = () => {
           />
         </View>
 
-        <View style={styles.quickActions}>
-          <Text style={styles.sectionTitle}>快捷操作</Text>
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>快捷操作</Text>
+          </View>
           <View style={styles.actionsGrid}>
             <ActionCard
               title="新建订单"
@@ -217,23 +213,47 @@ const HomeScreen = () => {
           </View>
         </View>
 
-        <View style={styles.recentActivity}>
-          <Text style={styles.sectionTitle}>最近订单</Text>
-          <Card style={styles.activityCard}>
-            {recentOrders.length > 0 ? recentOrders.slice(0, 3).map((order) => (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>最近订单</Text>
+            <TouchableOpacity
+              activeOpacity={0.82}
+              onPress={() => navigation.navigate(ROUTES.ORDERS)}
+              style={styles.sectionLink}
+            >
+              <Text style={styles.sectionLinkText}>查看全部</Text>
+              <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+            </TouchableOpacity>
+          </View>
+          <Card padding="none" style={styles.recentCard}>
+            {recentOrders.length > 0 ? recentOrders.slice(0, 4).map((order, index) => (
               <TouchableOpacity
                 key={order.id}
-                style={styles.activityRow}
+                style={[
+                  styles.activityRow,
+                  index === recentOrders.slice(0, 4).length - 1 && styles.activityRowLast,
+                ]}
+                activeOpacity={0.82}
                 onPress={() => navigation.navigate(ROUTES.ORDER_DETAIL, { orderId: order.id })}
               >
-                <View style={styles.activityTextGroup}>
-                  <Text style={styles.activityTitle}>{order.customer?.name || '未知客户'}</Text>
-                  <Text style={styles.activityMeta}>订单 #{order.id} · {order.status}</Text>
+                <View style={styles.activityIcon}>
+                  <Ionicons name="receipt-outline" size={18} color={COLORS.primary} />
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />
+                <View style={styles.activityTextGroup}>
+                  <Text style={styles.activityTitle} numberOfLines={1}>
+                    {order.customer?.name || '未知客户'}
+                  </Text>
+                  <Text style={styles.activityMeta} numberOfLines={1}>
+                    订单 #{order.id} · {order.status || '未知状态'}
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
               </TouchableOpacity>
             )) : (
-              <Text style={styles.emptyText}>暂无最近订单</Text>
+              <View style={styles.emptyState}>
+                <Ionicons name="file-tray-outline" size={30} color={COLORS.textTertiary} />
+                <Text style={styles.emptyText}>暂无最近订单</Text>
+              </View>
             )}
           </Card>
         </View>
@@ -242,133 +262,234 @@ const HomeScreen = () => {
   );
 };
 
+const StatCard = ({ title, value, subtitle, color, icon, onPress }) => (
+  <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={styles.statCardWrapper}>
+    <Card style={styles.statCard} interactive>
+      <View style={styles.statTopRow}>
+        <View style={[styles.iconBadge, { backgroundColor: `${color}18` }]}>
+          <Ionicons name={icon} size={18} color={color} />
+        </View>
+        <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
+      </View>
+      <Text style={styles.statValue}>{value}</Text>
+      <Text style={styles.statTitle}>{title}</Text>
+      <Text style={styles.statSubtitle} numberOfLines={1}>{subtitle}</Text>
+    </Card>
+  </TouchableOpacity>
+);
+
+const ActionCard = ({ title, icon, onPress, disabled = false }) => (
+  <TouchableOpacity
+    style={styles.actionCardWrapper}
+    onPress={disabled ? undefined : onPress}
+    activeOpacity={0.82}
+    disabled={disabled}
+  >
+    <Card style={[styles.actionCard, disabled && styles.disabledCard]} interactive>
+      <View style={styles.actionIcon}>
+        {disabled ? (
+          <ActivityIndicator size="small" color={COLORS.primary} />
+        ) : (
+          <Ionicons name={icon} size={22} color={COLORS.primary} />
+        )}
+      </View>
+      <Text style={styles.actionText} numberOfLines={1}>{title}</Text>
+    </Card>
+  </TouchableOpacity>
+);
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.background,
   },
   scrollView: {
     flex: 1,
   },
-  header: {
-    padding: 20,
-    backgroundColor: COLORS.primary,
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
   },
-  welcomeText: {
-    fontSize: 16,
-    color: COLORS.background,
-    opacity: 0.85,
-  },
-  appTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.background,
-    marginTop: 4,
-  },
-  statsContainer: {
-    padding: 16,
-  },
-  statCardWrapper: {
-    marginBottom: 12,
-  },
-  statCard: {
-    minHeight: 112,
-  },
-  statHeader: {
+  hero: {
     flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.lg,
+    marginBottom: SPACING.lg,
   },
-  iconBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+  heroTextGroup: {
+    flex: 1,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: SPACING.xs,
+  },
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
+  },
+  subtitle: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+    marginTop: SPACING.xs,
+  },
+  exportButton: {
+    width: 42,
+    height: 42,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    backgroundColor: COLORS.surfaceElevated,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  statTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
+  exportButtonDisabled: {
+    opacity: 0.72,
+  },
+  statsGrid: {
+    gap: SPACING.md,
+    marginBottom: SPACING.xl,
+  },
+  statCardWrapper: {
+    minHeight: 136,
+  },
+  statCard: {
+    minHeight: 128,
+    justifyContent: 'space-between',
+    marginHorizontal: 0,
+  },
+  statTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  iconBadge: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   statValue: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 4,
+    fontSize: 34,
+    lineHeight: 40,
+    fontWeight: '800',
+    color: COLORS.text,
+    marginTop: SPACING.md,
+  },
+  statTitle: {
+    ...TYPOGRAPHY.sectionTitle,
+    color: COLORS.text,
+    marginTop: SPACING.xs,
   },
   statSubtitle: {
-    fontSize: 14,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
+    marginTop: 2,
   },
-  quickActions: {
-    paddingHorizontal: 16,
-    paddingBottom: 16,
+  section: {
+    marginBottom: SPACING.xl,
+  },
+  sectionHeader: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 12,
+  },
+  sectionLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  sectionLinkText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
   },
   actionsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    rowGap: SPACING.md,
   },
   actionCardWrapper: {
     width: '48%',
-    marginBottom: 12,
   },
   actionCard: {
-    minHeight: 92,
+    minHeight: 104,
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginHorizontal: 0,
+  },
+  actionIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+    marginBottom: SPACING.md,
   },
   disabledCard: {
-    opacity: 0.7,
+    opacity: 0.72,
   },
   actionText: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
-    marginTop: 8,
   },
-  recentActivity: {
-    padding: 16,
-    paddingBottom: 32,
-  },
-  activityCard: {
-    paddingVertical: 4,
+  recentCard: {
+    marginHorizontal: 0,
+    overflow: 'hidden',
   },
   activityRow: {
-    minHeight: 56,
+    minHeight: 64,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
-    paddingVertical: 10,
+  },
+  activityRowLast: {
+    borderBottomWidth: 0,
+  },
+  activityIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+    marginRight: SPACING.md,
   },
   activityTextGroup: {
     flex: 1,
-    marginRight: 12,
+    marginRight: SPACING.md,
   },
   activityTitle: {
     fontSize: 15,
-    fontWeight: '600',
+    fontWeight: '700',
     color: COLORS.text,
     marginBottom: 2,
   },
   activityMeta: {
-    fontSize: 13,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
   },
+  emptyState: {
+    minHeight: 118,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.sm,
+  },
   emptyText: {
-    fontSize: 16,
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
-    textAlign: 'center',
-    paddingVertical: 18,
   },
 });
 

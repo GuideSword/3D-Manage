@@ -8,8 +8,9 @@ import {
   Text,
   View,
 } from 'react-native';
-import { COLORS, ROLES, ROLE_LABELS } from '../constants';
-import { Button, Input, Picker } from '../components';
+import { Ionicons } from '@expo/vector-icons';
+import { COLORS, RADIUS, ROLES, ROLE_LABELS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants';
+import { Button, Card, Input, Picker } from '../components';
 import { useAuth } from '../context/AuthContext';
 
 const ROLE_OPTIONS = [ROLES.STAFF, ROLES.VIEWER].map((role) => ({
@@ -81,71 +82,86 @@ const LoginScreen = () => {
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
       >
-        <View style={styles.header}>
-          <Text style={styles.title}>3D 打印管理系统</Text>
-          <Text style={styles.subtitle}>登录后访问订单、模型、耗材和库存数据</Text>
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.modeButtons}>
-            <Button
-              title="登录"
-              onPress={() => setAuthMode('login')}
-              variant={authMode === 'login' ? 'primary' : 'outline'}
-              style={styles.modeButton}
-            />
-            <Button
-              title="注册"
-              onPress={() => setAuthMode('register')}
-              variant={authMode === 'register' ? 'primary' : 'outline'}
-              style={styles.modeButton}
-            />
+        <View style={styles.shell}>
+          <View style={styles.brandBlock}>
+            <View style={styles.logoMark}>
+              <Ionicons name="cube" size={28} color={COLORS.surfaceElevated} />
+            </View>
+            <Text style={styles.eyebrow}>3D PRINT OPERATIONS</Text>
+            <Text style={styles.title}>3D 打印管理系统</Text>
+            <Text style={styles.subtitle}>
+              登录后访问订单、模型、耗材和库存数据。
+            </Text>
           </View>
 
-          {authMode === 'register' && (
-            <Input
-              label="姓名"
-              placeholder="请输入姓名"
-              value={formData.name}
-              onChangeText={(text) => setFormData((prev) => ({ ...prev, name: text }))}
-            />
-          )}
-          <Input
-            label="邮箱"
-            placeholder="请输入邮箱"
-            value={formData.email}
-            onChangeText={(text) => setFormData((prev) => ({ ...prev, email: text }))}
-            keyboardType="email-address"
-            autoCapitalize="none"
-          />
-          <Input
-            label="密码"
-            placeholder="请输入密码"
-            value={formData.password}
-            onChangeText={(text) => setFormData((prev) => ({ ...prev, password: text }))}
-            secureTextEntry
-          />
-          {authMode === 'register' && (
-            <Picker
-              label="角色"
-              value={formData.role}
-              onValueChange={(value) => setFormData((prev) => ({ ...prev, role: value }))}
-              options={ROLE_OPTIONS}
-            />
-          )}
-          <Button
-            title={authMode === 'login' ? '登录' : '注册'}
-            onPress={handleAuthSubmit}
-            loading={loading}
-            disabled={loading}
-            style={styles.submitButton}
-          />
+          <Card style={styles.card} padding="large">
+            <View style={styles.modeSwitch}>
+              <Button
+                title="登录"
+                onPress={() => setAuthMode('login')}
+                variant={authMode === 'login' ? 'primary' : 'ghost'}
+                size="small"
+                style={styles.modeButton}
+              />
+              <Button
+                title="注册"
+                onPress={() => setAuthMode('register')}
+                variant={authMode === 'register' ? 'primary' : 'ghost'}
+                size="small"
+                style={styles.modeButton}
+              />
+            </View>
 
-          {authMode === 'login' && (
-            <Text style={styles.hint}>
-              默认管理员：admin@example.com / Admin123456
-            </Text>
-          )}
+            {authMode === 'register' ? (
+              <Input
+                label="姓名"
+                placeholder="请输入姓名"
+                value={formData.name}
+                onChangeText={(text) => setFormData((prev) => ({ ...prev, name: text }))}
+              />
+            ) : null}
+            <Input
+              label="邮箱"
+              placeholder="请输入邮箱"
+              value={formData.email}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, email: text }))}
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+            <Input
+              label="密码"
+              placeholder="请输入密码"
+              value={formData.password}
+              onChangeText={(text) => setFormData((prev) => ({ ...prev, password: text }))}
+              secureTextEntry
+            />
+            {authMode === 'register' ? (
+              <Picker
+                label="角色"
+                value={formData.role}
+                onValueChange={(value) => setFormData((prev) => ({ ...prev, role: value }))}
+                options={ROLE_OPTIONS}
+              />
+            ) : null}
+            <Button
+              title={authMode === 'login' ? '登录' : '注册'}
+              onPress={handleAuthSubmit}
+              loading={loading}
+              disabled={loading}
+              iconLeft={authMode === 'login' ? 'log-in-outline' : 'person-add-outline'}
+              fullWidth
+              style={styles.submitButton}
+            />
+
+            {authMode === 'login' ? (
+              <View style={styles.hintRow}>
+                <Ionicons name="key-outline" size={15} color={COLORS.textSecondary} />
+                <Text style={styles.hint}>
+                  默认管理员：admin@example.com / Admin123456
+                </Text>
+              </View>
+            ) : null}
+          </Card>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -155,48 +171,73 @@ const LoginScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.light,
+    backgroundColor: COLORS.background,
   },
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    padding: 20,
+    padding: SPACING.xl,
   },
-  header: {
-    marginBottom: 24,
+  shell: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+  },
+  brandBlock: {
+    marginBottom: SPACING.xl,
+  },
+  logoMark: {
+    width: 56,
+    height: 56,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primary,
+    marginBottom: SPACING.lg,
+    ...SHADOWS.card,
+  },
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    letterSpacing: 0,
+    marginBottom: SPACING.xs,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    ...TYPOGRAPHY.screenTitle,
     color: COLORS.text,
-    marginBottom: 8,
   },
   subtitle: {
-    fontSize: 15,
+    ...TYPOGRAPHY.body,
     color: COLORS.textSecondary,
-    lineHeight: 22,
+    marginTop: SPACING.sm,
   },
   card: {
-    padding: 16,
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
+    marginHorizontal: 0,
   },
-  modeButtons: {
+  modeSwitch: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 8,
+    gap: SPACING.sm,
+    padding: SPACING.xs,
+    borderRadius: RADIUS.lg,
+    backgroundColor: COLORS.surfaceMuted,
+    marginBottom: SPACING.md,
   },
   modeButton: {
     flex: 1,
   },
   submitButton: {
-    marginTop: 12,
+    marginTop: SPACING.lg,
+  },
+  hintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
   },
   hint: {
-    marginTop: 12,
-    fontSize: 12,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    textAlign: 'center',
   },
 });
 
