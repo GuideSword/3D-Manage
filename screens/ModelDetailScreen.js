@@ -1,22 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
-  RefreshControl,
   Image,
   Platform,
+  RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { COLORS, API_CONFIG } from '../constants';
-import { Card, Button, Badge } from '../components';
-import { authAPI, modelsAPI, isAuthRequiredError } from '../utils/api';
+import { API_CONFIG, COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { Badge, Button, Card } from '../components';
+import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
 const SOURCE_LABELS = {
@@ -34,8 +34,8 @@ const IMAGE_TYPE_LABELS = {
 
 const IMAGE_TYPE_OPTIONS = [
   { value: 'cover', label: '封面图' },
-  { value: 'real_print', label: '实物打印图' },
-  { value: 'other', label: '其他图片' },
+  { value: 'real_print', label: '实物图' },
+  { value: 'other', label: '其他' },
 ];
 
 const MODEL_EXTENSIONS = ['stl', 'obj', '3mf', 'step', 'stp', 'zip'];
@@ -137,11 +137,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       '确定要删除这个模型吗？模型文件和图片也会一起删除。',
       [
         { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: deleteModel,
-        },
+        { text: '删除', style: 'destructive', onPress: deleteModel },
       ]
     );
   };
@@ -207,25 +203,17 @@ const ModelDetailScreen = ({ route, navigation }) => {
   };
 
   if (loading && !model) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <CenteredState icon="cube-outline" text="加载模型中..." loading />;
   }
 
   if (!model) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="cube-outline" size={64} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>模型不存在</Text>
-          <Button title="返回" onPress={() => navigation.goBack()} style={styles.backButton} />
-        </View>
-      </SafeAreaView>
+      <CenteredState
+        icon="cube-outline"
+        text="模型不存在"
+        actionLabel="返回"
+        onAction={() => navigation.goBack()}
+      />
     );
   }
 
@@ -237,60 +225,40 @@ const ModelDetailScreen = ({ route, navigation }) => {
     <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        refreshControl={
+        contentContainerStyle={styles.content}
+        refreshControl={(
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
-        }
+        )}
       >
+        <View style={styles.identity}>
+          <View style={styles.identityIcon}>
+            <Ionicons name="cube-outline" size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.identityText}>
+            <Text style={styles.eyebrow}>MODEL ASSET</Text>
+            <Text style={styles.title} numberOfLines={1}>{model.name || '未命名模型'}</Text>
+          </View>
+          <Badge text={sourceLabel} color={COLORS.accent} size="small" />
+        </View>
+
         <Card style={styles.section}>
-          <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <Text style={styles.modelName}>{model.name || '未命名模型'}</Text>
-              <Badge
-                text={sourceLabel}
-                color={COLORS.primary}
-                size="small"
-                style={styles.sourceBadge}
-              />
-            </View>
-          </View>
-
-          <View style={styles.detailItem}>
-            <Text style={styles.detailLabel}>描述</Text>
-            <Text style={styles.detailValue}>{model.description || '暂无描述'}</Text>
-          </View>
-
-          <View style={styles.detailsGrid}>
-            <View style={styles.detailItemHalf}>
-              <Text style={styles.detailLabel}>文件数</Text>
-              <Text style={styles.detailValue}>{files.length}</Text>
-            </View>
-            <View style={styles.detailItemHalf}>
-              <Text style={styles.detailLabel}>图片数</Text>
-              <Text style={styles.detailValue}>{images.length}</Text>
-            </View>
-            {model.createdAt && (
-              <View style={styles.detailItemHalf}>
-                <Text style={styles.detailLabel}>创建时间</Text>
-                <Text style={styles.detailValue}>
-                  {new Date(model.createdAt).toLocaleString('zh-CN')}
-                </Text>
-              </View>
-            )}
-            {model.updatedAt && (
-              <View style={styles.detailItemHalf}>
-                <Text style={styles.detailLabel}>更新时间</Text>
-                <Text style={styles.detailValue}>
-                  {new Date(model.updatedAt).toLocaleString('zh-CN')}
-                </Text>
-              </View>
-            )}
+          <SectionHeader title="模型概览" />
+          <Text style={styles.description}>{model.description || '暂无描述'}</Text>
+          <View style={styles.summaryGrid}>
+            <SummaryTile label="文件" value={String(files.length)} icon="document-outline" />
+            <SummaryTile label="图片" value={String(images.length)} icon="image-outline" />
+            <SummaryTile
+              label="更新时间"
+              value={model.updatedAt ? new Date(model.updatedAt).toLocaleDateString('zh-CN') : '未知'}
+              icon="time-outline"
+            />
           </View>
         </Card>
 
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>图片</Text>
+          <SectionHeader title="图片" count={images.length} />
           {images.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
               {images.map((image) => {
                 const source = buildAssetSource(image.fileUrl, authToken);
                 return (
@@ -298,49 +266,48 @@ const ModelDetailScreen = ({ route, navigation }) => {
                     {source ? (
                       <Image source={source} style={styles.galleryImage} resizeMode="cover" />
                     ) : (
-                      <View style={styles.galleryPlaceholder}>
-                        <Ionicons name="image-outline" size={36} color={COLORS.textSecondary} />
+                      <View style={styles.galleryFallback}>
+                        <Ionicons name="image-outline" size={36} color={COLORS.textTertiary} />
                       </View>
                     )}
                     <Text style={styles.imageLabel} numberOfLines={1}>
-                      {IMAGE_TYPE_LABELS[image.type] || image.type}
+                      {IMAGE_TYPE_LABELS[image.type] || image.type || '图片'}
                     </Text>
                   </View>
                 );
               })}
             </ScrollView>
           ) : (
-            <Text style={styles.emptySectionText}>暂无图片</Text>
+            <EmptySection text="暂无图片" />
           )}
         </Card>
 
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>模型文件</Text>
-          {files.length > 0 ? (
-            files.map((file) => (
-              <View key={file.id} style={styles.fileItem}>
-                <View style={styles.fileIcon}>
-                  <Ionicons name="document-outline" size={22} color={COLORS.primary} />
-                </View>
-                <View style={styles.fileInfo}>
-                  <Text style={styles.fileName}>{file.name}</Text>
-                  <Text style={styles.fileMeta}>
-                    {String(file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
-                  </Text>
-                </View>
+          <SectionHeader title="模型文件" count={files.length} />
+          {files.length > 0 ? files.map((file) => (
+            <View key={file.id} style={styles.fileItem}>
+              <View style={styles.fileIcon}>
+                <Ionicons name="document-outline" size={20} color={COLORS.primary} />
               </View>
-            ))
-          ) : (
-            <Text style={styles.emptySectionText}>暂无模型文件</Text>
+              <View style={styles.fileInfo}>
+                <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
+                <Text style={styles.fileMeta}>
+                  {String(file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
+                </Text>
+              </View>
+            </View>
+          )) : (
+            <EmptySection text="暂无模型文件" />
           )}
         </Card>
 
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>添加图片</Text>
+          <SectionHeader title="上传图片" />
           <View style={styles.optionRow}>
             {IMAGE_TYPE_OPTIONS.map((option) => (
               <TouchableOpacity
                 key={option.value}
+                activeOpacity={0.82}
                 style={[
                   styles.optionButton,
                   imageType === option.value && styles.optionButtonActive,
@@ -360,34 +327,81 @@ const ModelDetailScreen = ({ route, navigation }) => {
           </View>
           <Button
             title={uploadingImage ? '上传图片中...' : '上传图片'}
+            iconLeft="image-outline"
             onPress={handleUploadImage}
-            style={styles.actionButton}
             disabled={uploadingImage}
             loading={uploadingImage}
+            fullWidth
           />
         </Card>
 
         <Card style={styles.section}>
-          <Button
-            title={uploadingFile ? '上传文件中...' : '上传模型文件'}
-            onPress={handleUploadFile}
-            style={styles.actionButton}
-            disabled={uploadingFile}
-            loading={uploadingFile}
-          />
+          <SectionHeader title="文件操作" />
+          <View style={styles.actionStack}>
+            <Button
+              title={uploadingFile ? '上传文件中...' : '上传模型文件'}
+              iconLeft="cloud-upload-outline"
+              onPress={handleUploadFile}
+              disabled={uploadingFile}
+              loading={uploadingFile}
+              fullWidth
+            />
+          </View>
+        </Card>
+
+        <Card style={styles.dangerSection}>
+          <SectionHeader title="危险操作" />
           <Button
             title="删除模型"
+            iconLeft="trash-outline"
             onPress={handleDelete}
             variant="danger"
-            style={styles.deleteButton}
             disabled={deleting}
             loading={deleting}
+            fullWidth
           />
         </Card>
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => (
+  <SafeAreaView style={styles.container}>
+    <View style={styles.centeredState}>
+      {loading ? (
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      ) : (
+        <Ionicons name={icon} size={54} color={COLORS.textTertiary} />
+      )}
+      <Text style={styles.centeredText}>{text}</Text>
+      {actionLabel ? (
+        <Button title={actionLabel} onPress={onAction} style={styles.centeredButton} />
+      ) : null}
+    </View>
+  </SafeAreaView>
+);
+
+const SectionHeader = ({ title, count }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    {typeof count === 'number' ? <Text style={styles.sectionCount}>{count}</Text> : null}
+  </View>
+);
+
+const SummaryTile = ({ label, value, icon }) => (
+  <View style={styles.summaryTile}>
+    <Ionicons name={icon} size={17} color={COLORS.primary} />
+    <Text style={styles.summaryLabel}>{label}</Text>
+    <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
+  </View>
+);
+
+const EmptySection = ({ text }) => (
+  <View style={styles.emptySection}>
+    <Text style={styles.emptySectionText}>{text}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -397,173 +411,195 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  loadingContainer: {
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  centeredState: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+  centeredText: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
+    marginTop: SPACING.md,
   },
-  emptyContainer: {
+  centeredButton: {
+    marginTop: SPACING.lg,
+    minWidth: 160,
+  },
+  identity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  identityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  identityText: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    minWidth: 0,
   },
-  emptyText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: COLORS.textSecondary,
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
   },
-  backButton: {
-    marginTop: 24,
-    width: 200,
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
   },
   section: {
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
-  headerRow: {
+  dangerSection: {
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
+    borderColor: COLORS.dangerSoft,
+  },
+  sectionHeader: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  headerLeft: {
-    flex: 1,
-  },
-  modelName: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 8,
-  },
-  sourceBadge: {
-    alignSelf: 'flex-start',
-  },
-  detailItem: {
-    marginBottom: 16,
-  },
-  detailLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  detailValue: {
-    fontSize: 16,
-    color: COLORS.text,
-    lineHeight: 24,
-  },
-  detailsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginTop: 8,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  detailItemHalf: {
-    width: '50%',
-    marginBottom: 16,
-    paddingRight: 8,
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 16,
+  },
+  sectionCount: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  description: {
+    ...TYPOGRAPHY.body,
+    color: COLORS.textSecondary,
+  },
+  summaryGrid: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+  },
+  summaryTile: {
+    flex: 1,
+    minWidth: 0,
+    padding: SPACING.sm,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  summaryLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+    marginTop: SPACING.xs,
+  },
+  summaryValue: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.text,
+    marginTop: 2,
+  },
+  gallery: {
+    gap: SPACING.md,
   },
   imageCard: {
-    width: 140,
-    marginRight: 12,
+    width: 168,
   },
   galleryImage: {
-    width: 140,
-    height: 120,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
+    width: 168,
+    height: 138,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
   },
-  galleryPlaceholder: {
-    width: 140,
-    height: 120,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
+  galleryFallback: {
+    width: 168,
+    height: 138,
+    borderRadius: RADIUS.md,
     alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceMuted,
   },
   imageLabel: {
-    marginTop: 6,
-    fontSize: 12,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-  },
-  emptySectionText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
+    marginTop: SPACING.sm,
   },
   fileItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   fileIcon: {
     width: 38,
     height: 38,
-    borderRadius: 8,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
+    borderRadius: RADIUS.md,
     alignItems: 'center',
-    marginRight: 12,
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
   },
   fileInfo: {
     flex: 1,
+    minWidth: 0,
   },
   fileName: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
   },
   fileMeta: {
-    fontSize: 12,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
-    marginTop: 4,
+    marginTop: 2,
   },
   optionRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    marginBottom: 8,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   optionButton: {
+    minHeight: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADIUS.pill,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginRight: 8,
-    marginBottom: 8,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.surfaceMuted,
   },
   optionButtonActive: {
     borderColor: COLORS.primary,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.primarySoft,
   },
   optionText: {
-    fontSize: 14,
-    color: COLORS.text,
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
   },
   optionTextActive: {
-    color: COLORS.background,
-    fontWeight: '600',
+    color: COLORS.primary,
   },
-  actionButton: {
-    marginBottom: 12,
+  actionStack: {
+    gap: SPACING.sm,
   },
-  deleteButton: {
-    marginTop: 0,
+  emptySection: {
+    minHeight: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  emptySectionText: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.textSecondary,
   },
 });
 

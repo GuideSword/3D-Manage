@@ -1,19 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  SafeAreaView,
-  TouchableOpacity,
   ActivityIndicator,
   Alert,
   RefreshControl,
+  SafeAreaView,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, ORDER_STATUSES, ORDER_STATUS_LABELS, ORDER_STATUS_COLORS, ROUTES } from '../constants';
-import { Card, Button, Badge } from '../components';
-import { ordersAPI, isAuthRequiredError } from '../utils/api';
+import {
+  COLORS,
+  ORDER_STATUS_COLORS,
+  ORDER_STATUS_LABELS,
+  ORDER_STATUSES,
+  RADIUS,
+  SPACING,
+  TYPOGRAPHY,
+} from '../constants';
+import { Badge, Button, Card } from '../components';
+import { isAuthRequiredError, ordersAPI } from '../utils/api';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { orderId } = route.params;
@@ -22,7 +29,6 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
 
-  // 获取订单详情
   const fetchOrderDetail = async () => {
     try {
       setLoading(true);
@@ -40,14 +46,12 @@ const OrderDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  // 更新订单状态
   const handleStatusUpdate = (newStatus) => {
-    const currentStatus = order.status;
     const statusLabel = ORDER_STATUS_LABELS[newStatus];
 
     Alert.alert(
       '确认操作',
-      `确定要将订单状态更新为"${statusLabel}"吗？`,
+      `确定要将订单状态更新为“${statusLabel}”吗？`,
       [
         { text: '取消', style: 'cancel' },
         {
@@ -72,7 +76,6 @@ const OrderDetailScreen = ({ route, navigation }) => {
     );
   };
 
-  // 删除订单
   const handleDelete = () => {
     Alert.alert(
       '确认删除',
@@ -86,10 +89,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
             try {
               await ordersAPI.delete(orderId);
               Alert.alert('成功', '订单已删除', [
-                {
-                  text: '确定',
-                  onPress: () => navigation.goBack(),
-                },
+                { text: '确定', onPress: () => navigation.goBack() },
               ]);
             } catch (error) {
               if (isAuthRequiredError(error)) {
@@ -113,141 +113,108 @@ const OrderDetailScreen = ({ route, navigation }) => {
   };
 
   if (loading && !order) {
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
-          <Text style={styles.loadingText}>加载中...</Text>
-        </View>
-      </SafeAreaView>
-    );
+    return <CenteredState icon="receipt-outline" text="加载订单中..." loading />;
   }
 
   if (!order) {
     return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="document-text-outline" size={64} color={COLORS.textSecondary} />
-          <Text style={styles.emptyText}>订单不存在</Text>
-          <Button title="返回" onPress={() => navigation.goBack()} style={styles.backButton} />
-        </View>
-      </SafeAreaView>
+      <CenteredState
+        icon="document-text-outline"
+        text="订单不存在"
+        actionLabel="返回"
+        onAction={() => navigation.goBack()}
+      />
     );
   }
 
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
   const attachments = order.attachments || [];
-  const total = order.total || 0;
+  const total = Number(order.total || 0);
   const currency = order.currency || 'CNY';
-
-  // 根据当前状态获取可执行的操作
-  const getAvailableActions = () => {
-    const actions = [];
-    const currentStatus = order.status;
-
-    if (currentStatus === ORDER_STATUSES.DRAFT) {
-      actions.push({ label: '提交审核', status: ORDER_STATUSES.PENDING_REVIEW, color: COLORS.warning });
-    }
-    if (currentStatus === ORDER_STATUSES.PENDING_REVIEW) {
-      actions.push({ label: '开始执行', status: ORDER_STATUSES.IN_PROGRESS, color: COLORS.primary });
-    }
-    // 执行中的订单可以标记为完成
-    if (currentStatus === ORDER_STATUSES.IN_PROGRESS) {
-      actions.push({ label: '标记完成', status: ORDER_STATUSES.COMPLETED, color: COLORS.success });
-    }
-    // 非终态订单可以取消
-    if (currentStatus !== ORDER_STATUSES.COMPLETED && currentStatus !== ORDER_STATUSES.CANCELLED) {
-      actions.push({ label: '取消订单', status: ORDER_STATUSES.CANCELLED, color: COLORS.danger });
-    }
-
-    return actions;
-  };
-
-  const availableActions = getAvailableActions();
+  const statusColor = ORDER_STATUS_COLORS[order.status] || COLORS.textSecondary;
+  const availableActions = getAvailableActions(order.status);
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView
         style={styles.scrollView}
-        refreshControl={
+        contentContainerStyle={styles.content}
+        refreshControl={(
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
-        }
+        )}
       >
-        {/* 订单基本信息 */}
+        <View style={styles.identity}>
+          <View style={styles.identityIcon}>
+            <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+          </View>
+          <View style={styles.identityText}>
+            <Text style={styles.eyebrow}>订单 #{order.id}</Text>
+            <Text style={styles.title} numberOfLines={1}>{customerName}</Text>
+          </View>
+          <Badge
+            text={ORDER_STATUS_LABELS[order.status] || '未知'}
+            color={statusColor}
+            size="small"
+          />
+        </View>
+
         <Card style={styles.section}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={styles.orderId}>订单 #{order.id}</Text>
-              <Text style={styles.customerName}>{customerName}</Text>
-            </View>
-            <Badge
-              text={ORDER_STATUS_LABELS[order.status] || '未知'}
-              color={ORDER_STATUS_COLORS[order.status] || COLORS.textSecondary}
-            />
-          </View>
-
-          <View style={styles.infoRow}>
-            <View style={styles.infoItem}>
-              <Text style={styles.infoLabel}>创建时间</Text>
-              <Text style={styles.infoValue}>{order.createdAt || '未知'}</Text>
-            </View>
-            {order.dueDate && (
-              <View style={styles.infoItem}>
-                <Text style={styles.infoLabel}>截止日期</Text>
-                <Text style={styles.infoValue}>{order.dueDate}</Text>
-              </View>
-            )}
-          </View>
-
-          <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>订单总额</Text>
-            <Text style={styles.totalAmount}>
-              {currency} {total.toFixed(2)}
-            </Text>
+          <View style={styles.summaryGrid}>
+            <SummaryTile label="订单总额" value={`${currency} ${total.toFixed(2)}`} highlight />
+            <SummaryTile label="创建时间" value={order.createdAt || order.created_at || '未知'} />
+            <SummaryTile label="交付日期" value={order.dueDate || order.due_date || '未设置'} />
           </View>
         </Card>
 
-        {/* 订单项 */}
         <Card style={styles.section}>
-          <Text style={styles.sectionTitle}>订单项目</Text>
-          {orderItems.length > 0 ? (
-            orderItems.map((item, index) => (
+          <SectionHeader title="订单项目" count={orderItems.length} />
+          {orderItems.length > 0 ? orderItems.map((item, index) => {
+            const quantity = item.quantity || item.qty || 0;
+            const unitPrice = item.unitPrice || item.unit_price || 0;
+            const itemTotal = quantity * unitPrice;
+            return (
               <View key={item.id || index} style={styles.orderItem}>
                 <View style={styles.orderItemLeft}>
-                  <Text style={styles.orderItemName}>
-                    {item.modelName || item.model_name || '未知模型'} - {item.materialType || item.material_type || '未知材质'} - {item.color || '未知颜色'}
+                  <Text style={styles.orderItemName} numberOfLines={2}>
+                    {item.modelName || item.model_name || '未知模型'}
+                  </Text>
+                  <Text style={styles.orderItemSpec} numberOfLines={1}>
+                    {item.materialType || item.material_type || '未知材质'} · {item.color || '未知颜色'}
                   </Text>
                   <Text style={styles.orderItemSpec}>
-                    数量: {item.quantity || item.qty || 0} × {currency} {(item.unitPrice || item.unit_price || 0).toFixed(2)}
+                    数量 {quantity} · 单价 {currency} {Number(unitPrice).toFixed(2)}
                   </Text>
                 </View>
                 <Text style={styles.orderItemTotal}>
-                  {currency} {((item.quantity || item.qty || 0) * (item.unitPrice || item.unit_price || 0)).toFixed(2)}
+                  {currency} {Number(itemTotal).toFixed(2)}
                 </Text>
               </View>
-            ))
-          ) : (
-            <Text style={styles.emptyText}>暂无订单项</Text>
+            );
+          }) : (
+            <EmptySection text="暂无订单项目" />
           )}
         </Card>
 
-        {/* 备注信息 */}
-        {order.notes && (
+        {order.notes ? (
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>备注</Text>
+            <SectionHeader title="备注" />
             <Text style={styles.notesText}>{order.notes}</Text>
           </Card>
-        )}
+        ) : null}
 
-        {attachments.length > 0 && (
+        {attachments.length > 0 ? (
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>附件</Text>
+            <SectionHeader title="附件" count={attachments.length} />
             {attachments.map((attachment, index) => (
               <View key={attachment.fileKey || index} style={styles.attachmentItem}>
-                <Ionicons name="attach-outline" size={18} color={COLORS.primary} />
+                <View style={styles.attachmentIcon}>
+                  <Ionicons name="attach-outline" size={18} color={COLORS.primary} />
+                </View>
                 <View style={styles.attachmentTextGroup}>
-                  <Text style={styles.attachmentName}>{attachment.originalName || attachment.fileKey}</Text>
+                  <Text style={styles.attachmentName} numberOfLines={1}>
+                    {attachment.originalName || attachment.fileKey}
+                  </Text>
                   {attachment.size ? (
                     <Text style={styles.attachmentMeta}>{Math.round(attachment.size / 1024)} KB</Text>
                   ) : null}
@@ -255,39 +222,119 @@ const OrderDetailScreen = ({ route, navigation }) => {
               </View>
             ))}
           </Card>
-        )}
+        ) : null}
 
-        {/* 操作按钮 */}
-        {availableActions.length > 0 && (
+        {availableActions.length > 0 ? (
           <Card style={styles.section}>
-            <Text style={styles.sectionTitle}>操作</Text>
-            {availableActions.map((action, index) => (
-              <Button
-                key={index}
-                title={action.label}
-                onPress={() => handleStatusUpdate(action.status)}
-                variant={action.color === COLORS.danger ? 'danger' : 'primary'}
-                style={styles.actionButton}
-                disabled={updating}
-                loading={updating}
-              />
-            ))}
+            <SectionHeader title="状态操作" />
+            <View style={styles.actionStack}>
+              {availableActions.map((action) => (
+                <Button
+                  key={action.status}
+                  title={action.label}
+                  iconLeft={action.icon}
+                  onPress={() => handleStatusUpdate(action.status)}
+                  variant={action.variant}
+                  disabled={updating}
+                  loading={updating}
+                  fullWidth
+                />
+              ))}
+            </View>
           </Card>
-        )}
+        ) : null}
 
-        {/* 删除按钮 */}
-        <Card style={styles.section}>
+        <Card style={styles.dangerSection}>
+          <SectionHeader title="危险操作" />
           <Button
             title="删除订单"
+            iconLeft="trash-outline"
             onPress={handleDelete}
             variant="danger"
-            style={styles.deleteButton}
+            fullWidth
           />
         </Card>
       </ScrollView>
     </SafeAreaView>
   );
 };
+
+const getAvailableActions = (currentStatus) => {
+  const actions = [];
+  if (currentStatus === ORDER_STATUSES.DRAFT) {
+    actions.push({
+      label: '提交审核',
+      status: ORDER_STATUSES.PENDING_REVIEW,
+      variant: 'warning',
+      icon: 'send-outline',
+    });
+  }
+  if (currentStatus === ORDER_STATUSES.PENDING_REVIEW) {
+    actions.push({
+      label: '开始执行',
+      status: ORDER_STATUSES.IN_PROGRESS,
+      variant: 'primary',
+      icon: 'play-outline',
+    });
+  }
+  if (currentStatus === ORDER_STATUSES.IN_PROGRESS) {
+    actions.push({
+      label: '标记完成',
+      status: ORDER_STATUSES.COMPLETED,
+      variant: 'success',
+      icon: 'checkmark-outline',
+    });
+  }
+  if (currentStatus !== ORDER_STATUSES.COMPLETED && currentStatus !== ORDER_STATUSES.CANCELLED) {
+    actions.push({
+      label: '取消订单',
+      status: ORDER_STATUSES.CANCELLED,
+      variant: 'danger',
+      icon: 'close-outline',
+    });
+  }
+  return actions;
+};
+
+const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => (
+  <SafeAreaView style={styles.container}>
+    <View style={styles.centeredState}>
+      {loading ? (
+        <ActivityIndicator size="large" color={COLORS.primary} />
+      ) : (
+        <Ionicons name={icon} size={54} color={COLORS.textTertiary} />
+      )}
+      <Text style={styles.centeredText}>{text}</Text>
+      {actionLabel ? (
+        <Button title={actionLabel} onPress={onAction} style={styles.centeredButton} />
+      ) : null}
+    </View>
+  </SafeAreaView>
+);
+
+const SectionHeader = ({ title, count }) => (
+  <View style={styles.sectionHeader}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    {typeof count === 'number' ? (
+      <Text style={styles.sectionCount}>{count}</Text>
+    ) : null}
+  </View>
+);
+
+const SummaryTile = ({ label, value, highlight = false }) => (
+  <View style={[styles.summaryTile, highlight && styles.summaryTileHighlight]}>
+    <Text style={styles.summaryLabel}>{label}</Text>
+    <Text style={[styles.summaryValue, highlight && styles.summaryValueHighlight]} numberOfLines={1}>
+      {value}
+    </Text>
+  </View>
+);
+
+const EmptySection = ({ text }) => (
+  <View style={styles.emptySection}>
+    <Text style={styles.emptySectionText}>{text}</Text>
+  </View>
+);
 
 const styles = StyleSheet.create({
   container: {
@@ -297,154 +344,174 @@ const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
   },
-  loadingContainer: {
+  content: {
+    padding: SPACING.lg,
+    paddingBottom: SPACING.xxl,
+  },
+  centeredState: {
     flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 16,
+  centeredText: {
+    ...TYPOGRAPHY.meta,
     color: COLORS.textSecondary,
+    marginTop: SPACING.md,
   },
-  emptyContainer: {
+  centeredButton: {
+    marginTop: SPACING.lg,
+    minWidth: 160,
+  },
+  identity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.lg,
+  },
+  identityIcon: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
+  identityText: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
+    minWidth: 0,
   },
-  emptyText: {
-    marginTop: 16,
-    fontSize: 16,
-    color: COLORS.textSecondary,
+  eyebrow: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.primary,
+    marginBottom: 2,
   },
-  backButton: {
-    marginTop: 24,
-    width: 200,
+  title: {
+    ...TYPOGRAPHY.screenTitle,
+    color: COLORS.text,
   },
   section: {
-    margin: 16,
-    padding: 16,
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
   },
-  headerRow: {
+  dangerSection: {
+    marginHorizontal: 0,
+    marginBottom: SPACING.md,
+    borderColor: COLORS.dangerSoft,
+  },
+  sectionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  orderId: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.text,
-    marginBottom: 4,
-  },
-  customerName: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  infoItem: {
-    flex: 1,
-  },
-  infoLabel: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    marginBottom: 4,
-  },
-  infoValue: {
-    fontSize: 16,
-    color: COLORS.text,
-    fontWeight: '500',
-  },
-  totalRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  totalLabel: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  totalAmount: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: COLORS.primary,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    ...TYPOGRAPHY.sectionTitle,
     color: COLORS.text,
-    marginBottom: 16,
+  },
+  sectionCount: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+  },
+  summaryGrid: {
+    gap: SPACING.sm,
+  },
+  summaryTile: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  summaryTileHighlight: {
+    backgroundColor: COLORS.primarySoft,
+  },
+  summaryLabel: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textTertiary,
+  },
+  summaryValue: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.text,
+    marginTop: 2,
+  },
+  summaryValueHighlight: {
+    color: COLORS.primaryDark,
+    fontSize: 18,
+    lineHeight: 24,
+    fontWeight: '800',
   },
   orderItem: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 12,
+    alignItems: 'flex-start',
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
   orderItemLeft: {
     flex: 1,
+    minWidth: 0,
   },
   orderItemName: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: '700',
     color: COLORS.text,
-    marginBottom: 4,
   },
   orderItemSpec: {
-    fontSize: 14,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
+    marginTop: 3,
   },
   orderItemTotal: {
-    fontSize: 16,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
   },
   notesText: {
-    fontSize: 16,
+    ...TYPOGRAPHY.body,
     color: COLORS.text,
-    lineHeight: 24,
   },
   attachmentItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    gap: SPACING.md,
+    paddingVertical: SPACING.md,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
+  attachmentIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: RADIUS.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.primarySoft,
+  },
   attachmentTextGroup: {
     flex: 1,
-    marginLeft: 8,
+    minWidth: 0,
   },
   attachmentName: {
-    fontSize: 15,
-    fontWeight: '600',
+    ...TYPOGRAPHY.meta,
     color: COLORS.text,
   },
   attachmentMeta: {
-    fontSize: 13,
+    ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
     marginTop: 2,
   },
-  actionButton: {
-    marginTop: 12,
+  actionStack: {
+    gap: SPACING.sm,
   },
-  deleteButton: {
-    marginTop: 0,
+  emptySection: {
+    minHeight: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+  },
+  emptySectionText: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.textSecondary,
   },
 });
 
