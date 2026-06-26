@@ -89,6 +89,62 @@ const buildQuery = (params = {}) => {
   return new URLSearchParams(filteredParams).toString();
 };
 
+export const buildFileUrl = (fileUrl = '') => {
+  if (!fileUrl) {
+    return '';
+  }
+  if (String(fileUrl).startsWith('http')) {
+    return fileUrl;
+  }
+  const apiRoot = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
+  return `${String(fileUrl).startsWith('/api') ? apiRoot : API_CONFIG.BASE_URL}${fileUrl}`;
+};
+
+const downloadProtectedFile = async ({ fileUrl, filename }) => {
+  const token = await getAuthToken();
+  const url = buildFileUrl(fileUrl);
+  if (!url) {
+    throw new Error('文件地址不存在');
+  }
+
+  const response = await fetch(url, {
+    headers: {
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+    const error = new Error(errorData.error || `HTTP ${response.status}`);
+    error.status = response.status;
+    error.data = errorData;
+    if (response.status === 401) {
+      error.authRequired = true;
+      await clearAuthToken();
+      if (unauthorizedHandler) {
+        unauthorizedHandler();
+      }
+    }
+    throw error;
+  }
+
+  const blob = await response.blob();
+  if (typeof window === 'undefined' || !window.URL || !window.document) {
+    throw new Error('当前平台暂不支持直接下载，请在 Web 端操作');
+  }
+
+  const objectUrl = window.URL.createObjectURL(blob);
+  const anchor = window.document.createElement('a');
+  anchor.href = objectUrl;
+  anchor.download = filename || 'download';
+  anchor.style.display = 'none';
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+  return true;
+};
+
 export const authAPI = {
   getToken: async () => getAuthToken(),
 
@@ -271,6 +327,11 @@ export const modelsAPI = {
     }
     return modelsAPI.uploadModelFile(metadata.assetId, file);
   },
+
+  downloadFile: async (file) => downloadProtectedFile({
+    fileUrl: file?.fileUrl,
+    filename: file?.name,
+  }),
 };
 
 // 材质API

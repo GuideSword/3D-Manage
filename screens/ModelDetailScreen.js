@@ -63,6 +63,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const [deleting, setDeleting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [downloadingFileId, setDownloadingFileId] = useState(null);
   const [imageType, setImageType] = useState('cover');
   const [authToken, setAuthToken] = useState(null);
 
@@ -202,6 +203,20 @@ const ModelDetailScreen = ({ route, navigation }) => {
     }
   };
 
+  const handleDownloadFile = async (file) => {
+    try {
+      setDownloadingFileId(file.id);
+      await modelsAPI.downloadFile(file);
+    } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
+      Alert.alert('错误', error.message || '下载模型文件失败');
+    } finally {
+      setDownloadingFileId(null);
+    }
+  };
+
   if (loading && !model) {
     return <CenteredState icon="cube-outline" text="加载模型中..." loading />;
   }
@@ -295,6 +310,16 @@ const ModelDetailScreen = ({ route, navigation }) => {
                   {String(file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
                 </Text>
               </View>
+              <Button
+                title="下载"
+                iconLeft="download-outline"
+                size="small"
+                variant="outline"
+                onPress={() => handleDownloadFile(file)}
+                loading={downloadingFileId === file.id}
+                disabled={Boolean(downloadingFileId)}
+                style={styles.downloadButton}
+              />
             </View>
           )) : (
             <EmptySection text="暂无模型文件" />
@@ -559,6 +584,9 @@ const styles = StyleSheet.create({
     ...TYPOGRAPHY.caption,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  downloadButton: {
+    minWidth: 88,
   },
   optionRow: {
     flexDirection: 'row',
