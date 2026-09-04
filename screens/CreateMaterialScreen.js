@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  Platform,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -90,6 +91,11 @@ const CreateMaterialScreen = ({ navigation }) => {
 
       const newMaterial = await materialsAPI.create(materialData);
 
+      if (Platform.OS === 'web') {
+        navigation.replace(ROUTES.MATERIAL_DETAIL, { materialId: newMaterial.id });
+        return;
+      }
+
       Alert.alert(
         '成功',
         '耗材创建成功',
@@ -108,7 +114,10 @@ const CreateMaterialScreen = ({ navigation }) => {
         return;
       }
       console.error('创建耗材失败:', error);
-      Alert.alert('错误', '创建耗材失败，请检查网络连接或稍后重试');
+      const message = error?.message
+        ? `创建耗材失败：${error.message}`
+        : '创建耗材失败，请检查网络连接或稍后重试';
+      Alert.alert('错误', message);
     } finally {
       setLoading(false);
     }

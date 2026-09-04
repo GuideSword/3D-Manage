@@ -39,3 +39,7 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# deployment artifacts (build these on demand, don't commit)
+/backend-deploy.tar.gz
+

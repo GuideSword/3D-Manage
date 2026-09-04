@@ -15,6 +15,13 @@ const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg']);
 
 const getExtension = (filename = '') => path.extname(filename).toLowerCase();
 
+const isTruthyEnv = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
+
+const shouldSkipWindowsShellThumbnail = () => (
+  process.env.NODE_ENV === 'test'
+  || isTruthyEnv(process.env.SKIP_WINDOWS_SHELL_THUMBNAIL)
+);
+
 const getImageExtensionFromBuffer = (buffer) => {
   if (!buffer || buffer.length < 8) {
     return null;
@@ -211,7 +218,7 @@ Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing
 `;
 
 const tryWindowsShellThumbnail = async (fullPath) => {
-  if (process.platform !== 'win32' || !fullPath) {
+  if (process.platform !== 'win32' || !fullPath || shouldSkipWindowsShellThumbnail()) {
     return null;
   }
 

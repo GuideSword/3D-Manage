@@ -22,6 +22,11 @@ import {
 import { Button, Card, Input, Picker } from '../components';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
+const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
+  value,
+  label: `${value}g`,
+}));
+
 const InboundTransactionScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
@@ -265,6 +270,13 @@ const InboundTransactionScreen = ({ navigation }) => {
             value={formData.qty}
             onChangeText={(text) => setFormData((prev) => ({ ...prev, qty: text }))}
             keyboardType="decimal-pad"
+          />
+          <Picker
+            label="快捷档位"
+            placeholder="请选择常用入库数量"
+            value={QUANTITY_PRESET_OPTIONS.some((option) => option.value === formData.qty) ? formData.qty : ''}
+            onValueChange={(value) => setFormData((prev) => ({ ...prev, qty: value }))}
+            options={QUANTITY_PRESET_OPTIONS}
           />
           <Input
             label="备注"

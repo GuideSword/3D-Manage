@@ -7,6 +7,8 @@ process.env.DATA_DIR = path.join(tempDir, 'data');
 process.env.UPLOAD_DIR = path.join(tempDir, 'uploads');
 process.env.JWT_SECRET = 'verify-secret';
 process.env.STORE_DRIVER = 'file';
+process.env.NODE_ENV = 'test';
+process.env.SKIP_WINDOWS_SHELL_THUMBNAIL = '1';
 
 const app = require('../server');
 
