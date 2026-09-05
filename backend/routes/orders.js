@@ -21,12 +21,18 @@ const upload = multer({
   },
 });
 
+// 订单状态转换规则
+// - 正向流程：draft → pending_review → in_progress → completed
+// - 任意非终态可转入 cancelled
+// - 退级（往回到前面的阶段）允许，但前端必须先弹确认
+// - completed 可重新打开（回到 in_progress / pending_review / draft），也可作废为 cancelled
+// - cancelled 可通过"恢复"动作回到 draft（前端有独立的恢复入口和确认）
 const allowedTransitions = {
   draft: ['pending_review', 'cancelled'],
-  pending_review: ['in_progress', 'cancelled'],
-  in_progress: ['completed', 'cancelled'],
-  completed: [],
-  cancelled: [],
+  pending_review: ['in_progress', 'cancelled', 'draft'],
+  in_progress: ['completed', 'cancelled', 'pending_review', 'draft'],
+  completed: ['in_progress', 'pending_review', 'draft', 'cancelled'],
+  cancelled: ['draft'],
 };
 
 const toNumber = (value, fallback = 0) => {

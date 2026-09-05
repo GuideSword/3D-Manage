@@ -21,6 +21,7 @@ import {
 } from '../constants';
 import { Badge, Button, Card } from '../components';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
+import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { orderId } = route.params;
@@ -67,6 +68,43 @@ const OrderDetailScreen = ({ route, navigation }) => {
                 return;
               }
               Alert.alert('错误', '更新订单状态失败');
+            } finally {
+              setUpdating(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRestore = () => {
+    if (!order) {
+      return;
+    }
+    const target = getRestoreTarget(order.status);
+    if (!target) {
+      return;
+    }
+    const targetLabel = ORDER_STATUS_LABELS[target] || '草稿';
+    Alert.alert(
+      '恢复订单',
+      `将该订单恢复为“${targetLabel}”状态后，需要重新走完整流程。\n\n确定要恢复吗？`,
+      [
+        { text: '取消', style: 'cancel' },
+        {
+          text: '恢复',
+          onPress: async () => {
+            try {
+              setUpdating(true);
+              await ordersAPI.updateStatus(orderId, target);
+              Alert.alert('成功', `订单已恢复为"${targetLabel}"`, [
+                { text: '确定', onPress: () => fetchOrderDetail() },
+              ]);
+            } catch (error) {
+              if (isAuthRequiredError(error)) {
+                return;
+              }
+              Alert.alert('错误', '恢复订单失败');
             } finally {
               setUpdating(false);
             }
@@ -221,6 +259,27 @@ const OrderDetailScreen = ({ route, navigation }) => {
                 </View>
               </View>
             ))}
+          </Card>
+        ) : null}
+
+        {isRestorable(order.status) ? (
+          <Card style={styles.section}>
+            <SectionHeader title="回收站操作" />
+            <View style={styles.restoreNotice}>
+              <Ionicons name="trash-outline" size={18} color={COLORS.textSecondary} />
+              <Text style={styles.restoreNoticeText}>
+                该订单当前处于已取消状态（类似回收站）。可以恢复为草稿重新走流程，或在下方彻底删除。
+              </Text>
+            </View>
+            <Button
+              title={`恢复为${ORDER_STATUS_LABELS[getRestoreTarget(order.status)] || '草稿'}`}
+              iconLeft="refresh-outline"
+              onPress={handleRestore}
+              variant="primary"
+              disabled={updating}
+              loading={updating}
+              fullWidth
+            />
           </Card>
         ) : null}
 
@@ -501,6 +560,21 @@ const styles = StyleSheet.create({
   },
   actionStack: {
     gap: SPACING.sm,
+  },
+  restoreNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: COLORS.surfaceMuted,
+    marginBottom: SPACING.md,
+  },
+  restoreNoticeText: {
+    flex: 1,
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    lineHeight: 18,
   },
   emptySection: {
     minHeight: 72,

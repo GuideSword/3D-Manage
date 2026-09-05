@@ -22,8 +22,9 @@ import {
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Button, Card } from '../components';
+import { Badge, Button, Card, StatusActionSheet } from '../components';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
+import { isRestorable, isTerminalStatus } from '../utils/orderStatus';
 
 const OrdersScreen = ({ navigation, route }) => {
   const [orders, setOrders] = useState([]);
@@ -34,6 +35,8 @@ const OrdersScreen = ({ navigation, route }) => {
   const [showSearch, setShowSearch] = useState(false);
   const [showFilter, setShowFilter] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [statusSheetOrder, setStatusSheetOrder] = useState(null);
 
   const fetchOrders = async () => {
     try {
@@ -87,6 +90,45 @@ const OrdersScreen = ({ navigation, route }) => {
         },
       ]
     );
+  };
+
+  const handleStatusChange = async (orderId, newStatus) => {
+    if (updatingId) {
+      return;
+    }
+    setStatusSheetOrder(null);
+    try {
+      setUpdatingId(orderId);
+      await ordersAPI.updateStatus(orderId, newStatus);
+      setOrders((prev) => prev.map((item) => (
+        item.id === orderId ? { ...item, status: newStatus } : item
+      )));
+    } catch (error) {
+      if (isAuthRequiredError(error)) {
+        return;
+      }
+      Alert.alert('错误', '修改订单状态失败');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const showStatusPicker = (order) => {
+    if (!order) {
+      return;
+    }
+    if (updatingId || deletingId) {
+      Alert.alert('提示', '当前有订单正在处理中，请稍候再试');
+      return;
+    }
+    setStatusSheetOrder(order);
+  };
+
+  const closeStatusSheet = () => {
+    if (updatingId) {
+      return;
+    }
+    setStatusSheetOrder(null);
   };
 
   const onRefresh = async () => {
@@ -187,7 +229,9 @@ const OrdersScreen = ({ navigation, route }) => {
               order={item}
               navigation={navigation}
               deletingId={deletingId}
+              updatingId={updatingId}
               onDelete={handleDelete}
+              onLongPress={showStatusPicker}
             />
           )}
           refreshControl={(
@@ -221,6 +265,15 @@ const OrdersScreen = ({ navigation, route }) => {
           )}
         />
       )}
+      <StatusActionSheet
+        visible={Boolean(statusSheetOrder)}
+        order={statusSheetOrder}
+        mode={isRestorable(statusSheetOrder?.status) ? 'restore' : 'status'}
+        busy={Boolean(updatingId)}
+        onSelect={(status) => handleStatusChange(statusSheetOrder.id, status)}
+        onConfirmRestore={(status) => handleStatusChange(statusSheetOrder.id, status)}
+        onClose={closeStatusSheet}
+      />
     </SafeAreaView>
   );
 };
@@ -250,16 +303,27 @@ const FilterChip = ({ label, active, color = COLORS.primary, onPress }) => (
   </TouchableOpacity>
 );
 
-const OrderCard = ({ order, navigation, deletingId, onDelete }) => {
+const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress }) => {
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
   const statusColor = ORDER_STATUS_COLORS[order.status] || COLORS.textSecondary;
   const statusLabel = ORDER_STATUS_LABELS[order.status] || '未知';
+  const isUpdating = updatingId === order.id;
+  const isDeleting = deletingId === order.id;
+  const isBusy = isUpdating || isDeleting;
+  const longPressEnabled = !isTerminalStatus(order.status);
 
   return (
     <TouchableOpacity
       activeOpacity={0.84}
-      onPress={() => navigation.navigate(ROUTES.ORDER_DETAIL, { orderId: order.id })}
+      onPress={() => {
+        if (isBusy) {
+          return;
+        }
+        navigation.navigate(ROUTES.ORDER_DETAIL, { orderId: order.id });
+      }}
+      onLongPress={longPressEnabled ? () => onLongPress?.(order) : undefined}
+      delayLongPress={420}
     >
       <Card style={styles.orderCard} interactive>
         <View style={styles.orderHeader}>
@@ -268,16 +332,25 @@ const OrderCard = ({ order, navigation, deletingId, onDelete }) => {
             <Text style={styles.orderId}>订单 #{order.id}</Text>
           </View>
           <View style={styles.headerRight}>
-            <Badge text={statusLabel} color={statusColor} size="small" />
+            {isUpdating ? (
+              <View style={styles.statusUpdating}>
+                <ActivityIndicator size="small" color={statusColor} />
+              </View>
+            ) : (
+              <Badge text={statusLabel} color={statusColor} size="small" />
+            )}
             <TouchableOpacity
               style={styles.deleteButton}
               onPress={(event) => {
                 event.stopPropagation?.();
                 onDelete(order.id);
               }}
-              disabled={deletingId === order.id}
+              onLongPress={(event) => {
+                event?.stopPropagation?.();
+              }}
+              disabled={isBusy}
             >
-              {deletingId === order.id ? (
+              {isDeleting ? (
                 <ActivityIndicator size="small" color={COLORS.danger} />
               ) : (
                 <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
@@ -503,6 +576,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.dangerSoft,
+  },
+  statusUpdating: {
+    minWidth: 60,
+    height: 26,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: RADIUS.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceMuted,
   },
   metaGrid: {
     flexDirection: 'row',
