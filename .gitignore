@@ -43,3 +43,10 @@ yarn-error.*
 # deployment artifacts (build these on demand, don't commit)
 /backend-deploy.tar.gz
 
+# scratch / temporary working files (do not commit)
+*.tmp
+*.removed
+_*.cjs.tmp
+_*.tmp
+_deprecated_*/
+
