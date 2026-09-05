@@ -1,6 +1,6 @@
 import React from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TabNavigator from './TabNavigator';
 import LoginScreen from '../screens/LoginScreen';
@@ -15,10 +15,16 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import OSSConfigScreen from '../screens/OSSConfigScreen';
 import DataImportScreen from '../screens/DataImportScreen';
+import AgentStack from './AgentStack';
 import { COLORS, ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
 
 const Stack = createNativeStackNavigator();
+
+// Navigation ref so the FAB (mounted outside NavigationContainer in App.js)
+// can dispatch navigation actions. isReady() guards against the early-render
+// window before the container has mounted.
+export const navigationRef = createNavigationContainerRef();
 
 const LoadingScreen = () => (
   <View style={styles.loadingContainer}>
@@ -30,7 +36,7 @@ const AppNavigator = () => {
   const { initializing, isAuthenticated } = useAuth();
 
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
@@ -109,6 +115,11 @@ const AppNavigator = () => {
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
               options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
+            />
+            <Stack.Screen
+              name={ROUTES.AGENT}
+              component={AgentStack}
+              options={{ headerShown: false, presentation: 'modal' }}
             />
           </>
         )}

@@ -154,7 +154,12 @@ export const UPLOAD_LIMITS = {
   URL_EXPIRY: 10 * 60 * 1000,
 };
 
-const PUBLIC_API_BASE_URL = 'http://101.37.28.116:3001/api';
+// API base URL 解析顺序：
+//   1. 环境变量 EXPO_PUBLIC_API_BASE_URL（部署到生产时显式指定）
+//   2. 开发模式且检测到 Expo 主机时，使用 LAN IP（手机/真机调试）
+//   3. 兜底为本地后端 http://localhost:5000/api
+// 不再硬编码任何远程服务器 IP —— 部署时通过环境变量注入。
+const DEFAULT_API_PORT = 5000;
 
 const getExpoHost = () => {
   const candidates = [
@@ -191,11 +196,11 @@ const getDefaultApiBaseUrl = () => {
   if (typeof __DEV__ !== 'undefined' && __DEV__) {
     const expoHost = getExpoHost();
     if (expoHost) {
-      return `http://${expoHost}:3001/api`;
+      return `http://${expoHost}:${DEFAULT_API_PORT}/api`;
     }
   }
 
-  return PUBLIC_API_BASE_URL;
+  return `http://localhost:${DEFAULT_API_PORT}/api`;
 };
 
 const DEFAULT_API_BASE_URL = getDefaultApiBaseUrl();
@@ -204,6 +209,17 @@ export const API_CONFIG = {
   BASE_URL: DEFAULT_API_BASE_URL,
   TIMEOUT: 30000,
 };
+
+if (typeof __DEV__ !== 'undefined' && __DEV__) {
+  const expoHost = getExpoHost();
+  const source = process.env?.EXPO_PUBLIC_API_BASE_URL
+    ? 'env:EXPO_PUBLIC_API_BASE_URL'
+    : (typeof expoHost === 'string' && expoHost)
+      ? `dev:expoHost(${expoHost}:${DEFAULT_API_PORT})`
+      : 'fallback:localhost';
+  // eslint-disable-next-line no-console
+  console.log(`[API] BASE_URL = ${DEFAULT_API_BASE_URL} (source=${source})`);
+}
 
 export const ROUTES = {
   HOME: 'Home',
@@ -221,6 +237,9 @@ export const ROUTES = {
   ADJUST_TRANSACTION: 'AdjustTransaction',
   OSS_CONFIG: 'OSSConfig',
   DATA_IMPORT: 'DataImport',
+  AGENT: 'Agent',
+  AGENT_CHAT: 'AgentChat',
+  AGENT_SETTINGS: 'AgentSettings',
 };
 
 export const SCREEN_TITLES = {
@@ -239,4 +258,7 @@ export const SCREEN_TITLES = {
   [ROUTES.ADJUST_TRANSACTION]: '库存盘点',
   [ROUTES.OSS_CONFIG]: 'OSS 配置',
   [ROUTES.DATA_IMPORT]: '数据导入',
+  [ROUTES.AGENT]: 'AI 助手',
+  [ROUTES.AGENT_CHAT]: 'AI 助手',
+  [ROUTES.AGENT_SETTINGS]: 'AI 服务设置',
 };

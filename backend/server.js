@@ -7,7 +7,7 @@ const { initStorage } = require('./config/storage');
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5000;
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -53,6 +53,7 @@ app.use('/api/materials', require('./routes/materials'));
 app.use('/api/stock', require('./routes/stock'));
 app.use('/api/files', require('./routes/files'));
 app.use('/api/oss', require('./routes/oss'));
+app.use('/api/agent', require('./routes/agent'));
 
 app.get('/', (req, res) => {
   res.json({
@@ -68,6 +69,7 @@ app.get('/', (req, res) => {
       '/api/stock',
       '/api/files',
       '/api/oss',
+      '/api/agent',
     ],
   });
 });
@@ -86,11 +88,28 @@ app.use((err, req, res, next) => {
 });
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
+  const HOST = process.env.HOST || '0.0.0.0';
+  const server = app.listen(PORT, HOST, () => {
+    console.log(`Server running on ${HOST}:${PORT}`);
     console.log(`Frontend CORS allowed: ${allowedOrigins.join(', ')}`);
   });
+  server.on('error', (err) => {
+    console.error('[server.listen error]', err);
+  });
 }
+
+process.on('uncaughtException', (err) => {
+  console.error('[uncaughtException]', err && err.stack || err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[unhandledRejection]', reason);
+});
+process.on('beforeExit', (code) => {
+  console.error('[beforeExit] event loop empty, code=' + code);
+});
+process.on('exit', (code) => {
+  console.error('[exit] code=' + code);
+});
 
 process.on('SIGTERM', () => {
   console.log('SIGTERM received, shutting down gracefully');
