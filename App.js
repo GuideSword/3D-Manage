@@ -4,6 +4,7 @@ import AppNavigator, { navigationRef } from './navigation/AppNavigator';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import DraggableFab from './components/agent/DraggableFab';
 import { ROUTES } from './constants';
+import { ThemeProvider, useAppTheme } from './context/ThemeContext';
 
 // Mounts the draggable FAB only when the user is authenticated.
 // The FAB lives OUTSIDE the NavigationContainer, so we use the navigation
@@ -24,12 +25,22 @@ function AuthenticatedFab() {
   return <DraggableFab onPress={handlePress} />;
 }
 
-export default function App() {
+function AppContent() {
+  const { isDark } = useAppTheme();
+
   return (
     <AuthProvider>
       <AppNavigator />
       <AuthenticatedFab />
-      <StatusBar style="auto" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
     </AuthProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

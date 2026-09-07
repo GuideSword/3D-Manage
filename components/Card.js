@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { COLORS, RADIUS, SHADOWS, SPACING } from '../constants';
+import { SPACING } from '../constants';
+import { useAppTheme } from '../context/ThemeContext';
 
 const paddingStyles = {
   none: { padding: 0 },
@@ -17,6 +18,9 @@ const Card = ({
   interactive = false,
   ...props
 }) => {
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
+
   return (
     <View
       style={[
@@ -33,32 +37,32 @@ const Card = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, shadows) => StyleSheet.create({
   card: {
-    borderRadius: RADIUS.md,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     marginVertical: SPACING.xs,
     marginHorizontal: SPACING.sm,
   },
   default: {
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
     ...Platform.select({
       web: {
-        boxShadow: '0 1px 3px rgba(15, 23, 42, 0.06)',
+        boxShadow: shadows.cardWeb,
       },
-      default: SHADOWS.card,
+      default: shadows.card,
     }),
   },
   muted: {
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   section: {
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
   },
   interactive: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.borderStrong,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -9,9 +9,10 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, ROLES, ROLE_LABELS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, ROLES, ROLE_LABELS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 const ROLE_OPTIONS = [ROLES.STAFF, ROLES.VIEWER].map((role) => ({
   value: role,
@@ -19,6 +20,8 @@ const ROLE_OPTIONS = [ROLES.STAFF, ROLES.VIEWER].map((role) => ({
 }));
 
 const LoginScreen = () => {
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const { signIn, register } = useAuth();
   const [loading, setLoading] = useState(false);
   const [authMode, setAuthMode] = useState('login');
@@ -85,7 +88,7 @@ const LoginScreen = () => {
         <View style={styles.shell}>
           <View style={styles.brandBlock}>
             <View style={styles.logoMark}>
-              <Ionicons name="cube" size={28} color={COLORS.surfaceElevated} />
+              <Ionicons name="paw" size={28} color={colors.onPrimary} />
             </View>
             <Text style={styles.eyebrow}>3D PRINT OPERATIONS</Text>
             <Text style={styles.title}>3D 打印管理系统</Text>
@@ -155,7 +158,7 @@ const LoginScreen = () => {
 
             {authMode === 'login' ? (
               <View style={styles.hintRow}>
-                <Ionicons name="key-outline" size={15} color={COLORS.textSecondary} />
+                <Ionicons name="key-outline" size={15} color={colors.textSecondary} />
                 <Text style={styles.hint}>
                   默认管理员：admin@example.com / Admin123456
                 </Text>
@@ -168,10 +171,10 @@ const LoginScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, shadows) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     flexGrow: 1,
@@ -192,23 +195,23 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     marginBottom: SPACING.lg,
-    ...SHADOWS.card,
+    ...shadows.card,
   },
   eyebrow: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
+    color: colors.primary,
     letterSpacing: 0,
     marginBottom: SPACING.xs,
   },
   title: {
     ...TYPOGRAPHY.screenTitle,
-    color: COLORS.text,
+    color: colors.text,
   },
   subtitle: {
     ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.sm,
   },
   card: {
@@ -219,7 +222,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.xs,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     marginBottom: SPACING.md,
   },
   modeButton: {
@@ -237,7 +240,7 @@ const styles = StyleSheet.create({
   },
   hint: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
 });
 

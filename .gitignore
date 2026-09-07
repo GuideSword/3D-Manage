@@ -44,6 +44,7 @@ yarn-error.*
 /backend-deploy.tar.gz
 
 # scratch / temporary working files (do not commit)
+.superpowers/
 *.tmp
 *.removed
 _*.cjs.tmp

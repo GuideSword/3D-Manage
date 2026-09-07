@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Platform,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import { useAppTheme } from '../../context/ThemeContext';
 
 // Draft confirmation card.
 //
@@ -19,6 +20,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 // either cancel or confirm-and-create.
 
 export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
+  const { colors, isDark } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [editing, setEditing] = useState(draft);
 
   // If the parent swaps in a new draft, reset local state.
@@ -71,18 +74,24 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
       <Text style={styles.title}>📝 抽取的订单草稿</Text>
 
       <Field
+        styles={styles}
+        colors={colors}
         label="客户名"
         value={editing.customer_name}
         onChange={(v) => update('customer_name', v)}
         required={isMissing('customer_name')}
       />
       <DateField
+        styles={styles}
+        isDark={isDark}
         label="交期"
         value={editing.due_date}
         onChange={(v) => update('due_date', v)}
         required={isMissing('due_date')}
       />
       <Field
+        styles={styles}
+        colors={colors}
         label="备注"
         value={editing.notes}
         onChange={(v) => update('notes', v)}
@@ -99,6 +108,7 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
               <Text style={styles.itemLabel}>材质</Text>
               <TextInput
                 style={styles.itemInput}
+                placeholderTextColor={colors.textTertiary}
                 value={item.material_type || ''}
                 onChangeText={(v) => updateItem(idx, 'material_type', v)}
               />
@@ -107,6 +117,7 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
               <Text style={styles.itemLabel}>数量</Text>
               <TextInput
                 style={styles.itemInput}
+                placeholderTextColor={colors.textTertiary}
                 value={item.qty != null ? String(item.qty) : ''}
                 onChangeText={(v) => updateItem(idx, 'qty', v)}
                 keyboardType="numeric"
@@ -116,6 +127,7 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
               <Text style={styles.itemLabel}>单价</Text>
               <TextInput
                 style={styles.itemInput}
+                placeholderTextColor={colors.textTertiary}
                 value={item.unit_price != null ? String(item.unit_price) : ''}
                 onChangeText={(v) => updateItem(idx, 'unit_price', v)}
                 keyboardType="numeric"
@@ -150,7 +162,7 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
   );
 }
 
-function Field({ label, value, onChange, required, placeholder, multiline }) {
+function Field({ label, value, onChange, required, placeholder, multiline, styles, colors }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>
@@ -166,6 +178,7 @@ function Field({ label, value, onChange, required, placeholder, multiline }) {
         value={value != null ? String(value) : ''}
         onChangeText={onChange}
         placeholder={required ? '必填' : placeholder || ''}
+        placeholderTextColor={colors.textTertiary}
         multiline={!!multiline}
       />
     </View>
@@ -175,7 +188,7 @@ function Field({ label, value, onChange, required, placeholder, multiline }) {
 // DateField — 看起来像 TextInput，但点击触发系统原生日期选择器
 //   - iOS 14+: 内嵌日历（display='inline'）+ 外部"完成"按钮
 //   - iOS 13 / Android: 弹窗式 picker，选完自动关闭
-function DateField({ label, value, onChange, required }) {
+function DateField({ label, value, onChange, required, styles, isDark }) {
   const [showPicker, setShowPicker] = useState(false);
 
   // 解析当前值；解析失败则 fallback 到今天
@@ -221,6 +234,7 @@ function DateField({ label, value, onChange, required }) {
             mode="date"
             display={Platform.OS === 'ios' ? 'inline' : 'default'}
             onChange={handleChange}
+            themeVariant={isDark ? 'dark' : 'light'}
           />
           {Platform.OS === 'ios' && (
             <TouchableOpacity
@@ -236,34 +250,35 @@ function DateField({ label, value, onChange, required }) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   card: {
-    backgroundColor: '#E8F5E9',
+    backgroundColor: colors.successSoft,
     marginHorizontal: 8,
     marginVertical: 6,
     padding: 12,
-    borderRadius: 10,
+    borderRadius: 18,
     borderWidth: 1,
-    borderColor: '#A5D6A7',
+    borderColor: colors.success,
   },
   title: {
     fontSize: 15,
     fontWeight: '600',
     marginBottom: 10,
-    color: '#2E7D32',
+    color: colors.success,
   },
   field: { marginBottom: 8 },
-  label: { fontSize: 12, color: '#555', marginBottom: 2 },
+  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 2 },
   input: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surfaceElevated,
+    color: colors.text,
     borderRadius: 6,
     paddingHorizontal: 8,
     paddingVertical: 6,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
   },
-  inputRequired: { borderColor: '#E53935' },
+  inputRequired: { borderColor: colors.danger },
   inputMultiline: { minHeight: 60, textAlignVertical: 'top' },
   // DateField specific
   dateTrigger: {
@@ -271,49 +286,50 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  dateText: { fontSize: 14, color: '#000', flex: 1 },
-  datePlaceholder: { fontSize: 14, color: '#9CA3AF', flex: 1 },
+  dateText: { fontSize: 14, color: colors.text, flex: 1 },
+  datePlaceholder: { fontSize: 14, color: colors.textTertiary, flex: 1 },
   dateIcon: { fontSize: 16, marginLeft: 8 },
   pickerWrapper: {
     marginTop: 6,
-    backgroundColor: '#fff',
+    backgroundColor: colors.surfaceElevated,
     borderRadius: 6,
     alignItems: 'center',
   },
   iosDoneBtn: {
-    backgroundColor: '#5856D6',
+    backgroundColor: colors.primary,
     paddingHorizontal: 18,
     paddingVertical: 8,
     borderRadius: 6,
     marginTop: 4,
     marginBottom: 8,
   },
-  iosDoneBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  iosDoneBtnText: { color: colors.onPrimary, fontWeight: '600', fontSize: 14 },
   section: {
     fontSize: 13,
     fontWeight: '600',
     marginTop: 8,
     marginBottom: 4,
-    color: '#333',
+    color: colors.text,
   },
-  empty: { fontSize: 12, color: '#888', fontStyle: 'italic' },
+  empty: { fontSize: 12, color: colors.textTertiary, fontStyle: 'italic' },
   itemRow: {
     flexDirection: 'row',
     gap: 6,
     marginTop: 4,
   },
   itemCol: { flex: 1 },
-  itemLabel: { fontSize: 11, color: '#666', marginBottom: 2 },
+  itemLabel: { fontSize: 11, color: colors.textSecondary, marginBottom: 2 },
   itemInput: {
-    backgroundColor: '#fff',
+    backgroundColor: colors.surfaceElevated,
+    color: colors.text,
     borderRadius: 4,
     paddingHorizontal: 6,
     paddingVertical: 4,
     fontSize: 13,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colors.border,
   },
-  itemText: { fontSize: 13, color: '#444' },
+  itemText: { fontSize: 13, color: colors.text },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -321,8 +337,8 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 6,
   },
-  meta: { fontSize: 12, color: '#666' },
-  missing: { fontSize: 12, color: '#E53935' },
+  meta: { fontSize: 12, color: colors.textSecondary },
+  missing: { fontSize: 12, color: colors.danger },
   actions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
@@ -330,7 +346,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   btn: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 },
-  cancel: { backgroundColor: '#9E9E9E' },
-  confirm: { backgroundColor: '#43A047' },
-  btnText: { color: '#fff', fontWeight: '600' },
+  cancel: { backgroundColor: colors.textTertiary },
+  confirm: { backgroundColor: colors.success },
+  btnText: { color: colors.onSuccess, fontWeight: '600' },
 });

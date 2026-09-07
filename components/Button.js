@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { SPACING, TYPOGRAPHY } from '../constants';
+import { useAppTheme } from '../context/ThemeContext';
 
 const Button = ({
   title,
@@ -17,8 +18,10 @@ const Button = ({
   textStyle,
   ...props
 }) => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isInactive = disabled || loading;
-  const contentColor = getContentColor(variant, isInactive);
+  const contentColor = getContentColor(variant, isInactive, colors);
 
   return (
     <TouchableOpacity
@@ -64,11 +67,13 @@ const Button = ({
   );
 };
 
-const getContentColor = (variant, disabled) => {
-  if (disabled) return COLORS.textTertiary;
-  if (['outline', 'ghost', 'secondary'].includes(variant)) return COLORS.primary;
-  if (variant === 'warning') return COLORS.background;
-  return COLORS.surfaceElevated;
+const getContentColor = (variant, disabled, colors) => {
+  if (disabled) return colors.textTertiary;
+  if (['outline', 'ghost', 'secondary'].includes(variant)) return colors.primary;
+  if (variant === 'success') return colors.onSuccess;
+  if (variant === 'warning') return colors.onWarning;
+  if (variant === 'danger') return colors.onDanger;
+  return colors.onPrimary;
 };
 
 const getIconSize = (size) => {
@@ -77,9 +82,9 @@ const getIconSize = (size) => {
   return 18;
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   button: {
-    borderRadius: RADIUS.md,
+    borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
     flexDirection: 'row',
@@ -90,7 +95,7 @@ const styles = StyleSheet.create({
     alignSelf: 'stretch',
   },
   small: {
-    minHeight: 34,
+    minHeight: 44,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
   },
@@ -105,36 +110,36 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   primary: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   secondary: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primarySoft,
+    backgroundColor: colors.primarySoft,
+    borderColor: colors.primarySoft,
   },
   success: {
-    backgroundColor: COLORS.success,
-    borderColor: COLORS.success,
+    backgroundColor: colors.success,
+    borderColor: colors.success,
   },
   warning: {
-    backgroundColor: COLORS.warning,
-    borderColor: COLORS.warning,
+    backgroundColor: colors.warning,
+    borderColor: colors.warning,
   },
   danger: {
-    backgroundColor: COLORS.danger,
-    borderColor: COLORS.danger,
+    backgroundColor: colors.danger,
+    borderColor: colors.danger,
   },
   outline: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderColor: COLORS.borderStrong,
+    backgroundColor: colors.surfaceElevated,
+    borderColor: colors.borderStrong,
   },
   ghost: {
     backgroundColor: 'transparent',
     borderColor: 'transparent',
   },
   disabled: {
-    backgroundColor: COLORS.surface,
-    borderColor: COLORS.border,
+    backgroundColor: colors.surface,
+    borderColor: colors.border,
     opacity: 1,
   },
   content: {

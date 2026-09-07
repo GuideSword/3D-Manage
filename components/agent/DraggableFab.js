@@ -1,13 +1,13 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useMemo, useRef, useEffect } from 'react';
 import {
-  View,
-  Text,
   StyleSheet,
   Animated,
   PanResponder,
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../../context/ThemeContext';
 
 // Draggable FAB.
 //
@@ -26,6 +26,8 @@ const EDGE_PADDING = 16;
 const BOTTOM_OFFSET = 80; // leave room above bottom tabs / safe area
 
 export default function DraggableFab({ onPress }) {
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const window = Dimensions.get('window');
   const initialX = window.width - FAB_SIZE - EDGE_PADDING;
   const initialY = window.height - FAB_SIZE - EDGE_PADDING - BOTTOM_OFFSET;
@@ -96,33 +98,26 @@ export default function DraggableFab({ onPress }) {
         style={styles.touchable}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Text style={styles.icon}>✨</Text>
+        <Ionicons name="paw" size={24} color={colors.onPrimary} />
       </TouchableOpacity>
     </Animated.View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors, shadows) => StyleSheet.create({
   fab: {
     position: 'absolute',
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
-    backgroundColor: '#5856D6',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: colors.surfaceElevated,
+    ...shadows.floating,
   },
   touchable: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  icon: {
-    color: '#fff',
-    fontSize: 24,
-    lineHeight: 28,
   },
 });

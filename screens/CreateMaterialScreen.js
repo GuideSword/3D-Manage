@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
   MATERIAL_TYPES,
   RADIUS,
   ROUTES,
@@ -19,6 +18,7 @@ import {
   UNITS,
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI } from '../utils/api';
 
 const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map((type) => ({
@@ -32,6 +32,8 @@ const UNIT_OPTIONS = Object.values(UNITS).map((value) => ({
 }));
 
 const CreateMaterialScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [customMaterialType, setCustomMaterialType] = useState('');
   const [formData, setFormData] = useState({
@@ -132,7 +134,7 @@ const CreateMaterialScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Ionicons name="layers-outline" size={24} color={COLORS.accent} />
+            <Ionicons name="layers-outline" size={24} color={colors.accent} />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>NEW MATERIAL</Text>
@@ -248,7 +250,7 @@ const CreateMaterialScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-native';
+import { useAppTheme } from '../../context/ThemeContext';
 
 // Collapsible card showing one tool call from the Agent.
 //
@@ -9,6 +10,8 @@ import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from 'react-nati
 //           status icon flips from '…' to '✓').
 
 export default function ToolCallCard({ name, args, result }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [open, setOpen] = useState(false);
   const done = Boolean(result);
   return (
@@ -16,7 +19,7 @@ export default function ToolCallCard({ name, args, result }) {
       <TouchableOpacity onPress={() => setOpen(!open)} activeOpacity={0.7}>
         <View style={styles.header}>
           <Text style={styles.title}>
-            🔧 {name || 'tool'}
+            🧰 工坊日志 · {name || 'tool'}
           </Text>
           <Text style={[styles.status, done ? styles.ok : styles.pending]}>
             {done ? '✓' : '…'}
@@ -51,30 +54,30 @@ function safeStringify(value, indent) {
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   card: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: colors.warningSoft,
     marginHorizontal: 8,
     marginVertical: 4,
     padding: 10,
-    borderRadius: 8,
+    borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#FFE082',
+    borderColor: colors.warning,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  title: { fontSize: 13, color: '#5D4037', fontWeight: '600' },
+  title: { fontSize: 13, color: colors.text, fontWeight: '700' },
   status: { fontSize: 14, marginLeft: 8 },
-  ok: { color: '#2E7D32' },
-  pending: { color: '#B45309' },
+  ok: { color: colors.success },
+  pending: { color: colors.warning },
   body: { marginTop: 8 },
-  label: { fontSize: 12, color: '#666', marginBottom: 2 },
+  label: { fontSize: 12, color: colors.textSecondary, marginBottom: 2 },
   code: {
     fontFamily: 'monospace',
     fontSize: 11,
-    color: '#333',
+    color: colors.text,
   },
 });

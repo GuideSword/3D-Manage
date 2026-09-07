@@ -1,4 +1,4 @@
-import React, { useState, useLayoutEffect } from 'react';
+import React, { useState, useLayoutEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Linking,
 } from 'react-native';
 import { agentApi } from '../utils/agentApi';
+import { useAppTheme } from '../context/ThemeContext';
 
 // API Key settings page (BYOK = Bring Your Own Key).
 //
@@ -33,6 +34,8 @@ import { agentApi } from '../utils/agentApi';
 const DEFAULT_BASE_URL = 'https://api.minimaxi.com/v1';
 
 export default function AgentSettingsScreen({ navigation }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [llmBaseUrl, setLlmBaseUrl] = useState(DEFAULT_BASE_URL);
   const [llmApiKey, setLlmApiKey] = useState('');
   const [llmModel, setLlmModel] = useState('MiniMax-M3');
@@ -124,9 +127,11 @@ export default function AgentSettingsScreen({ navigation }) {
       keyboardShouldPersistTaps="handled"
     >
       <Text style={styles.section}>🤖 聊天大模型（OpenAI 兼容协议）</Text>
-      <Field label="协议格式" value="OpenAI 协议（当前唯一）" editable={false} />
-      <Field label="Base URL" value={llmBaseUrl} onChange={setLlmBaseUrl} />
+      <Field styles={styles} colors={colors} label="协议格式" value="OpenAI 协议（当前唯一）" editable={false} />
+      <Field styles={styles} colors={colors} label="Base URL" value={llmBaseUrl} onChange={setLlmBaseUrl} />
       <Field
+        styles={styles}
+        colors={colors}
         label="模型名"
         value={llmModel}
         onChange={setLlmModel}
@@ -145,7 +150,7 @@ export default function AgentSettingsScreen({ navigation }) {
             autoCapitalize="none"
             autoCorrect={false}
             placeholder="sk-... 或 eyJ..."
-            placeholderTextColor="#9CA3AF"
+            placeholderTextColor={colors.textTertiary}
           />
           <TouchableOpacity
             onPress={() => setShowApiKey(!showApiKey)}
@@ -169,6 +174,8 @@ export default function AgentSettingsScreen({ navigation }) {
 
       <Text style={[styles.section, { marginTop: 24 }]}>📊 Embedding（MiniMax embo-01）</Text>
       <Field
+        styles={styles}
+        colors={colors}
         label="Group ID（必填）"
         value={embedGroupId}
         onChange={setEmbedGroupId}
@@ -207,7 +214,7 @@ export default function AgentSettingsScreen({ navigation }) {
   );
 }
 
-function Field({ label, value, onChange, editable = true, placeholder }) {
+function Field({ label, value, onChange, editable = true, placeholder, styles, colors }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -217,7 +224,7 @@ function Field({ label, value, onChange, editable = true, placeholder }) {
         onChangeText={onChange}
         editable={editable}
         placeholder={placeholder || ''}
-        placeholderTextColor="#9CA3AF"
+        placeholderTextColor={colors.textTertiary}
         autoCapitalize="none"
         autoCorrect={false}
       />
@@ -225,68 +232,68 @@ function Field({ label, value, onChange, editable = true, placeholder }) {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   content: { padding: 16, paddingBottom: 48 },
   section: {
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 12,
-    color: '#111827',
+    color: colors.text,
   },
   field: { marginBottom: 12 },
-  label: { fontSize: 13, color: '#4B5563', marginBottom: 4 },
+  label: { fontSize: 13, color: colors.textSecondary, marginBottom: 4 },
   input: {
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 6,
+    borderColor: colors.border,
+    borderRadius: 14,
     paddingHorizontal: 10,
     paddingVertical: 8,
     fontSize: 14,
-    backgroundColor: '#fff',
-    color: '#111827',
+    backgroundColor: colors.surfaceElevated,
+    color: colors.text,
   },
-  inputDisabled: { backgroundColor: '#F3F4F6', color: '#6B7280' },
+  inputDisabled: { backgroundColor: colors.surface, color: colors.textSecondary },
   inputRow: { flexDirection: 'row', alignItems: 'center' },
   eyeBtn: {
     marginLeft: 6,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
-    borderRadius: 6,
-    backgroundColor: '#F9FAFB',
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
   },
   eyeText: { fontSize: 16 },
   btn: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.surface,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 14,
     alignItems: 'center',
     marginTop: 8,
   },
   btnDisabled: { opacity: 0.6 },
-  btnText: { color: '#5856D6', fontWeight: '600', fontSize: 14 },
-  primary: { backgroundColor: '#5856D6', marginTop: 24 },
-  primaryBtnText: { color: '#fff' },
+  btnText: { color: colors.primary, fontWeight: '700', fontSize: 14 },
+  primary: { backgroundColor: colors.primary, marginTop: 24 },
+  primaryBtnText: { color: colors.onPrimary },
   hint: {
     fontSize: 12,
-    color: '#6B7280',
+    color: colors.textSecondary,
     marginTop: 4,
     lineHeight: 17,
   },
   warning: {
-    backgroundColor: '#FFF8E1',
+    backgroundColor: colors.warningSoft,
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 16,
     marginTop: 24,
   },
   warningTitle: {
     fontSize: 13,
     fontWeight: '600',
     marginBottom: 6,
-    color: '#5D4037',
+    color: colors.text,
   },
-  warningText: { fontSize: 12, color: '#5D4037', lineHeight: 18 },
-  link: { color: '#2563EB', textDecorationLine: 'underline', marginTop: 4 },
+  warningText: { fontSize: 12, color: colors.textSecondary, lineHeight: 18 },
+  link: { color: colors.info, textDecorationLine: 'underline', marginTop: 4 },
 });

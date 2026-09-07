@@ -1,33 +1,77 @@
 import Constants from 'expo-constants';
 
-export const COLORS = {
-  primary: '#2563EB',
-  primaryDark: '#1D4ED8',
-  primarySoft: '#DBEAFE',
-  accent: '#0F766E',
-  accentSoft: '#CCFBF1',
-  secondary: '#0F766E',
-  success: '#16A34A',
-  successSoft: '#DCFCE7',
-  warning: '#D97706',
-  warningSoft: '#FEF3C7',
-  danger: '#DC2626',
-  dangerSoft: '#FEE2E2',
-  info: '#0284C7',
-  infoSoft: '#E0F2FE',
-  light: '#F6F8FB',
-  dark: '#111827',
-  background: '#F6F8FB',
-  surface: '#EEF2F7',
+export const LIGHT_COLORS = {
+  primary: '#D98A78',
+  primaryDark: '#B8675E',
+  primarySoft: '#F8E7DE',
+  accent: '#9A7EB9',
+  accentSoft: '#EEE7F5',
+  secondary: '#9A7EB9',
+  success: '#78A28D',
+  successSoft: '#E7F0E9',
+  warning: '#C98A62',
+  warningSoft: '#FAEBDD',
+  danger: '#C86565',
+  dangerSoft: '#F8E2E1',
+  info: '#7D8FB3',
+  infoSoft: '#E9EDF5',
+  light: '#FFFAF4',
+  dark: '#4C403B',
+  background: '#FFFAF4',
+  surface: '#F7ECE4',
   surfaceElevated: '#FFFFFF',
-  surfaceMuted: '#F8FAFC',
-  text: '#111827',
-  textSecondary: '#64748B',
-  textTertiary: '#94A3B8',
-  border: '#E2E8F0',
-  borderStrong: '#CBD5E1',
-  disabled: '#CBD5E1',
+  surfaceMuted: '#FCF4EE',
+  text: '#4C403B',
+  textSecondary: '#806F66',
+  textTertiary: '#A28D82',
+  border: '#EEDFD6',
+  borderStrong: '#DFC9BB',
+  disabled: '#DFC9BB',
+  onPrimary: '#FFFFFF',
+  onAccent: '#FFFFFF',
+  onSuccess: '#FFFFFF',
+  onWarning: '#3C2B22',
+  onDanger: '#FFFFFF',
+  overlay: 'rgba(45, 36, 49, 0.42)',
 };
+
+export const DARK_COLORS = {
+  primary: '#E4A19D',
+  primaryDark: '#F0B5AE',
+  primarySoft: '#46313C',
+  accent: '#C2AAD9',
+  accentSoft: '#3A3145',
+  secondary: '#C2AAD9',
+  success: '#9FC8B5',
+  successSoft: '#2E4038',
+  warning: '#DDB08D',
+  warningSoft: '#46382F',
+  danger: '#E49A9A',
+  dangerSoft: '#4A3034',
+  info: '#A9B7D5',
+  infoSoft: '#303745',
+  light: '#EEE8F3',
+  dark: '#201D29',
+  background: '#201D29',
+  surface: '#25212C',
+  surfaceElevated: '#292530',
+  surfaceMuted: '#302A39',
+  text: '#EEE8F3',
+  textSecondary: '#B9ADBF',
+  textTertiary: '#8F8495',
+  border: '#3E3747',
+  borderStrong: '#51485C',
+  disabled: '#51485C',
+  onPrimary: '#2B2126',
+  onAccent: '#251F2C',
+  onSuccess: '#1D2923',
+  onWarning: '#2D211A',
+  onDanger: '#2A1D20',
+  overlay: 'rgba(8, 6, 12, 0.68)',
+};
+
+// Compatibility palette for screens that have not migrated to useAppTheme yet.
+export const COLORS = LIGHT_COLORS;
 
 export const SPACING = {
   xs: 4,
@@ -39,16 +83,16 @@ export const SPACING = {
 };
 
 export const RADIUS = {
-  sm: 6,
-  md: 8,
-  lg: 10,
-  xl: 14,
+  sm: 10,
+  md: 14,
+  lg: 18,
+  xl: 24,
   pill: 999,
 };
 
 export const TYPOGRAPHY = {
-  screenTitle: { fontSize: 24, fontWeight: '700', lineHeight: 30 },
-  sectionTitle: { fontSize: 17, fontWeight: '700', lineHeight: 22 },
+  screenTitle: { fontSize: 26, fontWeight: '800', lineHeight: 32 },
+  sectionTitle: { fontSize: 17, fontWeight: '800', lineHeight: 22 },
   body: { fontSize: 15, fontWeight: '400', lineHeight: 21 },
   meta: { fontSize: 13, fontWeight: '500', lineHeight: 18 },
   caption: { fontSize: 12, fontWeight: '500', lineHeight: 16 },
@@ -69,6 +113,60 @@ export const SHADOWS = {
     shadowRadius: 18,
     elevation: 6,
   },
+};
+
+export const LIGHT_SHADOWS = {
+  card: {
+    shadowColor: '#765B51',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  floating: {
+    shadowColor: '#614A52',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.16,
+    shadowRadius: 20,
+    elevation: 7,
+  },
+  navigation: {
+    shadowColor: '#765B51',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  cardWeb: '0 4px 14px rgba(118, 91, 81, 0.10)',
+  floatingWeb: '0 12px 28px rgba(97, 74, 82, 0.18)',
+  navigationWeb: '0 -6px 20px rgba(118, 91, 81, 0.10)',
+};
+
+export const DARK_SHADOWS = {
+  card: {
+    shadowColor: '#09070D',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    elevation: 3,
+  },
+  floating: {
+    shadowColor: '#09070D',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.32,
+    shadowRadius: 22,
+    elevation: 8,
+  },
+  navigation: {
+    shadowColor: '#09070D',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.28,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  cardWeb: '0 5px 16px rgba(8, 6, 12, 0.24)',
+  floatingWeb: '0 14px 32px rgba(8, 6, 12, 0.38)',
+  navigationWeb: '0 -7px 22px rgba(8, 6, 12, 0.34)',
 };
 
 export const ORDER_STATUSES = {

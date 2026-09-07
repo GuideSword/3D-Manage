@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useLayoutEffect, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useLayoutEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
   Platform,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import AgentBubble from '../components/agent/AgentBubble';
 import ToolCallCard from '../components/agent/ToolCallCard';
 import DraftConfirmCard from '../components/agent/DraftConfirmCard';
 import ImageAttachment from '../components/agent/ImageAttachment';
 import { streamChat, agentApi } from '../utils/agentApi';
+import { useAppTheme } from '../context/ThemeContext';
 
 // Full-screen Agent chat.
 //
@@ -37,6 +39,8 @@ import { streamChat, agentApi } from '../utils/agentApi';
 //   - 'error'       → surface in the last assistant bubble + Alert
 
 export default function AgentChatScreen({ route, navigation }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [images, setImages] = useState([]);
@@ -55,11 +59,11 @@ export default function AgentChatScreen({ route, navigation }) {
           hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
           style={{ paddingHorizontal: 4 }}
         >
-          <Text style={{ fontSize: 20 }}>⚙️</Text>
+          <Ionicons name="settings-outline" size={22} color={colors.primary} />
         </TouchableOpacity>
       ),
     });
-  }, [navigation]);
+  }, [colors.primary, navigation]);
 
   // Auto-scroll to the bottom when messages grow.
   useEffect(() => {
@@ -242,9 +246,15 @@ export default function AgentChatScreen({ route, navigation }) {
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
           <View style={styles.empty}>
-            <Text style={styles.emptyIcon}>✨</Text>
+            <View style={styles.mascot}>
+              <Text style={styles.catFace}>ฅ^•ﻌ•^ฅ</Text>
+              <View style={styles.mascotBadge}>
+                <Ionicons name="sparkles" size={14} color={colors.onPrimary} />
+              </View>
+            </View>
+            <Text style={styles.emptyTitle}>小麦已就位</Text>
             <Text style={styles.emptyText}>
-              你好，我是 3D-Manage 智能助手。{'\n'}
+              你好，我是猫爪工坊助手小麦。{'\n'}
               粘贴客户消息 → 抽取订单草稿{'\n'}
               或直接问我关于订单、模型、库存的问题
             </Text>
@@ -258,7 +268,7 @@ export default function AgentChatScreen({ route, navigation }) {
           value={input}
           onChangeText={setInput}
           placeholder="问我关于订单/模型/库存的问题…"
-          placeholderTextColor="#9CA3AF"
+          placeholderTextColor={colors.textTertiary}
           multiline
           editable={!sending}
           onSubmitEditing={send}
@@ -289,8 +299,8 @@ function existingText(messages) {
   return '';
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#fff' },
+const createStyles = (colors) => StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.background },
   listContent: { paddingVertical: 8, flexGrow: 1 },
   empty: {
     flex: 1,
@@ -299,10 +309,35 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     paddingVertical: 80,
   },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  mascot: {
+    width: 116,
+    height: 92,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 32,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginBottom: 14,
+  },
+  catFace: { fontSize: 25, color: colors.primaryDark },
+  mascotBadge: {
+    position: 'absolute',
+    right: -5,
+    bottom: -5,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    borderWidth: 3,
+    borderColor: colors.background,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 6 },
   emptyText: {
     fontSize: 14,
-    color: '#6B7280',
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
   },
@@ -311,8 +346,8 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     padding: 8,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E5EA',
-    backgroundColor: '#fff',
+    borderTopColor: colors.border,
+    backgroundColor: colors.surfaceElevated,
   },
   input: {
     flex: 1,
@@ -320,20 +355,20 @@ const styles = StyleSheet.create({
     maxHeight: 120,
     paddingHorizontal: 10,
     paddingVertical: 8,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 8,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: 16,
     fontSize: 15,
-    color: '#000',
+    color: colors.text,
   },
   sendBtn: {
-    backgroundColor: '#5856D6',
+    backgroundColor: colors.primary,
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 8,
+    borderRadius: 16,
     marginLeft: 8,
     minWidth: 56,
     alignItems: 'center',
   },
   sendBtnDisabled: { opacity: 0.5 },
-  sendText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+  sendText: { color: colors.onPrimary, fontWeight: '700', fontSize: 14 },
 });

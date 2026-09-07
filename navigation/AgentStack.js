@@ -2,6 +2,7 @@ import React from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import AgentChatScreen from '../screens/AgentChatScreen';
 import AgentSettingsScreen from '../screens/AgentSettingsScreen';
+import { useAppTheme } from '../context/ThemeContext';
 
 // Stack navigator for the Agent flow:
 //   - AgentChat       (default; opened by the DraggableFab)
@@ -14,8 +15,18 @@ import AgentSettingsScreen from '../screens/AgentSettingsScreen';
 const Stack = createNativeStackNavigator();
 
 export default function AgentStack() {
+  const { colors } = useAppTheme();
+
   return (
-    <Stack.Navigator>
+    <Stack.Navigator
+      screenOptions={{
+        headerStyle: { backgroundColor: colors.surfaceElevated },
+        headerTintColor: colors.primary,
+        headerTitleStyle: { color: colors.text, fontWeight: '700' },
+        headerShadowVisible: false,
+        contentStyle: { backgroundColor: colors.background },
+      }}
+    >
       <Stack.Screen
         name="AgentChat"
         component={AgentChatScreen}

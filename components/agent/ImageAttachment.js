@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   TouchableOpacity,
-  Text,
   Image,
   StyleSheet,
   Alert,
@@ -10,6 +9,8 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
+import { Ionicons } from '@expo/vector-icons';
+import { useAppTheme } from '../../context/ThemeContext';
 
 // Image attachment row used inside AgentChatScreen's input bar.
 //
@@ -26,6 +27,8 @@ import * as FileSystem from 'expo-file-system';
 //     current message.
 
 export default function ImageAttachment({ onAttach }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [images, setImages] = useState([]);
 
   const pick = async () => {
@@ -88,7 +91,7 @@ export default function ImageAttachment({ onAttach }) {
         contentContainerStyle={styles.row}
       >
         <TouchableOpacity style={styles.addBtn} onPress={pick} activeOpacity={0.7}>
-          <Text style={styles.addText}>📎</Text>
+          <Ionicons name="image-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
         {images.map((img, idx) => (
           <TouchableOpacity
@@ -124,13 +127,13 @@ function guessMime(name) {
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     paddingHorizontal: 8,
     paddingVertical: 4,
-    backgroundColor: '#FAFAFC',
+    backgroundColor: colors.surfaceElevated,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E5EA',
+    borderTopColor: colors.border,
   },
   row: {
     alignItems: 'center',
@@ -141,7 +144,7 @@ const styles = StyleSheet.create({
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#F0F0F0',
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -151,7 +154,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 4,
     overflow: 'hidden',
-    backgroundColor: '#ddd',
+    backgroundColor: colors.surface,
   },
   thumb: { width: '100%', height: '100%' },
 });

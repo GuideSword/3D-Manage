@@ -10,10 +10,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI, stockAPI } from '../utils/api';
 import { validateExtension } from '../utils/upload';
+import { useAppTheme } from '../context/ThemeContext';
 
 const IMPORT_OPTIONS = [
   { value: 'orders', label: '订单' },
@@ -30,6 +31,8 @@ const EXAMPLE_HEADERS = {
 };
 
 const DataImportScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [importType, setImportType] = useState('orders');
   const [csvText, setCsvText] = useState('');
   const [selectedFileName, setSelectedFileName] = useState('');
@@ -108,7 +111,7 @@ const DataImportScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Ionicons name="document-attach-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="document-attach-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>DATA IMPORT</Text>
@@ -139,7 +142,7 @@ const DataImportScreen = ({ navigation }) => {
           </View>
           {selectedFileName ? (
             <View style={styles.fileInfo}>
-              <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+              <Ionicons name="document-text-outline" size={18} color={colors.primary} />
               <Text style={styles.fileName} numberOfLines={1}>{selectedFileName}</Text>
             </View>
           ) : null}
@@ -184,10 +187,10 @@ const DataImportScreen = ({ navigation }) => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -207,23 +210,23 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primarySoft,
+    backgroundColor: colors.primarySoft,
   },
   headerText: {
     flex: 1,
   },
   eyebrow: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
+    color: colors.primary,
     marginBottom: 2,
   },
   title: {
     ...TYPOGRAPHY.screenTitle,
-    color: COLORS.text,
+    color: colors.text,
   },
   subtitle: {
     ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.xs,
   },
   section: {
@@ -232,23 +235,23 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: SPACING.md,
   },
   headerBox: {
     padding: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     marginBottom: SPACING.md,
   },
   headerLabel: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
     marginBottom: SPACING.xs,
   },
   headerTextValue: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   fileInfo: {
     minHeight: 42,
@@ -257,13 +260,13 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primarySoft,
+    backgroundColor: colors.primarySoft,
     marginBottom: SPACING.md,
   },
   fileName: {
     flex: 1,
     ...TYPOGRAPHY.meta,
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
   },
   fileButton: {
     marginBottom: SPACING.md,

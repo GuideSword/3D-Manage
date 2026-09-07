@@ -14,8 +14,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { API_CONFIG, COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { API_CONFIG, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
@@ -56,6 +57,8 @@ const buildAssetSource = (fileUrl, token) => {
 };
 
 const ModelDetailScreen = ({ route, navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { modelId } = route.params || {};
   const [model, setModel] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -242,18 +245,18 @@ const ModelDetailScreen = ({ route, navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         refreshControl={(
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
-            <Ionicons name="cube-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="cube-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.identityText}>
             <Text style={styles.eyebrow}>MODEL ASSET</Text>
             <Text style={styles.title} numberOfLines={1}>{model.name || '未命名模型'}</Text>
           </View>
-          <Badge text={sourceLabel} color={COLORS.accent} size="small" />
+          <Badge text={sourceLabel} color={colors.accent} size="small" />
         </View>
 
         <Card style={styles.section}>
@@ -282,7 +285,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
                       <Image source={source} style={styles.galleryImage} resizeMode="cover" />
                     ) : (
                       <View style={styles.galleryFallback}>
-                        <Ionicons name="image-outline" size={36} color={COLORS.textTertiary} />
+                        <Ionicons name="image-outline" size={36} color={colors.textTertiary} />
                       </View>
                     )}
                     <Text style={styles.imageLabel} numberOfLines={1}>
@@ -302,7 +305,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
           {files.length > 0 ? files.map((file) => (
             <View key={file.id} style={styles.fileItem}>
               <View style={styles.fileIcon}>
-                <Ionicons name="document-outline" size={20} color={COLORS.primary} />
+                <Ionicons name="document-outline" size={20} color={colors.primary} />
               </View>
               <View style={styles.fileInfo}>
                 <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
@@ -391,13 +394,15 @@ const ModelDetailScreen = ({ route, navigation }) => {
   );
 };
 
-const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => (
+const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => {
+  const { colors, styles } = useDetailTheme();
+  return (
   <SafeAreaView style={styles.container}>
     <View style={styles.centeredState}>
       {loading ? (
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       ) : (
-        <Ionicons name={icon} size={54} color={COLORS.textTertiary} />
+        <Ionicons name={icon} size={54} color={colors.textTertiary} />
       )}
       <Text style={styles.centeredText}>{text}</Text>
       {actionLabel ? (
@@ -405,30 +410,45 @@ const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) =
       ) : null}
     </View>
   </SafeAreaView>
-);
+  );
+};
 
-const SectionHeader = ({ title, count }) => (
+const SectionHeader = ({ title, count }) => {
+  const { styles } = useDetailTheme();
+  return (
   <View style={styles.sectionHeader}>
     <Text style={styles.sectionTitle}>{title}</Text>
     {typeof count === 'number' ? <Text style={styles.sectionCount}>{count}</Text> : null}
   </View>
-);
+  );
+};
 
-const SummaryTile = ({ label, value, icon }) => (
+const SummaryTile = ({ label, value, icon }) => {
+  const { colors, styles } = useDetailTheme();
+  return (
   <View style={styles.summaryTile}>
-    <Ionicons name={icon} size={17} color={COLORS.primary} />
+    <Ionicons name={icon} size={17} color={colors.primary} />
     <Text style={styles.summaryLabel}>{label}</Text>
     <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
   </View>
-);
+  );
+};
 
-const EmptySection = ({ text }) => (
+const EmptySection = ({ text }) => {
+  const { styles } = useDetailTheme();
+  return (
   <View style={styles.emptySection}>
     <Text style={styles.emptySectionText}>{text}</Text>
   </View>
-);
+  );
+};
 
-const styles = StyleSheet.create({
+const useDetailTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

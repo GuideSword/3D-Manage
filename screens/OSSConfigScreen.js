@@ -1,12 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import storage from '../utils/storage';
 import { Button, Card, Input } from '../components';
-import { API_CONFIG, COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { API_CONFIG, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 const OSSConfigScreen = () => {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { signOut } = useAuth();
   const [config, setConfig] = useState({
     accessKeyId: '',
@@ -71,7 +74,7 @@ const OSSConfigScreen = () => {
     >
       <View style={styles.header}>
         <View style={styles.headerIcon}>
-          <Ionicons name="cloud-upload-outline" size={24} color={COLORS.primary} />
+          <Ionicons name="cloud-upload-outline" size={24} color={colors.primary} />
         </View>
         <View style={styles.headerText}>
           <Text style={styles.eyebrow}>FILE STORAGE</Text>
@@ -136,10 +139,10 @@ const OSSConfigScreen = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: SPACING.lg,
@@ -156,23 +159,23 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.primarySoft,
+    backgroundColor: colors.primarySoft,
   },
   headerText: {
     flex: 1,
   },
   eyebrow: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
+    color: colors.primary,
     marginBottom: 2,
   },
   title: {
     ...TYPOGRAPHY.screenTitle,
-    color: COLORS.text,
+    color: colors.text,
   },
   subtitle: {
     ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: SPACING.xs,
   },
   section: {
@@ -181,7 +184,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: SPACING.md,
   },
   buttonContainer: {

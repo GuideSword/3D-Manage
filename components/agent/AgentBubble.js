@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, StyleSheet, Platform } from 'react-native';
 import Markdown from 'react-native-markdown-display';
+import { useAppTheme } from '../../context/ThemeContext';
 
 // A single message bubble in the Agent chat.
 //
@@ -17,6 +18,9 @@ import Markdown from 'react-native-markdown-display';
 //       * isStreaming=false → Markdown 渲染，让表格/代码/列表等格式生效
 
 export default function AgentBubble({ role, text, isStreaming }) {
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  const markdownStyles = useMemo(() => createMarkdownStyles(colors), [colors]);
   const isUser = role === 'user';
   const body = text || '';
   return (
@@ -45,30 +49,30 @@ export default function AgentBubble({ role, text, isStreaming }) {
 const monoFont = Platform.OS === 'ios' ? 'Menlo' : 'monospace';
 
 // Markdown 样式：适配 assistant 气泡（浅灰底 + 黑字）
-const markdownStyles = {
-  body: { color: '#000', fontSize: 15, lineHeight: 22 },
-  heading1: { fontSize: 20, fontWeight: '700', marginVertical: 6, color: '#000' },
-  heading2: { fontSize: 18, fontWeight: '700', marginVertical: 5, color: '#000' },
-  heading3: { fontSize: 16, fontWeight: '600', marginVertical: 4, color: '#000' },
-  strong: { fontWeight: '700', color: '#000' },
-  em: { fontStyle: 'italic', color: '#000' },
-  link: { color: '#5856D6', textDecorationLine: 'underline' },
+const createMarkdownStyles = (colors) => ({
+  body: { color: colors.text, fontSize: 15, lineHeight: 22 },
+  heading1: { fontSize: 20, fontWeight: '700', marginVertical: 6, color: colors.text },
+  heading2: { fontSize: 18, fontWeight: '700', marginVertical: 5, color: colors.text },
+  heading3: { fontSize: 16, fontWeight: '600', marginVertical: 4, color: colors.text },
+  strong: { fontWeight: '700', color: colors.text },
+  em: { fontStyle: 'italic', color: colors.text },
+  link: { color: colors.primary, textDecorationLine: 'underline' },
   bullet_list: { marginVertical: 4 },
   ordered_list: { marginVertical: 4 },
   list_item: { marginVertical: 2 },
   code_inline: {
     fontFamily: monoFont,
     fontSize: 13,
-    backgroundColor: '#E5E5EA',
-    color: '#C7254E',
+    backgroundColor: colors.surface,
+    color: colors.danger,
     paddingHorizontal: 4,
     borderRadius: 3,
   },
   code_block: {
     fontFamily: monoFont,
     fontSize: 13,
-    backgroundColor: '#1E1E1E',
-    color: '#D4D4D4',
+    backgroundColor: colors.dark,
+    color: colors.light,
     padding: 8,
     borderRadius: 6,
     marginVertical: 4,
@@ -76,28 +80,28 @@ const markdownStyles = {
   fence: {
     fontFamily: monoFont,
     fontSize: 13,
-    backgroundColor: '#1E1E1E',
-    color: '#D4D4D4',
+    backgroundColor: colors.dark,
+    color: colors.light,
     padding: 8,
     borderRadius: 6,
     marginVertical: 4,
   },
   blockquote: {
-    backgroundColor: '#EFEFF4',
-    borderLeftColor: '#5856D6',
+    backgroundColor: colors.surfaceMuted,
+    borderLeftColor: colors.primary,
     borderLeftWidth: 3,
     paddingHorizontal: 8,
     paddingVertical: 4,
     marginVertical: 4,
   },
-  table: { borderColor: '#ccc', borderWidth: 1 },
-  th: { padding: 4, backgroundColor: '#F2F2F7', fontWeight: '600' },
+  table: { borderColor: colors.border, borderWidth: 1 },
+  th: { padding: 4, backgroundColor: colors.surface, fontWeight: '600' },
   td: { padding: 4 },
-  tr: { borderBottomColor: '#ccc', borderBottomWidth: 1 },
-  hr: { backgroundColor: '#ccc', height: 1, marginVertical: 6 },
-};
+  tr: { borderBottomColor: colors.border, borderBottomWidth: 1 },
+  hr: { backgroundColor: colors.border, height: 1, marginVertical: 6 },
+});
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   row: {
     flexDirection: 'row',
     marginVertical: 4,
@@ -109,17 +113,17 @@ const styles = StyleSheet.create({
     maxWidth: '80%',
     paddingVertical: 10,
     paddingHorizontal: 12,
-    borderRadius: 12,
+    borderRadius: 18,
   },
-  user: { backgroundColor: '#5856D6' },
+  user: { backgroundColor: colors.primary },
   assistant: {
-    backgroundColor: '#F2F2F7',
+    backgroundColor: colors.surfaceElevated,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#E5E7EA',
+    borderColor: colors.border,
   },
   text: { fontSize: 15, lineHeight: 20 },
-  userText: { color: '#fff' },
-  assistantText: { color: '#000' },
-  cursor: { color: '#999' },
+  userText: { color: colors.onPrimary },
+  assistantText: { color: colors.text },
+  cursor: { color: colors.primary },
   markdownWrap: { alignSelf: 'flex-start' },
 });

@@ -11,7 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
   INVENTORY_TXN_TYPES,
   RADIUS,
   SPACING,
@@ -20,6 +19,7 @@ import {
   TYPOGRAPHY,
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
@@ -28,6 +28,8 @@ const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
 }));
 
 const InboundTransactionScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [materials, setMaterials] = useState([]);
@@ -195,7 +197,7 @@ const InboundTransactionScreen = ({ navigation }) => {
           eyebrow="INBOUND"
           title="入库操作"
           subtitle="向现有批次补充库存，或创建新批次后入库。"
-          color={COLORS.success}
+          color={colors.success}
         />
 
         <Card style={styles.section}>
@@ -302,17 +304,19 @@ const InboundTransactionScreen = ({ navigation }) => {
   );
 };
 
-const LoadingState = ({ text }) => (
-  <SafeAreaView style={styles.container}>
+const LoadingState = ({ text }) => {
+  const { colors, styles } = useScreenTheme();
+  return <SafeAreaView style={styles.container}>
     <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
+      <ActivityIndicator size="large" color={colors.success} />
       <Text style={styles.loadingText}>{text}</Text>
     </View>
-  </SafeAreaView>
-);
+  </SafeAreaView>;
+};
 
-const FormHeader = ({ icon, eyebrow, title, subtitle, color }) => (
-  <View style={styles.header}>
+const FormHeader = ({ icon, eyebrow, title, subtitle, color }) => {
+  const { styles } = useScreenTheme();
+  return <View style={styles.header}>
     <View style={[styles.headerIcon, { backgroundColor: `${color}18` }]}>
       <Ionicons name={icon} size={24} color={color} />
     </View>
@@ -321,25 +325,27 @@ const FormHeader = ({ icon, eyebrow, title, subtitle, color }) => (
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
-  </View>
-);
+  </View>;
+};
 
-const SegmentButton = ({ label, active, onPress }) => (
-  <TouchableOpacity
+const SegmentButton = ({ label, active, onPress }) => {
+  const { styles } = useScreenTheme();
+  return <TouchableOpacity
     activeOpacity={0.82}
     onPress={onPress}
     style={[styles.segmentButton, active && styles.segmentButtonActive]}
   >
     <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-  </TouchableOpacity>
-);
+  </TouchableOpacity>;
+};
 
-const EmptyOptions = ({ title, hint }) => (
-  <View style={styles.emptyOptionsContainer}>
+const EmptyOptions = ({ title, hint }) => {
+  const { styles } = useScreenTheme();
+  return <View style={styles.emptyOptionsContainer}>
     <Text style={styles.emptyOptionsText}>{title}</Text>
     <Text style={styles.emptyOptionsHint}>{hint}</Text>
-  </View>
-);
+  </View>;
+};
 
 const FormButtons = ({
   loading,
@@ -349,8 +355,9 @@ const FormButtons = ({
   submitIcon,
   onSubmit,
   onCancel,
-}) => (
-  <View style={styles.buttonContainer}>
+}) => {
+  const { styles } = useScreenTheme();
+  return <View style={styles.buttonContainer}>
     <Button
       title={loading ? loadingTitle : submitTitle}
       iconLeft={submitIcon}
@@ -362,10 +369,15 @@ const FormButtons = ({
       style={styles.submitButton}
     />
     <Button title="取消" onPress={onCancel} variant="outline" fullWidth />
-  </View>
-);
+  </View>;
+};
 
-const styles = StyleSheet.create({
+const useScreenTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

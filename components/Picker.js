@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   FlatList,
   Modal,
@@ -9,7 +9,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, RADIUS, SHADOWS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { useAppTheme } from '../context/ThemeContext';
 
 const Picker = ({
   label,
@@ -22,6 +23,8 @@ const Picker = ({
   error,
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const selectedOption = options.find((opt) => opt.value === value);
   const displayText = selectedOption ? selectedOption.label : placeholder;
 
@@ -52,7 +55,7 @@ const Picker = ({
         >
           {displayText}
         </Text>
-        <Ionicons name="chevron-down" size={18} color={COLORS.textSecondary} />
+        <Ionicons name="chevron-down" size={18} color={colors.textSecondary} />
       </TouchableOpacity>
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
@@ -73,7 +76,7 @@ const Picker = ({
                     style={styles.closeButton}
                     onPress={() => setModalVisible(false)}
                   >
-                    <Ionicons name="close" size={20} color={COLORS.text} />
+                    <Ionicons name="close" size={20} color={colors.text} />
                   </TouchableOpacity>
                 </View>
                 <FlatList
@@ -97,7 +100,7 @@ const Picker = ({
                           {item.label}
                         </Text>
                         {selected ? (
-                          <Ionicons name="checkmark-circle" size={20} color={COLORS.primary} />
+                          <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                         ) : null}
                       </TouchableOpacity>
                     );
@@ -112,13 +115,13 @@ const Picker = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, shadows) => StyleSheet.create({
   container: {
     marginVertical: SPACING.sm,
   },
   label: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: SPACING.xs,
   },
   picker: {
@@ -128,50 +131,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
+    borderColor: colors.border,
+    borderRadius: 15,
     paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: colors.surfaceElevated,
   },
   disabled: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     opacity: 0.72,
   },
   errorPicker: {
-    borderColor: COLORS.danger,
+    borderColor: colors.danger,
   },
   pickerText: {
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
-    color: COLORS.text,
+    color: colors.text,
   },
   placeholderText: {
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
   },
   errorText: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.danger,
+    color: colors.danger,
     marginTop: SPACING.xs,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.42)',
+    backgroundColor: colors.overlay,
     justifyContent: 'flex-end',
   },
   modalContent: {
     maxHeight: '72%',
-    backgroundColor: COLORS.surfaceElevated,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
+    backgroundColor: colors.surfaceElevated,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingBottom: SPACING.sm,
-    ...SHADOWS.floating,
+    ...shadows.floating,
   },
   modalHandle: {
     width: 42,
     height: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.borderStrong,
+    backgroundColor: colors.borderStrong,
     alignSelf: 'center',
     marginTop: SPACING.sm,
     marginBottom: SPACING.xs,
@@ -183,11 +186,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   modalTitle: {
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: colors.text,
   },
   closeButton: {
     width: 34,
@@ -195,7 +198,7 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
   },
   optionItem: {
     minHeight: 50,
@@ -205,20 +208,20 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingHorizontal: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   selectedOption: {
-    backgroundColor: COLORS.primarySoft,
+    backgroundColor: colors.primarySoft,
   },
   optionText: {
     flex: 1,
     fontSize: 15,
     lineHeight: 20,
-    color: COLORS.text,
+    color: colors.text,
   },
   selectedOptionText: {
     fontWeight: '700',
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
   },
 });
 

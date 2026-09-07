@@ -8,25 +8,25 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
-  ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   ROUTES,
   RADIUS,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Button, Card, StatusActionSheet } from '../components';
+import { Badge, Card, EmptyState, ScreenHeader, SearchBar, StatusActionSheet } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { isRestorable, isTerminalStatus } from '../utils/orderStatus';
 
 const OrdersScreen = ({ navigation, route }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [orders, setOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -148,12 +148,12 @@ const OrdersScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleGroup}>
-          <Text style={styles.eyebrow}>ORDER QUEUE</Text>
-          <Text style={styles.title}>订单</Text>
-        </View>
-        <View style={styles.headerActions}>
+      <ScreenHeader
+        eyebrow="ORDER QUEUE"
+        title="订单中心"
+        subtitle="今天的委托，也要稳稳送达。"
+        actions={(
+          <View style={styles.headerActions}>
           <IconButton
             icon="search"
             active={showSearch}
@@ -169,26 +169,19 @@ const OrdersScreen = ({ navigation, route }) => {
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_ORDER)}
           />
-        </View>
-      </View>
+          </View>
+        )}
+      />
 
       {showSearch ? (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={COLORS.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
+        <SearchBar
             placeholder="搜索客户、订单号或备注"
-            placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onClear={() => setSearchQuery('')}
             autoFocus
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
-              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+            style={styles.searchContainer}
+        />
       ) : null}
 
       {showFilter ? (
@@ -208,7 +201,7 @@ const OrdersScreen = ({ navigation, route }) => {
               key={status}
               label={label}
               active={filterStatus === status}
-              color={ORDER_STATUS_COLORS[status]}
+              color={getOrderStatusColor(status, colors)}
               onPress={() => setFilterStatus(status)}
             />
           ))}
@@ -217,7 +210,7 @@ const OrdersScreen = ({ navigation, route }) => {
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>加载订单中...</Text>
         </View>
       ) : (
@@ -238,8 +231,8 @@ const OrdersScreen = ({ navigation, route }) => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[COLORS.primary]}
-              tintColor={COLORS.primary}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
             />
           )}
           contentContainerStyle={[
@@ -247,21 +240,14 @@ const OrdersScreen = ({ navigation, route }) => {
             orders.length === 0 && styles.emptyListContainer,
           ]}
           ListEmptyComponent={(
-            <View style={styles.emptyContainer}>
-              <Ionicons name="receipt-outline" size={46} color={COLORS.textTertiary} />
-              <Text style={styles.emptyTitle}>
-                {searchQuery ? '没有匹配的订单' : '暂无订单'}
-              </Text>
-              <Text style={styles.emptyText}>
-                新建订单后，客户、交期和生产状态会显示在这里。
-              </Text>
-              <Button
-                title="新建订单"
-                iconLeft="add"
-                onPress={() => navigation.navigate(ROUTES.CREATE_ORDER)}
-                style={styles.createButton}
-              />
-            </View>
+            <EmptyState
+              icon="receipt-outline"
+              title={searchQuery ? '没有找到这份委托' : '还没有订单喵'}
+              description="新建订单后，客户、交期和生产状态会显示在这里。"
+              actionLabel="新建订单"
+              onAction={() => navigation.navigate(ROUTES.CREATE_ORDER)}
+              style={styles.emptyContainer}
+            />
           )}
         />
       )}
@@ -278,35 +264,46 @@ const OrdersScreen = ({ navigation, route }) => {
   );
 };
 
-const IconButton = ({ icon, active = false, onPress }) => (
-  <TouchableOpacity
-    activeOpacity={0.82}
-    style={[styles.headerButton, active && styles.headerButtonActive]}
-    onPress={onPress}
-  >
-    <Ionicons name={icon} size={20} color={active ? COLORS.primary : COLORS.textSecondary} />
-  </TouchableOpacity>
-);
+const IconButton = ({ icon, active = false, onPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.82}
+      style={[styles.headerButton, active && styles.headerButtonActive]}
+      onPress={onPress}
+    >
+      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
+    </TouchableOpacity>
+  );
+};
 
-const FilterChip = ({ label, active, color = COLORS.primary, onPress }) => (
+const FilterChip = ({ label, active, color, onPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const resolvedColor = color || colors.primary;
+  return (
   <TouchableOpacity
     activeOpacity={0.82}
     onPress={onPress}
     style={[
       styles.filterChip,
-      active && { backgroundColor: `${color}18`, borderColor: color },
+      active && { backgroundColor: `${resolvedColor}18`, borderColor: resolvedColor },
     ]}
   >
-    <Text style={[styles.filterChipText, active && { color }]} numberOfLines={1}>
+    <Text style={[styles.filterChipText, active && { color: resolvedColor }]} numberOfLines={1}>
       {label}
     </Text>
   </TouchableOpacity>
-);
+  );
+};
 
 const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
-  const statusColor = ORDER_STATUS_COLORS[order.status] || COLORS.textSecondary;
+  const statusColor = getOrderStatusColor(order.status, colors);
   const statusLabel = ORDER_STATUS_LABELS[order.status] || '未知';
   const isUpdating = updatingId === order.id;
   const isDeleting = deletingId === order.id;
@@ -351,9 +348,9 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
               disabled={isBusy}
             >
               {isDeleting ? (
-                <ActivityIndicator size="small" color={COLORS.danger} />
+                <ActivityIndicator size="small" color={colors.danger} />
               ) : (
-                <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                <Ionicons name="trash-outline" size={18} color={colors.danger} />
               )}
             </TouchableOpacity>
           </View>
@@ -400,14 +397,24 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
   );
 };
 
-const MetaItem = ({ label, value }) => (
-  <View style={styles.metaItem}>
+const MetaItem = ({ label, value }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return <View style={styles.metaItem}>
     <Text style={styles.metaLabel}>{label}</Text>
     <Text style={styles.metaValue} numberOfLines={1}>{value}</Text>
-  </View>
-);
+  </View>;
+};
 
-const styles = StyleSheet.create({
+const getOrderStatusColor = (status, colors) => ({
+  draft: colors.textSecondary,
+  pending_review: colors.warning,
+  in_progress: colors.secondary,
+  completed: colors.success,
+  cancelled: colors.danger,
+}[status] || colors.textSecondary);
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -438,9 +445,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   headerButton: {
-    width: 38,
-    height: 38,
-    borderRadius: RADIUS.md,
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surfaceElevated,
@@ -459,7 +466,7 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.xl,
     borderWidth: 1,
     borderColor: COLORS.border,
     backgroundColor: COLORS.surfaceElevated,
@@ -545,6 +552,7 @@ const styles = StyleSheet.create({
   orderCard: {
     marginHorizontal: 0,
     marginBottom: SPACING.md,
+    borderRadius: 20,
   },
   orderHeader: {
     flexDirection: 'row',
@@ -570,8 +578,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   deleteButton: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',

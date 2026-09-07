@@ -2,12 +2,13 @@ import React from 'react';
 import { Platform } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, ROUTES, SCREEN_TITLES, SPACING } from '../constants';
+import { ROUTES, SCREEN_TITLES, SPACING } from '../constants';
 import HomeScreen from '../screens/HomeScreen';
 import OrdersScreen from '../screens/OrdersScreen';
 import ModelsScreen from '../screens/ModelsScreen';
 import MaterialsScreen from '../screens/MaterialsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import { useAppTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
 
@@ -16,17 +17,19 @@ const getTabIcon = (focused, activeName, inactiveName, color, size) => (
 );
 
 const TabNavigator = () => {
+  const { colors, shadows } = useAppTheme();
+
   return (
     <Tab.Navigator
       screenOptions={{
-        tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textTertiary,
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textTertiary,
         headerStyle: {
-          backgroundColor: COLORS.surfaceElevated,
+          backgroundColor: colors.surfaceElevated,
         },
-        headerTintColor: COLORS.primary,
+        headerTintColor: colors.primary,
         headerTitleStyle: {
-          color: COLORS.text,
+          color: colors.text,
           fontWeight: '700',
         },
         headerShadowVisible: true,
@@ -43,19 +46,15 @@ const TabNavigator = () => {
           height: Platform.OS === 'web' ? 76 : 72,
           paddingTop: SPACING.sm,
           paddingBottom: Platform.OS === 'ios' ? 18 : SPACING.sm,
-          backgroundColor: COLORS.surfaceElevated,
-          borderTopColor: COLORS.border,
+          backgroundColor: colors.surfaceElevated,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           ...Platform.select({
             web: {
-              boxShadow: '0 -4px 18px rgba(15, 23, 42, 0.06)',
+              boxShadow: shadows.navigationWeb,
             },
             default: {
-              shadowColor: '#0F172A',
-              shadowOffset: { width: 0, height: -3 },
-              shadowOpacity: 0.06,
-              shadowRadius: 10,
-              elevation: 8,
+              ...shadows.navigation,
             },
           }),
         },

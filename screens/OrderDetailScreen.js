@@ -11,8 +11,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
-  ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
   RADIUS,
@@ -20,10 +18,13 @@ import {
   TYPOGRAPHY,
 } from '../constants';
 import { Badge, Button, Card } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
 
 const OrderDetailScreen = ({ route, navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { orderId } = route.params;
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -170,7 +171,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const attachments = order.attachments || [];
   const total = Number(order.total || 0);
   const currency = order.currency || 'CNY';
-  const statusColor = ORDER_STATUS_COLORS[order.status] || COLORS.textSecondary;
+  const statusColor = getOrderStatusColor(order.status, colors);
   const availableActions = getAvailableActions(order.status);
 
   return (
@@ -179,12 +180,12 @@ const OrderDetailScreen = ({ route, navigation }) => {
         style={styles.scrollView}
         contentContainerStyle={styles.content}
         refreshControl={(
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[COLORS.primary]} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
-            <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="receipt-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.identityText}>
             <Text style={styles.eyebrow}>订单 #{order.id}</Text>
@@ -247,7 +248,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
             {attachments.map((attachment, index) => (
               <View key={attachment.fileKey || index} style={styles.attachmentItem}>
                 <View style={styles.attachmentIcon}>
-                  <Ionicons name="attach-outline" size={18} color={COLORS.primary} />
+                  <Ionicons name="attach-outline" size={18} color={colors.primary} />
                 </View>
                 <View style={styles.attachmentTextGroup}>
                   <Text style={styles.attachmentName} numberOfLines={1}>
@@ -266,7 +267,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           <Card style={styles.section}>
             <SectionHeader title="回收站操作" />
             <View style={styles.restoreNotice}>
-              <Ionicons name="trash-outline" size={18} color={COLORS.textSecondary} />
+              <Ionicons name="trash-outline" size={18} color={colors.textSecondary} />
               <Text style={styles.restoreNoticeText}>
                 该订单当前处于已取消状态（类似回收站）。可以恢复为草稿重新走流程，或在下方彻底删除。
               </Text>
@@ -355,13 +356,15 @@ const getAvailableActions = (currentStatus) => {
   return actions;
 };
 
-const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => (
+const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) => {
+  const { colors, styles } = useDetailTheme();
+  return (
   <SafeAreaView style={styles.container}>
     <View style={styles.centeredState}>
       {loading ? (
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       ) : (
-        <Ionicons name={icon} size={54} color={COLORS.textTertiary} />
+        <Ionicons name={icon} size={54} color={colors.textTertiary} />
       )}
       <Text style={styles.centeredText}>{text}</Text>
       {actionLabel ? (
@@ -369,33 +372,56 @@ const CenteredState = ({ icon, text, loading = false, actionLabel, onAction }) =
       ) : null}
     </View>
   </SafeAreaView>
-);
+  );
+};
 
-const SectionHeader = ({ title, count }) => (
+const getOrderStatusColor = (status, colors) => ({
+  [ORDER_STATUSES.DRAFT]: colors.textSecondary,
+  [ORDER_STATUSES.PENDING_REVIEW]: colors.warning,
+  [ORDER_STATUSES.IN_PROGRESS]: colors.accent,
+  [ORDER_STATUSES.COMPLETED]: colors.success,
+  [ORDER_STATUSES.CANCELLED]: colors.danger,
+}[status] || colors.textSecondary);
+
+const SectionHeader = ({ title, count }) => {
+  const { styles } = useDetailTheme();
+  return (
   <View style={styles.sectionHeader}>
     <Text style={styles.sectionTitle}>{title}</Text>
     {typeof count === 'number' ? (
       <Text style={styles.sectionCount}>{count}</Text>
     ) : null}
   </View>
-);
+  );
+};
 
-const SummaryTile = ({ label, value, highlight = false }) => (
+const SummaryTile = ({ label, value, highlight = false }) => {
+  const { styles } = useDetailTheme();
+  return (
   <View style={[styles.summaryTile, highlight && styles.summaryTileHighlight]}>
     <Text style={styles.summaryLabel}>{label}</Text>
     <Text style={[styles.summaryValue, highlight && styles.summaryValueHighlight]} numberOfLines={1}>
       {value}
     </Text>
   </View>
-);
+  );
+};
 
-const EmptySection = ({ text }) => (
+const EmptySection = ({ text }) => {
+  const { styles } = useDetailTheme();
+  return (
   <View style={styles.emptySection}>
     <Text style={styles.emptySectionText}>{text}</Text>
   </View>
-);
+  );
+};
 
-const styles = StyleSheet.create({
+const useDetailTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

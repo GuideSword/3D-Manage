@@ -1,6 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { ActivityIndicator, StyleSheet, View } from 'react-native';
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import {
+  DarkTheme,
+  DefaultTheme,
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import TabNavigator from './TabNavigator';
 import LoginScreen from '../screens/LoginScreen';
@@ -16,8 +21,9 @@ import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import OSSConfigScreen from '../screens/OSSConfigScreen';
 import DataImportScreen from '../screens/DataImportScreen';
 import AgentStack from './AgentStack';
-import { COLORS, ROUTES, SCREEN_TITLES } from '../constants';
+import { ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
+import { useAppTheme } from '../context/ThemeContext';
 
 const Stack = createNativeStackNavigator();
 
@@ -26,31 +32,51 @@ const Stack = createNativeStackNavigator();
 // window before the container has mounted.
 export const navigationRef = createNavigationContainerRef();
 
-const LoadingScreen = () => (
-  <View style={styles.loadingContainer}>
-    <ActivityIndicator size="large" color={COLORS.primary} />
-  </View>
-);
+const LoadingScreen = () => {
+  const { colors } = useAppTheme();
+
+  return (
+    <View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.primary} />
+    </View>
+  );
+};
 
 const AppNavigator = () => {
   const { initializing, isAuthenticated } = useAuth();
+  const { colors, isDark } = useAppTheme();
+  const navigationTheme = useMemo(() => {
+    const baseTheme = isDark ? DarkTheme : DefaultTheme;
+    return {
+      ...baseTheme,
+      colors: {
+        ...baseTheme.colors,
+        primary: colors.primary,
+        background: colors.background,
+        card: colors.surfaceElevated,
+        text: colors.text,
+        border: colors.border,
+        notification: colors.danger,
+      },
+    };
+  }, [colors, isDark]);
 
   return (
-    <NavigationContainer ref={navigationRef}>
+    <NavigationContainer ref={navigationRef} theme={navigationTheme}>
       <Stack.Navigator
         screenOptions={{
           headerStyle: {
-            backgroundColor: COLORS.surfaceElevated,
+            backgroundColor: colors.surfaceElevated,
           },
-          headerTintColor: COLORS.primary,
+          headerTintColor: colors.primary,
           headerTitleStyle: {
-            color: COLORS.text,
+            color: colors.text,
             fontWeight: '700',
           },
           headerShadowVisible: true,
           headerBackTitleVisible: false,
           contentStyle: {
-            backgroundColor: COLORS.background,
+            backgroundColor: colors.background,
           },
         }}
       >
@@ -133,7 +159,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.background,
   },
 });
 

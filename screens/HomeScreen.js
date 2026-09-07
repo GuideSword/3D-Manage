@@ -13,20 +13,22 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
   ORDER_STATUSES,
   RADIUS,
   ROUTES,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Card } from '../components';
+import { Card, EmptyState } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, ordersAPI, stockAPI } from '../utils/api';
 
 const LOW_STOCK_THRESHOLD_GRAMS = 100;
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const { colors, isDark } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
@@ -130,17 +132,17 @@ const HomeScreen = () => {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
+            colors={[colors.primary]}
+            tintColor={colors.primary}
           />
         )}
       >
         <View style={styles.hero}>
           <View style={styles.heroTextGroup}>
-            <Text style={styles.eyebrow}>运营概览</Text>
-            <Text style={styles.title}>欢迎回来</Text>
+            <Text style={styles.eyebrow}>PAW WORKSHOP</Text>
+            <Text style={styles.title}>{isDark ? '夜晚好，店长' : '早安，店长'}</Text>
             <Text style={styles.subtitle}>
-              关注待审核订单、生产进度和库存风险。
+              {isDark ? '小麦陪你轻松收尾，记得早点休息。' : '小麦已经把今天的工坊事项整理好了。'}
             </Text>
           </View>
           <TouchableOpacity
@@ -150,19 +152,36 @@ const HomeScreen = () => {
             style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
           >
             {exporting ? (
-              <ActivityIndicator size="small" color={COLORS.primary} />
+              <ActivityIndicator size="small" color={colors.primary} />
             ) : (
-              <Ionicons name="download-outline" size={19} color={COLORS.primary} />
+              <Ionicons name="download-outline" size={19} color={colors.primary} />
             )}
           </TouchableOpacity>
         </View>
+
+        <Card style={styles.companionCard} padding="small">
+          <View style={styles.companionAvatar}>
+            <Ionicons name="paw" size={24} color={colors.primaryDark} />
+          </View>
+          <View style={styles.companionCopy}>
+            <Text style={styles.companionTitle}>小麦的今日提醒</Text>
+            <Text style={styles.companionText} numberOfLines={2}>
+              {loading
+                ? '正在整理工坊数据，请稍等一下喵。'
+                : stats.pendingReview > 0
+                  ? `还有 ${stats.pendingReview} 个订单等待审核，优先确认交期吧。`
+                  : '待审核订单已经清空，今天的节奏很顺利喵。'}
+            </Text>
+          </View>
+          <Ionicons name="sparkles" size={18} color={colors.accent} />
+        </Card>
 
         <View style={styles.statsGrid}>
           <StatCard
             title="待审核订单"
             value={displayValue(stats.pendingReview)}
             subtitle="需要确认后进入执行"
-            color={COLORS.warning}
+            color={colors.warning}
             icon="time-outline"
             onPress={() => navigation.navigate(ROUTES.ORDERS, { status: ORDER_STATUSES.PENDING_REVIEW })}
           />
@@ -170,7 +189,7 @@ const HomeScreen = () => {
             title="执行中订单"
             value={displayValue(stats.inProgress)}
             subtitle="正在生产或准备中"
-            color={COLORS.primary}
+            color={colors.secondary}
             icon="construct-outline"
             onPress={() => navigation.navigate(ROUTES.ORDERS, { status: ORDER_STATUSES.IN_PROGRESS })}
           />
@@ -178,7 +197,7 @@ const HomeScreen = () => {
             title="低库存批次"
             value={displayValue(stats.lowStock)}
             subtitle={`低于 ${LOW_STOCK_THRESHOLD_GRAMS}g`}
-            color={COLORS.danger}
+            color={colors.danger}
             icon="alert-circle-outline"
             onPress={() => navigation.navigate(ROUTES.MATERIALS, { activeTab: 'inventory' })}
           />
@@ -222,7 +241,7 @@ const HomeScreen = () => {
               style={styles.sectionLink}
             >
               <Text style={styles.sectionLinkText}>查看全部</Text>
-              <Ionicons name="arrow-forward" size={14} color={COLORS.primary} />
+              <Ionicons name="arrow-forward" size={14} color={colors.primary} />
             </TouchableOpacity>
           </View>
           <Card padding="none" style={styles.recentCard}>
@@ -237,7 +256,7 @@ const HomeScreen = () => {
                 onPress={() => navigation.navigate(ROUTES.ORDER_DETAIL, { orderId: order.id })}
               >
                 <View style={styles.activityIcon}>
-                  <Ionicons name="receipt-outline" size={18} color={COLORS.primary} />
+                  <Ionicons name="receipt-outline" size={18} color={colors.primary} />
                 </View>
                 <View style={styles.activityTextGroup}>
                   <Text style={styles.activityTitle} numberOfLines={1}>
@@ -247,13 +266,15 @@ const HomeScreen = () => {
                     订单 #{order.id} · {order.status || '未知状态'}
                   </Text>
                 </View>
-                <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
+                <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
               </TouchableOpacity>
             )) : (
-              <View style={styles.emptyState}>
-                <Ionicons name="file-tray-outline" size={30} color={COLORS.textTertiary} />
-                <Text style={styles.emptyText}>暂无最近订单</Text>
-              </View>
+              <EmptyState
+                icon="file-tray-outline"
+                title="工坊还很安静"
+                description="新建订单后，小麦会在这里帮你盯住进度。"
+                style={styles.emptyState}
+              />
             )}
           </Card>
         </View>
@@ -262,23 +283,28 @@ const HomeScreen = () => {
   );
 };
 
-const StatCard = ({ title, value, subtitle, color, icon, onPress }) => (
+const StatCard = ({ title, value, subtitle, color, icon, onPress }) => {
+  const { styles, colors } = useCoreScreenTheme();
+  return (
   <TouchableOpacity activeOpacity={0.82} onPress={onPress} style={styles.statCardWrapper}>
     <Card style={styles.statCard} interactive>
       <View style={styles.statTopRow}>
         <View style={[styles.iconBadge, { backgroundColor: `${color}18` }]}>
           <Ionicons name={icon} size={18} color={color} />
         </View>
-        <Ionicons name="chevron-forward" size={16} color={COLORS.textTertiary} />
+        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
       </View>
       <Text style={styles.statValue}>{value}</Text>
       <Text style={styles.statTitle}>{title}</Text>
       <Text style={styles.statSubtitle} numberOfLines={1}>{subtitle}</Text>
     </Card>
   </TouchableOpacity>
-);
+  );
+};
 
-const ActionCard = ({ title, icon, onPress, disabled = false }) => (
+const ActionCard = ({ title, icon, onPress, disabled = false }) => {
+  const { styles, colors } = useCoreScreenTheme();
+  return (
   <TouchableOpacity
     style={styles.actionCardWrapper}
     onPress={disabled ? undefined : onPress}
@@ -288,17 +314,23 @@ const ActionCard = ({ title, icon, onPress, disabled = false }) => (
     <Card style={[styles.actionCard, disabled && styles.disabledCard]} interactive>
       <View style={styles.actionIcon}>
         {disabled ? (
-          <ActivityIndicator size="small" color={COLORS.primary} />
+          <ActivityIndicator size="small" color={colors.primary} />
         ) : (
-          <Ionicons name={icon} size={22} color={COLORS.primary} />
+          <Ionicons name={icon} size={22} color={colors.primary} />
         )}
       </View>
       <Text style={styles.actionText} numberOfLines={1}>{title}</Text>
     </Card>
   </TouchableOpacity>
-);
+  );
+};
 
-const styles = StyleSheet.create({
+const useCoreScreenTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -335,9 +367,9 @@ const styles = StyleSheet.create({
     marginTop: SPACING.xs,
   },
   exportButton: {
-    width: 42,
-    height: 42,
-    borderRadius: RADIUS.md,
+    width: 44,
+    height: 44,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surfaceElevated,
@@ -347,15 +379,51 @@ const styles = StyleSheet.create({
   exportButtonDisabled: {
     opacity: 0.72,
   },
-  statsGrid: {
+  companionCard: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.md,
+    marginHorizontal: 0,
+    marginBottom: SPACING.lg,
+    backgroundColor: COLORS.primarySoft,
+    borderColor: COLORS.borderStrong,
+  },
+  companionAvatar: {
+    width: 48,
+    height: 48,
+    borderRadius: RADIUS.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceElevated,
+  },
+  companionCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  companionTitle: {
+    ...TYPOGRAPHY.meta,
+    color: COLORS.text,
+    fontWeight: '800',
+  },
+  companionText: {
+    ...TYPOGRAPHY.caption,
+    color: COLORS.textSecondary,
+    marginTop: 2,
+  },
+  statsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: SPACING.md,
     marginBottom: SPACING.xl,
   },
   statCardWrapper: {
-    minHeight: 136,
+    width: '31.5%',
+    minHeight: 142,
   },
   statCard: {
-    minHeight: 128,
+    minHeight: 134,
     justifyContent: 'space-between',
     marginHorizontal: 0,
   },
@@ -367,7 +435,7 @@ const styles = StyleSheet.create({
   iconBadge: {
     width: 34,
     height: 34,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -429,7 +497,7 @@ const styles = StyleSheet.create({
   actionIcon: {
     width: 38,
     height: 38,
-    borderRadius: RADIUS.md,
+    borderRadius: RADIUS.xl,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.primarySoft,

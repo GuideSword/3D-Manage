@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -12,15 +12,13 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
-  ORDER_STATUS_COLORS,
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
   RADIUS,
-  SHADOWS,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
+import { useAppTheme } from '../context/ThemeContext';
 import {
   getDowngradeMessage,
   getDowngradeTitle,
@@ -37,6 +35,14 @@ const STATUS_ORDER = [
   ORDER_STATUSES.COMPLETED,
   ORDER_STATUSES.CANCELLED,
 ];
+
+const getStatusColor = (status, colors) => ({
+  [ORDER_STATUSES.DRAFT]: colors.textSecondary,
+  [ORDER_STATUSES.PENDING_REVIEW]: colors.warning,
+  [ORDER_STATUSES.IN_PROGRESS]: colors.accent,
+  [ORDER_STATUSES.COMPLETED]: colors.success,
+  [ORDER_STATUSES.CANCELLED]: colors.danger,
+}[status] || colors.textSecondary);
 
 const hexToRgba = (hex, alpha) => {
   if (!hex || typeof hex !== 'string' || !hex.startsWith('#')) {
@@ -97,7 +103,9 @@ const Ripple = ({ x, y, color }) => {
 };
 
 const StatusOption = ({ status, isCurrent, isDowngradeOption, isReopenOption, isAllowed, onPress }) => {
-  const color = ORDER_STATUS_COLORS[status] || COLORS.textSecondary;
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
+  const color = getStatusColor(status, colors);
   const label = ORDER_STATUS_LABELS[status] || '未知';
   const [ripple, setRipple] = useState(null);
   const [optionSize, setOptionSize] = useState({ width: 0, height: 0 });
@@ -138,8 +146,8 @@ const StatusOption = ({ status, isCurrent, isDowngradeOption, isReopenOption, is
   };
 
   const downgradeTone = isReopenOption
-    ? { icon: 'refresh-outline', text: '重开', color: COLORS.danger, soft: COLORS.dangerSoft }
-    : { icon: 'arrow-down-circle-outline', text: '退级', color: COLORS.warning, soft: COLORS.warningSoft };
+    ? { icon: 'refresh-outline', text: '重开', color: colors.danger, soft: colors.dangerSoft }
+    : { icon: 'arrow-down-circle-outline', text: '退级', color: colors.warning, soft: colors.warningSoft };
 
   const isDisabled = isCurrent || !isAllowed;
 
@@ -206,7 +214,7 @@ const StatusOption = ({ status, isCurrent, isDowngradeOption, isReopenOption, is
           </View>
         ) : !isAllowed ? (
           <View style={styles.lockedBadge}>
-            <Ionicons name="lock-closed-outline" size={13} color={COLORS.textTertiary} />
+            <Ionicons name="lock-closed-outline" size={13} color={colors.textTertiary} />
             <Text style={styles.lockedBadgeText}>不可用</Text>
           </View>
         ) : isDowngradeOption ? (
@@ -222,7 +230,7 @@ const StatusOption = ({ status, isCurrent, isDowngradeOption, isReopenOption, is
             </Text>
           </View>
         ) : (
-          <Ionicons name="chevron-forward" size={18} color={COLORS.textTertiary} />
+          <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
         )}
       </Animated.View>
     </Pressable>
@@ -230,6 +238,8 @@ const StatusOption = ({ status, isCurrent, isDowngradeOption, isReopenOption, is
 };
 
 const RestoreBody = ({ order, busy, onConfirm, onClose }) => {
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const target = getRestoreTarget(order.status);
   const targetLabel = target ? ORDER_STATUS_LABELS[target] : '草稿';
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -263,7 +273,7 @@ const RestoreBody = ({ order, busy, onConfirm, onClose }) => {
   return (
     <View>
       <View style={styles.warningCard}>
-        <Ionicons name="alert-circle-outline" size={20} color={COLORS.warning} />
+        <Ionicons name="alert-circle-outline" size={20} color={colors.warning} />
         <View style={styles.warningTextGroup}>
           <Text style={styles.warningTitle}>该订单已取消</Text>
           <Text style={styles.warningBody}>
@@ -294,15 +304,15 @@ const RestoreBody = ({ order, busy, onConfirm, onClose }) => {
               key={ripple.id}
               x={ripple.x}
               y={ripple.y}
-              color={COLORS.primary}
+              color={colors.primary}
             />
           ) : null}
-          <Ionicons name="refresh-outline" size={20} color={COLORS.surfaceElevated} />
+          <Ionicons name="refresh-outline" size={20} color={colors.onPrimary} />
           <Text style={styles.restoreButtonText}>
             恢复为{targetLabel}
           </Text>
           {busy ? (
-            <ActivityIndicator size="small" color={COLORS.surfaceElevated} />
+            <ActivityIndicator size="small" color={colors.onPrimary} />
           ) : null}
         </Animated.View>
       </Pressable>
@@ -319,6 +329,8 @@ const StatusActionSheet = ({
   onConfirmRestore,
   onClose,
 }) => {
+  const { colors, shadows } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(56)).current;
   const scaleAnim = useRef(new Animated.Value(0.98)).current;
@@ -356,7 +368,7 @@ const StatusActionSheet = ({
 
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const currentStatus = order.status;
-  const currentColor = ORDER_STATUS_COLORS[currentStatus] || COLORS.textSecondary;
+  const currentColor = getStatusColor(currentStatus, colors);
   const currentLabel = ORDER_STATUS_LABELS[currentStatus] || '未知';
   const isRestoreMode = mode === 'restore';
 
@@ -464,7 +476,7 @@ const StatusActionSheet = ({
             disabled={busy}
             style={({ pressed }) => [
               styles.cancelButton,
-              pressed && { backgroundColor: COLORS.surface },
+              pressed && { backgroundColor: colors.surface },
             ]}
           >
             <Text style={styles.cancelText}>取消</Text>
@@ -475,44 +487,44 @@ const StatusActionSheet = ({
   );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors, shadows) => StyleSheet.create({
   root: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15, 23, 42, 0.45)',
+    backgroundColor: colors.overlay,
   },
   sheet: {
-    backgroundColor: COLORS.surfaceElevated,
-    borderTopLeftRadius: RADIUS.xl,
-    borderTopRightRadius: RADIUS.xl,
+    backgroundColor: colors.surfaceElevated,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.xxl,
     paddingHorizontal: SPACING.lg,
-    ...SHADOWS.floating,
+    ...shadows.floating,
   },
   handle: {
     alignSelf: 'center',
     width: 44,
     height: 5,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.borderStrong,
+    backgroundColor: colors.borderStrong,
     marginBottom: SPACING.md,
   },
   header: {
     paddingBottom: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   title: {
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: colors.text,
   },
   subtitle: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   currentRow: {
@@ -523,7 +535,7 @@ const styles = StyleSheet.create({
   },
   currentLabel: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
   },
   currentPill: {
     flexDirection: 'row',
@@ -570,7 +582,7 @@ const styles = StyleSheet.create({
   optionLabel: {
     flex: 1,
     ...TYPOGRAPHY.body,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '600',
   },
   currentBadge: {
@@ -602,7 +614,7 @@ const styles = StyleSheet.create({
     opacity: 0.4,
   },
   optionLabelLocked: {
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
   },
   lockedBadge: {
     flexDirection: 'row',
@@ -610,14 +622,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     gap: 4,
   },
   lockedBadgeText: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textTertiary,
+    color: colors.textTertiary,
     fontWeight: '700',
   },
   warningCard: {
@@ -627,9 +639,9 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
     padding: SPACING.md,
     borderRadius: RADIUS.lg,
-    backgroundColor: COLORS.warningSoft,
+    backgroundColor: colors.warningSoft,
     borderWidth: 1,
-    borderColor: hexToRgba(COLORS.warning, 0.35),
+    borderColor: hexToRgba(colors.warning, 0.35),
   },
   warningTextGroup: {
     flex: 1,
@@ -637,19 +649,19 @@ const styles = StyleSheet.create({
   },
   warningTitle: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '700',
   },
   warningBody: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     lineHeight: 18,
   },
   restoreButton: {
     marginTop: SPACING.lg,
     borderRadius: RADIUS.lg,
     overflow: 'hidden',
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   restoreButtonInner: {
     flexDirection: 'row',
@@ -662,7 +674,7 @@ const styles = StyleSheet.create({
   },
   restoreButtonText: {
     ...TYPOGRAPHY.body,
-    color: COLORS.surfaceElevated,
+    color: colors.onPrimary,
     fontWeight: '700',
   },
   cancelButton: {
@@ -670,13 +682,13 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   cancelText: {
     ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     fontWeight: '700',
   },
 });

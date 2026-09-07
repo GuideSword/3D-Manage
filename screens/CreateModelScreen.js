@@ -10,8 +10,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { COLORS, RADIUS, ROUTES, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, ROUTES, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
@@ -31,6 +32,8 @@ const MODEL_EXTENSIONS = ['stl', 'obj', '3mf', 'step', 'stp', 'zip'];
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
 const CreateModelScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [selectedModelFile, setSelectedModelFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -147,7 +150,7 @@ const CreateModelScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Ionicons name="cube-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="cube-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>NEW MODEL</Text>
@@ -248,7 +251,10 @@ const CreateModelScreen = ({ navigation }) => {
   );
 };
 
-const OptionButton = ({ label, active, onPress }) => (
+const OptionButton = ({ label, active, onPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
   <TouchableOpacity
     activeOpacity={0.82}
     style={[styles.optionButton, active && styles.optionButtonActive]}
@@ -256,19 +262,24 @@ const OptionButton = ({ label, active, onPress }) => (
   >
     <Text style={[styles.optionText, active && styles.optionTextActive]}>{label}</Text>
   </TouchableOpacity>
-);
+  );
+};
 
-const SelectedFile = ({ asset }) => (
+const SelectedFile = ({ asset }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
   <View style={styles.fileInfo}>
-    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+    <Ionicons name="document-text-outline" size={18} color={colors.primary} />
     <View style={styles.fileTextGroup}>
       <Text style={styles.fileName} numberOfLines={1}>{asset.name}</Text>
       {asset.size ? <Text style={styles.fileMeta}>{Math.round(asset.size / 1024)} KB</Text> : null}
     </View>
   </View>
-);
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

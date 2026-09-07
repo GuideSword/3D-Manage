@@ -1,6 +1,7 @@
-import React, { memo, useState } from 'react';
+import React, { memo, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { COLORS, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { SPACING, TYPOGRAPHY } from '../constants';
+import { useAppTheme } from '../context/ThemeContext';
 
 const Input = memo(({
   label,
@@ -19,6 +20,8 @@ const Input = memo(({
   ...props
 }) => {
   const [focused, setFocused] = useState(false);
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <View style={[styles.container, style]}>
@@ -32,7 +35,7 @@ const Input = memo(({
           inputStyle,
         ]}
         placeholder={placeholder}
-        placeholderTextColor={COLORS.textTertiary}
+        placeholderTextColor={colors.textTertiary}
         value={value}
         onChangeText={onChangeText}
         multiline={multiline}
@@ -54,30 +57,30 @@ const Input = memo(({
   );
 });
 
-const styles = StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     marginVertical: SPACING.sm,
   },
   label: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: SPACING.xs,
   },
   input: {
     minHeight: 46,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADIUS.md,
+    borderColor: colors.border,
+    borderRadius: 15,
     paddingHorizontal: SPACING.md,
     paddingVertical: 11,
     fontSize: 15,
     lineHeight: 20,
-    color: COLORS.text,
-    backgroundColor: COLORS.surfaceElevated,
+    color: colors.text,
+    backgroundColor: colors.surfaceElevated,
   },
   focusedInput: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.surfaceElevated,
+    borderColor: colors.primary,
+    backgroundColor: colors.surfaceElevated,
   },
   multilineInput: {
     minHeight: 96,
@@ -85,11 +88,11 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
   },
   errorInput: {
-    borderColor: COLORS.danger,
+    borderColor: colors.danger,
   },
   errorText: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.danger,
+    color: colors.danger,
     marginTop: SPACING.xs,
   },
 });

@@ -8,14 +8,12 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
   RADIUS,
   ROUTES,
   SPACING,
@@ -23,10 +21,13 @@ import {
   STOCK_STATUSES,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Card } from '../components';
+import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialsScreen = ({ navigation, route }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [materials, setMaterials] = useState([]);
   const [stockLots, setStockLots] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -181,12 +182,12 @@ const MaterialsScreen = ({ navigation, route }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleGroup}>
-          <Text style={styles.eyebrow}>MATERIAL STOCK</Text>
-          <Text style={styles.title}>耗材</Text>
-        </View>
-        <View style={styles.headerActions}>
+      <ScreenHeader
+        eyebrow="MATERIAL STOCK"
+        title="耗材仓库"
+        subtitle="每一卷材料，都安排得明明白白。"
+        actions={(
+          <View style={styles.headerActions}>
           <IconButton
             icon="search"
             active={showSearch}
@@ -199,8 +200,9 @@ const MaterialsScreen = ({ navigation, route }) => {
               onPress={() => navigation.navigate(ROUTES.CREATE_MATERIAL)}
             />
           ) : null}
-        </View>
-      </View>
+          </View>
+        )}
+      />
 
       <View style={styles.segmentedControl}>
         <SegmentButton
@@ -217,23 +219,17 @@ const MaterialsScreen = ({ navigation, route }) => {
         />
       </View>
 
+      <WarehouseSummary materials={materials} stockLots={stockLots} />
+
       {showSearch ? (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={COLORS.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
+        <SearchBar
             placeholder="搜索材质、品牌或颜色"
-            placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onClear={() => setSearchQuery('')}
             autoFocus
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
-              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+            style={styles.searchContainer}
+        />
       ) : null}
 
       {activeTab === 'materials' ? (
@@ -248,6 +244,8 @@ const MaterialsScreen = ({ navigation, route }) => {
           getMaterialLots,
           getMaterialTotalQty,
           searchQuery,
+          colors,
+          styles,
         })
       ) : (
         renderInventoryList({
@@ -259,6 +257,8 @@ const MaterialsScreen = ({ navigation, route }) => {
           deletingId,
           handleDeleteLot,
           findMaterial,
+          colors,
+          styles,
         })
       )}
     </SafeAreaView>
@@ -276,11 +276,13 @@ const renderMaterialsList = ({
   getMaterialLots,
   getMaterialTotalQty,
   searchQuery,
+  colors,
+  styles,
 }) => {
   if (loading && !refreshing) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
         <Text style={styles.loadingText}>加载耗材中...</Text>
       </View>
     );
@@ -304,8 +306,8 @@ const renderMaterialsList = ({
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={[COLORS.primary]}
-          tintColor={COLORS.primary}
+          colors={[colors.primary]}
+          tintColor={colors.primary}
         />
       )}
       contentContainerStyle={[
@@ -313,11 +315,12 @@ const renderMaterialsList = ({
         materials.length === 0 && styles.emptyListContainer,
       ]}
       ListEmptyComponent={(
-        <View style={styles.emptyContainer}>
-          <Ionicons name="layers-outline" size={50} color={COLORS.textTertiary} />
-          <Text style={styles.emptyTitle}>{searchQuery ? '没有匹配的耗材' : '暂无耗材'}</Text>
-          <Text style={styles.emptyText}>新增耗材后，可以在这里管理规格、库存和批次。</Text>
-        </View>
+        <EmptyState
+          icon="layers-outline"
+          title={searchQuery ? '没有找到这卷耗材' : '仓库还是空的'}
+          description="新增耗材后，小麦会帮你管理规格、库存和批次。"
+          style={styles.emptyContainer}
+        />
       )}
     />
   );
@@ -332,6 +335,8 @@ const renderInventoryList = ({
   deletingId,
   handleDeleteLot,
   findMaterial,
+  colors,
+  styles,
 }) => (
   <ScrollView
     style={styles.inventoryScroll}
@@ -340,8 +345,8 @@ const renderInventoryList = ({
       <RefreshControl
         refreshing={refreshing}
         onRefresh={onRefresh}
-        colors={[COLORS.primary]}
-        tintColor={COLORS.primary}
+        colors={[colors.primary]}
+        tintColor={colors.primary}
       />
     )}
   >
@@ -355,39 +360,57 @@ const renderInventoryList = ({
         onDelete={handleDeleteLot}
       />
     )) : (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="archive-outline" size={50} color={COLORS.textTertiary} />
-        <Text style={styles.emptyTitle}>暂无库存批次</Text>
-        <Text style={styles.emptyText}>
-          {materials.length > 0 ? '执行入库后会生成库存批次。' : '请先新增耗材，再执行入库。'}
-        </Text>
-      </View>
+      <EmptyState
+        icon="archive-outline"
+        title="还没有库存批次"
+        description={materials.length > 0 ? '执行入库后会生成库存批次。' : '请先新增耗材，再执行入库。'}
+        style={styles.emptyContainer}
+      />
     )}
   </ScrollView>
 );
 
-const IconButton = ({ icon, active = false, onPress }) => (
-  <TouchableOpacity
-    activeOpacity={0.82}
-    style={[styles.headerButton, active && styles.headerButtonActive]}
-    onPress={onPress}
-  >
-    <Ionicons name={icon} size={20} color={active ? COLORS.primary : COLORS.textSecondary} />
-  </TouchableOpacity>
-);
+const IconButton = ({ icon, active = false, onPress }) => {
+  const { colors, styles } = useMaterialTheme();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.82}
+      style={[styles.headerButton, active && styles.headerButtonActive]}
+      onPress={onPress}
+    >
+      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
+    </TouchableOpacity>
+  );
+};
 
-const SegmentButton = ({ label, icon, active, onPress }) => (
-  <TouchableOpacity
-    activeOpacity={0.82}
-    onPress={onPress}
-    style={[styles.segmentButton, active && styles.segmentButtonActive]}
-  >
-    <Ionicons name={icon} size={16} color={active ? COLORS.primary : COLORS.textSecondary} />
-    <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
-  </TouchableOpacity>
-);
+const WarehouseSummary = ({ materials, stockLots }) => {
+  const { styles } = useMaterialTheme();
+  const totalQty = stockLots.reduce((sum, lot) => sum + Number(lot.qty || 0), 0);
+  return (
+    <View style={styles.warehouseSummary}>
+      <SummaryItem label="材料种类" value={`${materials.length}`} />
+      <SummaryItem label="库存批次" value={`${stockLots.length}`} />
+      <SummaryItem label="库存总量" value={`${totalQty}g`} />
+    </View>
+  );
+};
+
+const SegmentButton = ({ label, icon, active, onPress }) => {
+  const { colors, styles } = useMaterialTheme();
+  return (
+    <TouchableOpacity
+      activeOpacity={0.82}
+      onPress={onPress}
+      style={[styles.segmentButton, active && styles.segmentButtonActive]}
+    >
+      <Ionicons name={icon} size={16} color={active ? colors.primary : colors.textSecondary} />
+      <Text style={[styles.segmentText, active && styles.segmentTextActive]}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
 
 const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPress }) => {
+  const { colors, styles } = useMaterialTheme();
   const materialType = material.type || material.materialType || '未知材质';
 
   return (
@@ -410,9 +433,9 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
             disabled={deletingId === material.id}
           >
             {deletingId === material.id ? (
-              <ActivityIndicator size="small" color={COLORS.danger} />
+              <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
             )}
           </TouchableOpacity>
         </View>
@@ -437,8 +460,9 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
 };
 
 const LotCard = ({ lot, material, deletingId, onDelete }) => {
+  const { colors, styles } = useMaterialTheme();
   const state = lot.state || lot.status;
-  const statusColor = getStockStatusColor(state);
+  const statusColor = getStockStatusColor(state, colors);
   const materialLabel = [
     material.type || material.materialType,
     material.brand,
@@ -460,9 +484,9 @@ const LotCard = ({ lot, material, deletingId, onDelete }) => {
             disabled={deletingId === lot.id}
           >
             {deletingId === lot.id ? (
-              <ActivityIndicator size="small" color={COLORS.danger} />
+              <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
             )}
           </TouchableOpacity>
         </View>
@@ -476,62 +500,79 @@ const LotCard = ({ lot, material, deletingId, onDelete }) => {
   );
 };
 
-const InventoryActions = ({ navigation }) => (
+const InventoryActions = ({ navigation }) => {
+  const { colors, styles } = useMaterialTheme();
+  return (
   <Card style={styles.inventoryPanel}>
     <Text style={styles.inventoryTitle}>库存操作</Text>
     <View style={styles.inventoryActionRow}>
       <InventoryAction
         title="入库"
         icon="enter-outline"
-        color={COLORS.success}
+        color={colors.success}
         onPress={() => navigation.navigate(ROUTES.INBOUND_TRANSACTION)}
       />
       <InventoryAction
         title="出库"
         icon="exit-outline"
-        color={COLORS.warning}
+        color={colors.warning}
         onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
       />
       <InventoryAction
         title="盘点"
         icon="swap-horizontal-outline"
-        color={COLORS.primary}
+        color={colors.primary}
         onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
       />
     </View>
   </Card>
-);
+  );
+};
 
-const InventoryAction = ({ title, icon, color, onPress }) => (
+const InventoryAction = ({ title, icon, color, onPress }) => {
+  const { styles } = useMaterialTheme();
+  return (
   <TouchableOpacity activeOpacity={0.82} style={styles.inventoryAction} onPress={onPress}>
     <View style={[styles.inventoryActionIcon, { backgroundColor: `${color}18` }]}>
       <Ionicons name={icon} size={20} color={color} />
     </View>
     <Text style={styles.inventoryActionText}>{title}</Text>
   </TouchableOpacity>
-);
+  );
+};
 
-const InfoPill = ({ label, value }) => (
+const InfoPill = ({ label, value }) => {
+  const { styles } = useMaterialTheme();
+  return (
   <View style={styles.infoPill}>
     <Text style={styles.infoPillLabel}>{label}</Text>
     <Text style={styles.infoPillValue} numberOfLines={1}>{value}</Text>
   </View>
-);
+  );
+};
 
-const SummaryItem = ({ label, value }) => (
+const SummaryItem = ({ label, value }) => {
+  const { styles } = useMaterialTheme();
+  return (
   <View style={styles.summaryItem}>
     <Text style={styles.summaryLabel}>{label}</Text>
     <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
   </View>
-);
-
-const getStockStatusColor = (state) => {
-  if (state === STOCK_STATUSES.IN_STOCK) return COLORS.success;
-  if (state === STOCK_STATUSES.SCRAPPED) return COLORS.danger;
-  return COLORS.warning;
+  );
 };
 
-const styles = StyleSheet.create({
+const getStockStatusColor = (state, colors) => {
+  if (state === STOCK_STATUSES.IN_STOCK) return colors.success;
+  if (state === STOCK_STATUSES.SCRAPPED) return colors.danger;
+  return colors.warning;
+};
+
+const useMaterialTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -562,8 +603,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   headerButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -584,9 +625,18 @@ const styles = StyleSheet.create({
     borderRadius: RADIUS.lg,
     backgroundColor: COLORS.surface,
   },
+  warehouseSummary: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    padding: SPACING.sm,
+    borderRadius: 20,
+    backgroundColor: COLORS.primarySoft,
+  },
   segmentButton: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -668,6 +718,7 @@ const styles = StyleSheet.create({
   materialCard: {
     marginHorizontal: 0,
     marginBottom: SPACING.md,
+    borderRadius: 20,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -702,8 +753,8 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   deleteButton: {
-    width: 34,
-    height: 34,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -800,6 +851,7 @@ const styles = StyleSheet.create({
   lotCard: {
     marginHorizontal: 0,
     marginBottom: SPACING.md,
+    borderRadius: 20,
   },
   lotIdentity: {
     flex: 1,

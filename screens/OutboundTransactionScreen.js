@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  COLORS,
   INVENTORY_TXN_TYPES,
   RADIUS,
   SPACING,
@@ -18,9 +17,12 @@ import {
   TYPOGRAPHY,
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const OutboundTransactionScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [materials, setMaterials] = useState([]);
@@ -205,36 +207,44 @@ const OutboundTransactionScreen = ({ navigation }) => {
   );
 };
 
-const LoadingState = ({ text }) => (
-  <SafeAreaView style={styles.container}>
+const LoadingState = ({ text }) => {
+  const { colors, styles } = useScreenTheme();
+  return <SafeAreaView style={styles.container}>
     <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color={COLORS.primary} />
+      <ActivityIndicator size="large" color={colors.warning} />
       <Text style={styles.loadingText}>{text}</Text>
     </View>
-  </SafeAreaView>
-);
+  </SafeAreaView>;
+};
 
-const FormHeader = ({ icon, eyebrow, title, subtitle }) => (
-  <View style={styles.header}>
+const FormHeader = ({ icon, eyebrow, title, subtitle }) => {
+  const { colors, styles } = useScreenTheme();
+  return <View style={styles.header}>
     <View style={styles.headerIcon}>
-      <Ionicons name={icon} size={24} color={COLORS.warning} />
+      <Ionicons name={icon} size={24} color={colors.warning} />
     </View>
     <View style={styles.headerText}>
       <Text style={styles.eyebrow}>{eyebrow}</Text>
       <Text style={styles.title}>{title}</Text>
       <Text style={styles.subtitle}>{subtitle}</Text>
     </View>
-  </View>
-);
+  </View>;
+};
 
-const EmptyOptions = ({ title, hint }) => (
-  <View style={styles.emptyOptionsContainer}>
+const EmptyOptions = ({ title, hint }) => {
+  const { styles } = useScreenTheme();
+  return <View style={styles.emptyOptionsContainer}>
     <Text style={styles.emptyOptionsText}>{title}</Text>
     <Text style={styles.emptyOptionsHint}>{hint}</Text>
-  </View>
-);
+  </View>;
+};
 
-const styles = StyleSheet.create({
+const useScreenTheme = () => {
+  const { colors } = useAppTheme();
+  return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
+};
+
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,

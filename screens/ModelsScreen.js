@@ -7,7 +7,6 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -15,13 +14,13 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
   API_CONFIG,
-  COLORS,
   RADIUS,
   ROUTES,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Button, Card } from '../components';
+import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 
 const SOURCE_LABELS = {
@@ -54,6 +53,8 @@ const buildImageSource = (image, token) => {
 };
 
 const ModelsScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [models, setModels] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -116,12 +117,12 @@ const ModelsScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.titleGroup}>
-          <Text style={styles.eyebrow}>MODEL LIBRARY</Text>
-          <Text style={styles.title}>模型</Text>
-        </View>
-        <View style={styles.headerActions}>
+      <ScreenHeader
+        eyebrow="MODEL LIBRARY"
+        title="模型图鉴"
+        subtitle="把灵感和打印资产都收藏在这里。"
+        actions={(
+          <View style={styles.headerActions}>
           <IconButton
             icon={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
             active
@@ -142,32 +143,25 @@ const ModelsScreen = ({ navigation }) => {
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
           />
-        </View>
-      </View>
+          </View>
+        )}
+      />
 
       {showSearch ? (
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={18} color={COLORS.textTertiary} />
-          <TextInput
-            style={styles.searchInput}
+        <SearchBar
             placeholder="搜索模型名称、描述或文件名"
-            placeholderTextColor={COLORS.textTertiary}
             value={searchQuery}
             onChangeText={setSearchQuery}
+            onClear={() => setSearchQuery('')}
             autoFocus
-          />
-          {searchQuery ? (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.searchClear}>
-              <Ionicons name="close" size={16} color={COLORS.textSecondary} />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+            style={styles.searchContainer}
+        />
       ) : null}
 
       {sourceFilter !== 'all' ? (
         <View style={styles.filterHint}>
           <View style={styles.filterHintLeft}>
-            <Ionicons name="funnel-outline" size={16} color={COLORS.primary} />
+            <Ionicons name="funnel-outline" size={16} color={colors.primary} />
             <Text style={styles.filterHintText}>
               当前筛选：{SOURCE_LABELS[sourceFilter] || sourceFilter}
             </Text>
@@ -180,7 +174,7 @@ const ModelsScreen = ({ navigation }) => {
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>加载模型中...</Text>
         </View>
       ) : (
@@ -201,8 +195,8 @@ const ModelsScreen = ({ navigation }) => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[COLORS.primary]}
-              tintColor={COLORS.primary}
+              colors={[colors.primary]}
+              tintColor={colors.primary}
             />
           )}
           contentContainerStyle={[
@@ -210,21 +204,14 @@ const ModelsScreen = ({ navigation }) => {
             models.length === 0 && styles.emptyListContainer,
           ]}
           ListEmptyComponent={(
-            <View style={styles.emptyContainer}>
-              <Ionicons name="cube-outline" size={54} color={COLORS.textTertiary} />
-              <Text style={styles.emptyTitle}>
-                {searchQuery ? '没有匹配的模型' : '暂无模型'}
-              </Text>
-              <Text style={styles.emptyText}>
-                上传 STL、OBJ 或 3MF 文件后，这里会成为你的模型资产库。
-              </Text>
-              <Button
-                title="创建第一个模型"
-                iconLeft="add"
-                onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
-                style={styles.uploadButton}
-              />
-            </View>
+            <EmptyState
+              icon="cube-outline"
+              title={searchQuery ? '图鉴里没有这一款' : '模型图鉴还是空的'}
+              description="上传 STL、OBJ 或 3MF 文件后，小麦会替你整齐收好。"
+              actionLabel="创建第一个模型"
+              onAction={() => navigation.navigate(ROUTES.CREATE_MODEL)}
+              style={styles.emptyContainer}
+            />
           )}
         />
       )}
@@ -234,23 +221,29 @@ const ModelsScreen = ({ navigation }) => {
         style={styles.fab}
         onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
       >
-        <Ionicons name="add" size={24} color={COLORS.surfaceElevated} />
+        <Ionicons name="add" size={24} color={colors.onPrimary || colors.surfaceElevated} />
       </TouchableOpacity>
     </SafeAreaView>
   );
 };
 
-const IconButton = ({ icon, active = false, onPress }) => (
-  <TouchableOpacity
-    activeOpacity={0.82}
-    style={[styles.headerButton, active && styles.headerButtonActive]}
-    onPress={onPress}
-  >
-    <Ionicons name={icon} size={20} color={active ? COLORS.primary : COLORS.textSecondary} />
-  </TouchableOpacity>
-);
+const IconButton = ({ icon, active = false, onPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
+    <TouchableOpacity
+      activeOpacity={0.82}
+      style={[styles.headerButton, active && styles.headerButtonActive]}
+      onPress={onPress}
+    >
+      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
+    </TouchableOpacity>
+  );
+};
 
 const ModelCard = ({ model, isGrid, token, onPress }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const preferredImage = getPreferredImage(model);
   const imageSource = buildImageSource(preferredImage, token);
   const sourceLabel = SOURCE_LABELS[model.source] || model.source || '未知';
@@ -272,7 +265,7 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
             <Image source={imageSource} style={styles.previewImage} resizeMode="cover" />
           ) : (
             <View style={styles.previewFallback}>
-              <Ionicons name="cube-outline" size={isGrid ? 42 : 34} color={COLORS.textTertiary} />
+              <Ionicons name="cube-outline" size={isGrid ? 42 : 34} color={colors.textTertiary} />
             </View>
           )}
         </View>
@@ -282,7 +275,7 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
             <Text style={styles.modelName} numberOfLines={1}>
               {model.name || '未命名模型'}
             </Text>
-            <Badge text={sourceLabel} color={COLORS.accent} size="small" />
+            <Badge text={sourceLabel} color={colors.accent} size="small" />
           </View>
 
           {model.description ? (
@@ -302,14 +295,18 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
   );
 };
 
-const MetaPill = ({ icon, label }) => (
-  <View style={styles.metaPill}>
-    <Ionicons name={icon} size={13} color={COLORS.textSecondary} />
-    <Text style={styles.metaPillText} numberOfLines={1}>{label}</Text>
-  </View>
-);
+const MetaPill = ({ icon, label }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
+    <View style={styles.metaPill}>
+      <Ionicons name={icon} size={13} color={colors.textSecondary} />
+      <Text style={styles.metaPillText} numberOfLines={1}>{label}</Text>
+    </View>
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -340,8 +337,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   headerButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     borderRadius: RADIUS.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -456,21 +453,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     overflow: 'hidden',
     marginHorizontal: 0,
+    borderRadius: 20,
   },
   gridCard: {
     minHeight: 238,
     overflow: 'hidden',
     marginHorizontal: 0,
+    borderRadius: 20,
   },
   listPreviewBox: {
     width: 118,
     minHeight: 132,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: COLORS.accentSoft || COLORS.surfaceMuted,
   },
   gridPreviewBox: {
     width: '100%',
     aspectRatio: 1.22,
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: COLORS.accentSoft || COLORS.surfaceMuted,
   },
   previewImage: {
     width: '100%',

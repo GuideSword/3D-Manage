@@ -15,7 +15,6 @@ import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
 import {
-  COLORS,
   ORDER_STATUSES,
   RADIUS,
   ROUTES,
@@ -23,6 +22,7 @@ import {
   TYPOGRAPHY,
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
+import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
@@ -42,6 +42,8 @@ const newOrderItem = () => ({
 });
 
 const CreateOrderScreen = ({ navigation }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -290,7 +292,7 @@ const CreateOrderScreen = ({ navigation }) => {
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
           <Text style={styles.loadingText}>加载选项中...</Text>
         </View>
       </SafeAreaView>
@@ -306,7 +308,7 @@ const CreateOrderScreen = ({ navigation }) => {
       >
         <View style={styles.header}>
           <View style={styles.headerIcon}>
-            <Ionicons name="receipt-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="receipt-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>NEW ORDER</Text>
@@ -351,7 +353,7 @@ const CreateOrderScreen = ({ navigation }) => {
               <Text style={[styles.datePickerText, !formData.dueDate && styles.placeholderText]}>
                 {formData.dueDate ? formatDate(formData.dueDate) : '请选择截止日期'}
               </Text>
-              <Ionicons name="calendar-outline" size={18} color={COLORS.textSecondary} />
+              <Ionicons name="calendar-outline" size={18} color={colors.textSecondary} />
             </TouchableOpacity>
             {formData.dueDate ? (
               <TouchableOpacity
@@ -359,7 +361,7 @@ const CreateOrderScreen = ({ navigation }) => {
                 style={styles.clearDateButton}
                 onPress={() => setFormData({ ...formData, dueDate: null })}
               >
-                <Ionicons name="close" size={16} color={COLORS.textSecondary} />
+                <Ionicons name="close" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             ) : null}
           </View>
@@ -401,7 +403,7 @@ const CreateOrderScreen = ({ navigation }) => {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>订单项目</Text>
             <TouchableOpacity activeOpacity={0.82} onPress={addOrderItem} style={styles.addButton}>
-              <Ionicons name="add" size={20} color={COLORS.primary} />
+              <Ionicons name="add" size={20} color={colors.primary} />
             </TouchableOpacity>
           </View>
 
@@ -411,7 +413,7 @@ const CreateOrderScreen = ({ navigation }) => {
                 <Text style={styles.orderItemTitle}>项目 {index + 1}</Text>
                 {items.length > 1 ? (
                   <TouchableOpacity onPress={() => removeOrderItem(index)} style={styles.removeButton}>
-                    <Ionicons name="trash-outline" size={18} color={COLORS.danger} />
+                    <Ionicons name="trash-outline" size={18} color={colors.danger} />
                   </TouchableOpacity>
                 ) : null}
               </View>
@@ -498,17 +500,21 @@ const CreateOrderScreen = ({ navigation }) => {
   );
 };
 
-const SelectedFile = ({ asset }) => (
+const SelectedFile = ({ asset }) => {
+  const { colors } = useAppTheme();
+  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  return (
   <View style={styles.fileInfo}>
-    <Ionicons name="document-text-outline" size={18} color={COLORS.primary} />
+    <Ionicons name="document-text-outline" size={18} color={colors.primary} />
     <View style={styles.fileTextGroup}>
       <Text style={styles.fileName} numberOfLines={1}>{asset.name}</Text>
       {asset.size ? <Text style={styles.fileMeta}>{Math.round(asset.size / 1024)} KB</Text> : null}
     </View>
   </View>
-);
+  );
+};
 
-const styles = StyleSheet.create({
+const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
