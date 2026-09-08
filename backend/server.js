@@ -52,6 +52,7 @@ initStorage().catch((err) => console.error('Storage initialization failed:', err
 
 app.use('/api/system', require('./routes/system'));
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users', require('./routes/users'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/models', require('./routes/models'));
 app.use('/api/materials', require('./routes/materials'));

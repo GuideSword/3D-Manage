@@ -5,7 +5,9 @@ const path = require('path');
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), '3d-manage-api-'));
 process.env.DATA_DIR = path.join(tempDir, 'data');
 process.env.UPLOAD_DIR = path.join(tempDir, 'uploads');
-process.env.JWT_SECRET = 'verify-secret';
+process.env.JWT_SECRET = 'verify-secret-with-at-least-thirty-two-characters';
+process.env.AGENT_KEY_ENC_SECRET = 'verify-agent-key-secret-at-least-32-chars';
+process.env.BOOTSTRAP_TOKEN = 'verify-bootstrap-token-at-least-32-chars';
 process.env.STORE_DRIVER = 'file';
 process.env.NODE_ENV = 'test';
 process.env.SKIP_WINDOWS_SHELL_THUMBNAIL = '1';
@@ -59,30 +61,41 @@ const main = async () => {
       throw new Error(`Anonymous business read should require auth, got ${anonymousRead.status}`);
     }
 
-    const login = await request('/api/auth/login', {
+    const bootstrap = await request('/api/system/bootstrap', {
       method: 'POST',
-      body: JSON.stringify({ email: 'admin@example.com', password: 'Admin123456' }),
+      headers: { 'X-Bootstrap-Token': process.env.BOOTSTRAP_TOKEN },
+      body: JSON.stringify({
+        organizationName: 'API Verify Workshop',
+        ownerName: 'Verify Owner',
+        email: 'owner@example.com',
+        password: 'OwnerPassword123!',
+      }),
     });
-    if (!login.token || login.user.role !== 'owner') {
-      throw new Error('Login did not return the default owner token');
+    if (!bootstrap.token || bootstrap.user.role !== 'owner') {
+      throw new Error('Bootstrap did not return the Owner token');
     }
-    authToken = login.token;
+    authToken = bootstrap.token;
 
-    const viewer = await request('/api/auth/register', {
+    const viewer = await request('/api/users', {
       method: 'POST',
       body: JSON.stringify({
         email: 'viewer@example.com',
-        password: 'Viewer123456',
+        password: 'ViewerPassword123!',
         name: 'Verify Viewer',
         role: 'viewer',
       }),
+    });
+
+    const viewerLogin = await request('/api/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: 'viewer@example.com', password: 'ViewerPassword123!' }),
     });
 
     const forbiddenWrite = await fetch(`${baseUrl}/api/materials`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${viewer.token}`,
+        Authorization: `Bearer ${viewerLogin.token}`,
       },
       body: JSON.stringify({ type: 'PLA', brand: 'Viewer', color: 'Nope' }),
     });

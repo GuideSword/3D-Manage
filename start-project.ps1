@@ -8,6 +8,8 @@ $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $BackendDir = Join-Path $Root 'backend'
 $ExpoDir = Join-Path $Root '.expo'
+$TempDir = Join-Path $Root '.tmp'
+$DevSecretsFile = Join-Path $TempDir 'development-secrets.json'
 $BackendOutLog = Join-Path $BackendDir "backend-$BackendPort.out.log"
 $BackendErrLog = Join-Path $BackendDir "backend-$BackendPort.err.log"
 $FrontendOutLog = Join-Path $ExpoDir 'expo-web.out.log'
@@ -78,9 +80,6 @@ function Start-Backend {
 
   Write-Step "Starting backend on port $BackendPort"
   $env:PORT = [string]$BackendPort
-  if (-not $env:JWT_SECRET) {
-    $env:JWT_SECRET = 'dev-local-secret'
-  }
   if (-not $env:STORE_DRIVER) {
     $env:STORE_DRIVER = 'file'
   }
@@ -92,6 +91,35 @@ function Start-Backend {
     -RedirectStandardOutput $BackendOutLog `
     -RedirectStandardError $BackendErrLog `
     -WindowStyle Hidden | Out-Null
+}
+
+function Get-RandomSecret {
+  $bytes = New-Object byte[] 32
+  $generator = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+  try {
+    $generator.GetBytes($bytes)
+  } finally {
+    $generator.Dispose()
+  }
+  return [Convert]::ToBase64String($bytes)
+}
+
+function Initialize-DevelopmentSecrets {
+  New-Item -ItemType Directory -Force -Path $TempDir | Out-Null
+  if (Test-Path -LiteralPath $DevSecretsFile) {
+    $secrets = Get-Content -LiteralPath $DevSecretsFile -Raw | ConvertFrom-Json
+  } else {
+    $secrets = [ordered]@{
+      JWT_SECRET = Get-RandomSecret
+      AGENT_KEY_ENC_SECRET = Get-RandomSecret
+      BOOTSTRAP_TOKEN = Get-RandomSecret
+    }
+    $secrets | ConvertTo-Json | Set-Content -LiteralPath $DevSecretsFile -Encoding utf8
+  }
+
+  if (-not $env:JWT_SECRET) { $env:JWT_SECRET = $secrets.JWT_SECRET }
+  if (-not $env:AGENT_KEY_ENC_SECRET) { $env:AGENT_KEY_ENC_SECRET = $secrets.AGENT_KEY_ENC_SECRET }
+  if (-not $env:BOOTSTRAP_TOKEN) { $env:BOOTSTRAP_TOKEN = $secrets.BOOTSTRAP_TOKEN }
 }
 
 function Start-Frontend {
@@ -122,6 +150,7 @@ Require-Command 'npm'
 Require-Command 'curl.exe'
 
 New-Item -ItemType Directory -Force -Path $ExpoDir | Out-Null
+Initialize-DevelopmentSecrets
 
 Ensure-NodeModules -Directory $Root -Label 'frontend'
 Ensure-NodeModules -Directory $BackendDir -Label 'backend'
@@ -149,8 +178,8 @@ Write-Host "Frontend: http://localhost:$FrontendPort"
 Write-Host "Backend:  http://localhost:$BackendPort"
 Write-Host "Health:   http://localhost:$BackendPort/health"
 Write-Host ""
-Write-Host "Default login:"
-Write-Host "admin@example.com / Admin123456"
+Write-Host "First-run bootstrap token:"
+Write-Host $env:BOOTSTRAP_TOKEN
 Write-Host ""
 Write-Host "Logs:"
 Write-Host $BackendOutLog

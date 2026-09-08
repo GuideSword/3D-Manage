@@ -1,7 +1,5 @@
-const jwt = require('jsonwebtoken');
 const { withData } = require('../utils/store');
-
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-me';
+const { verifyToken } = require('../utils/authTokens');
 
 const publicUser = (user) => ({
   id: user.id,
@@ -21,13 +19,19 @@ const authenticate = async (req) => {
     return null;
   }
 
-  const payload = jwt.verify(token, JWT_SECRET);
-  const user = await withData((data) => data.users.find((item) => item.id === String(payload.sub)), { write: false });
-  if (!user || user.active === false) {
-    return null;
-  }
-
-  return publicUser(user);
+  return withData((data) => {
+    const payload = verifyToken(token, data.system.serverId);
+    const user = data.users.find((item) => item.id === String(payload.sub));
+    if (
+      !user
+      || user.active === false
+      || !Number.isInteger(user.tokenVersion)
+      || payload.ver !== user.tokenVersion
+    ) {
+      return null;
+    }
+    return publicUser(user);
+  }, { write: false });
 };
 
 const requireAuth = async (req, res, next) => {

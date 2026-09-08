@@ -1,5 +1,12 @@
 const express = require('express');
-const { withData } = require('../utils/store');
+const bcrypt = require('bcryptjs');
+const crypto = require('node:crypto');
+const { z } = require('zod');
+const { withData, nextId, appendAudit, now } = require('../utils/store');
+const { publicUser } = require('../middleware/auth');
+const { issueToken } = require('../utils/authTokens');
+const { parseRequest } = require('../utils/validation');
+const { createFailureLimiter } = require('../utils/rateLimit');
 const {
   API_VERSION,
   PRODUCT_NAME,
@@ -7,6 +14,29 @@ const {
 } = require('../config/runtime');
 
 const router = express.Router();
+
+const passwordSchema = z.string()
+  .min(12, 'Password must be at least 12 characters')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes');
+
+const bootstrapSchema = z.object({
+  organizationName: z.string().trim().min(1).max(120),
+  ownerName: z.string().trim().min(1).max(120),
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  password: passwordSchema,
+}).strict();
+
+const bootstrapLimiter = createFailureLimiter({
+  maxEnv: 'BOOTSTRAP_RATE_LIMIT_MAX',
+  windowEnv: 'BOOTSTRAP_RATE_LIMIT_WINDOW_MS',
+});
+
+const secretsMatch = (provided, configured) => {
+  if (!provided || !configured) return false;
+  const left = crypto.createHash('sha256').update(String(provided)).digest();
+  const right = crypto.createHash('sha256').update(String(configured)).digest();
+  return crypto.timingSafeEqual(left, right);
+};
 
 router.get('/info', async (req, res) => {
   try {
@@ -30,6 +60,80 @@ router.get('/info', async (req, res) => {
     return res.status(503).json({
       code: 'STORAGE_UNAVAILABLE',
       error: 'Server storage is unavailable',
+    });
+  }
+});
+
+router.post('/bootstrap', async (req, res) => {
+  const limiterKey = bootstrapLimiter.getKey(req);
+  if (bootstrapLimiter.isBlocked(limiterKey)) {
+    return bootstrapLimiter.reject(res);
+  }
+
+  if (!secretsMatch(req.get('X-Bootstrap-Token'), process.env.BOOTSTRAP_TOKEN)) {
+    bootstrapLimiter.recordFailure(limiterKey);
+    return res.status(403).json({
+      code: 'BOOTSTRAP_TOKEN_INVALID',
+      error: 'Bootstrap token is invalid',
+    });
+  }
+
+  const input = parseRequest(bootstrapSchema, req.body, res);
+  if (!input) return undefined;
+
+  try {
+    const created = await withData((data) => {
+      if (data.system.initializedAt || data.users.length > 0) {
+        return {
+          status: 409,
+          body: {
+            code: 'SYSTEM_ALREADY_INITIALIZED',
+            error: 'System is already initialized',
+          },
+        };
+      }
+
+      const timestamp = now();
+      const owner = {
+        id: nextId(data.users),
+        email: input.email,
+        name: input.ownerName,
+        role: 'owner',
+        active: true,
+        tokenVersion: 1,
+        passwordHash: bcrypt.hashSync(input.password, 12),
+        createdAt: timestamp,
+        updatedAt: timestamp,
+      };
+      data.users.push(owner);
+      data.system.organizationName = input.organizationName;
+      data.system.initializedAt = timestamp;
+      appendAudit(data, {
+        actorId: owner.id,
+        entity: 'system',
+        entityId: data.system.serverId,
+        action: 'bootstrap',
+        diff: { organizationName: input.organizationName, ownerEmail: owner.email },
+      });
+
+      return {
+        status: 201,
+        body: {
+          user: publicUser(owner),
+          token: issueToken(owner, data.system.serverId),
+          serverId: data.system.serverId,
+        },
+      };
+    });
+
+    if (created.status === 201) bootstrapLimiter.reset(limiterKey);
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(created.status).json(created.body);
+  } catch (error) {
+    console.error('System bootstrap failed:', error.message);
+    return res.status(500).json({
+      code: 'BOOTSTRAP_FAILED',
+      error: 'System bootstrap failed',
     });
   }
 });
