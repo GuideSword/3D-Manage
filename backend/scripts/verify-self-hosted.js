@@ -112,6 +112,169 @@ const main = async () => {
     });
     assert.equal(ownerMe.status, 200);
 
+    const staffResponse = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        name: 'Workshop Staff',
+        email: 'staff@example.com',
+        password: 'StaffPassword123!',
+        role: 'staff',
+      }),
+    });
+    assert.equal(staffResponse.status, 201);
+    const staff = await readJson(staffResponse);
+    assert.equal(staff.passwordHash, undefined);
+
+    const ownerList = await fetch(`${baseUrl}/api/users`, {
+      headers: { Authorization: `Bearer ${bootstrap.token}` },
+    });
+    assert.equal(ownerList.status, 200);
+    const ownerListBody = await readJson(ownerList);
+    assert.equal(ownerListBody.items.length, 2);
+
+    const staffLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'staff@example.com', password: 'StaffPassword123!' }),
+    });
+    assert.equal(staffLoginResponse.status, 200);
+    const staffLogin = await readJson(staffLoginResponse);
+
+    const staffList = await fetch(`${baseUrl}/api/users`, {
+      headers: { Authorization: `Bearer ${staffLogin.token}` },
+    });
+    assert.equal(staffList.status, 403);
+
+    const duplicate = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        name: 'Duplicate',
+        email: 'STAFF@example.com',
+        password: 'StaffPassword123!',
+        role: 'staff',
+      }),
+    });
+    assert.equal(duplicate.status, 409);
+
+    const forbiddenOwnerCreate = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        name: 'Another Owner',
+        email: 'another-owner@example.com',
+        password: 'OwnerPassword123!',
+        role: 'owner',
+      }),
+    });
+    assert.equal(forbiddenOwnerCreate.status, 400);
+
+    const deactivate = await fetch(`${baseUrl}/api/users/${staff.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ active: false }),
+    });
+    assert.equal(deactivate.status, 200);
+    assert.equal((await readJson(deactivate)).active, false);
+
+    const deactivatedSession = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${staffLogin.token}` },
+    });
+    assert.equal(deactivatedSession.status, 401);
+
+    const reactivate = await fetch(`${baseUrl}/api/users/${staff.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ active: true }),
+    });
+    assert.equal(reactivate.status, 200);
+    const staleAfterReactivation = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${staffLogin.token}` },
+    });
+    assert.equal(staleAfterReactivation.status, 401);
+
+    const reloginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'staff@example.com', password: 'StaffPassword123!' }),
+    });
+    assert.equal(reloginResponse.status, 200);
+    const relogin = await readJson(reloginResponse);
+
+    const roleChange = await fetch(`${baseUrl}/api/users/${staff.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ role: 'viewer' }),
+    });
+    assert.equal(roleChange.status, 200);
+    assert.equal((await readJson(roleChange)).role, 'viewer');
+    const staleAfterRoleChange = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${relogin.token}` },
+    });
+    assert.equal(staleAfterRoleChange.status, 401);
+
+    const viewerLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'staff@example.com', password: 'StaffPassword123!' }),
+    });
+    assert.equal(viewerLoginResponse.status, 200);
+    const viewerLogin = await readJson(viewerLoginResponse);
+    assert.equal(viewerLogin.user.role, 'viewer');
+
+    const resetPassword = await fetch(`${baseUrl}/api/users/${staff.id}/reset-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ password: 'ResetPassword123!' }),
+    });
+    assert.equal(resetPassword.status, 200);
+    const staleAfterReset = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${viewerLogin.token}` },
+    });
+    assert.equal(staleAfterReset.status, 401);
+
+    const ownerMutation = await fetch(`${baseUrl}/api/users/${bootstrap.user.id}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ active: false }),
+    });
+    assert.equal(ownerMutation.status, 409);
+
+    const organizationUpdate = await fetch(`${baseUrl}/api/system/organization`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({ organizationName: 'Renamed Workshop' }),
+    });
+    assert.equal(organizationUpdate.status, 200);
+
     const persisted = fs.readFileSync(path.join(process.env.DATA_DIR, 'store.json'), 'utf8');
     assert.equal(persisted.includes(process.env.BOOTSTRAP_TOKEN), false);
     assert.equal(persisted.includes('OwnerPassword123!'), false);
@@ -127,6 +290,33 @@ const main = async () => {
       }),
     });
     assert.equal(registration.status, 404);
+
+    const ownerPasswordChange = await fetch(`${baseUrl}/api/auth/change-password`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        currentPassword: 'OwnerPassword123!',
+        newPassword: 'ChangedOwnerPassword123!',
+      }),
+    });
+    assert.equal(ownerPasswordChange.status, 200);
+    const staleOwnerSession = await fetch(`${baseUrl}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${bootstrap.token}` },
+    });
+    assert.equal(staleOwnerSession.status, 401);
+
+    const changedOwnerLogin = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: bootstrap.user.email,
+        password: 'ChangedOwnerPassword123!',
+      }),
+    });
+    assert.equal(changedOwnerLogin.status, 200);
     console.log('Self-hosted verification passed');
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

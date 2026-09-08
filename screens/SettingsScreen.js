@@ -6,6 +6,7 @@ import {
   API_CONFIG,
   RADIUS,
   ROLE_LABELS,
+  ROLES,
   ROUTES,
   SPACING,
   TYPOGRAPHY,
@@ -54,6 +55,16 @@ const SettingsScreen = () => {
             label="角色"
             value={ROLE_LABELS[user?.role] || user?.role || '未知'}
           />
+          {user?.role === ROLES.OWNER ? (
+            <ActionRow
+              styles={styles}
+              colors={colors}
+              icon="people-outline"
+              label="用户与权限"
+              hint="创建、停用并调整员工和查看者账号"
+              onPress={() => navigation.navigate(ROUTES.USERS)}
+            />
+          ) : null}
         </Card>
       </View>
 

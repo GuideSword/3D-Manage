@@ -9,27 +9,19 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { RADIUS, ROLES, ROLE_LABELS, SPACING, TYPOGRAPHY } from '../constants';
-import { Button, Card, Input, Picker } from '../components';
+import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { Button, Card, Input } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
-
-const ROLE_OPTIONS = [ROLES.STAFF, ROLES.VIEWER].map((role) => ({
-  value: role,
-  label: ROLE_LABELS[role] || role,
-}));
 
 const LoginScreen = () => {
   const { colors, shadows } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
-  const { signIn, register } = useAuth();
+  const { signIn } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [authMode, setAuthMode] = useState('login');
   const [formData, setFormData] = useState({
-    email: 'admin@example.com',
-    password: 'Admin123456',
-    name: '',
-    role: ROLES.STAFF,
+    email: '',
+    password: '',
   });
 
   const validateAuthForm = () => {
@@ -39,10 +31,6 @@ const LoginScreen = () => {
     }
     if (!formData.password || formData.password.length < 8) {
       Alert.alert('验证失败', '密码至少 8 位');
-      return false;
-    }
-    if (authMode === 'register' && !formData.name.trim()) {
-      Alert.alert('验证失败', '请输入姓名');
       return false;
     }
     return true;
@@ -60,15 +48,7 @@ const LoginScreen = () => {
         password: formData.password,
       };
 
-      if (authMode === 'login') {
-        await signIn(payload);
-      } else {
-        await register({
-          ...payload,
-          name: formData.name.trim(),
-          role: formData.role,
-        });
-      }
+      await signIn(payload);
     } catch (error) {
       Alert.alert('错误', error.message || '认证失败');
     } finally {
@@ -98,31 +78,6 @@ const LoginScreen = () => {
           </View>
 
           <Card style={styles.card} padding="large">
-            <View style={styles.modeSwitch}>
-              <Button
-                title="登录"
-                onPress={() => setAuthMode('login')}
-                variant={authMode === 'login' ? 'primary' : 'ghost'}
-                size="small"
-                style={styles.modeButton}
-              />
-              <Button
-                title="注册"
-                onPress={() => setAuthMode('register')}
-                variant={authMode === 'register' ? 'primary' : 'ghost'}
-                size="small"
-                style={styles.modeButton}
-              />
-            </View>
-
-            {authMode === 'register' ? (
-              <Input
-                label="姓名"
-                placeholder="请输入姓名"
-                value={formData.name}
-                onChangeText={(text) => setFormData((prev) => ({ ...prev, name: text }))}
-              />
-            ) : null}
             <Input
               label="邮箱"
               placeholder="请输入邮箱"
@@ -138,32 +93,20 @@ const LoginScreen = () => {
               onChangeText={(text) => setFormData((prev) => ({ ...prev, password: text }))}
               secureTextEntry
             />
-            {authMode === 'register' ? (
-              <Picker
-                label="角色"
-                value={formData.role}
-                onValueChange={(value) => setFormData((prev) => ({ ...prev, role: value }))}
-                options={ROLE_OPTIONS}
-              />
-            ) : null}
             <Button
-              title={authMode === 'login' ? '登录' : '注册'}
+              title="登录"
               onPress={handleAuthSubmit}
               loading={loading}
               disabled={loading}
-              iconLeft={authMode === 'login' ? 'log-in-outline' : 'person-add-outline'}
+              iconLeft="log-in-outline"
               fullWidth
               style={styles.submitButton}
             />
 
-            {authMode === 'login' ? (
-              <View style={styles.hintRow}>
-                <Ionicons name="key-outline" size={15} color={colors.textSecondary} />
-                <Text style={styles.hint}>
-                  默认管理员：admin@example.com / Admin123456
-                </Text>
-              </View>
-            ) : null}
+            <View style={styles.hintRow}>
+              <Ionicons name="shield-checkmark-outline" size={15} color={colors.textSecondary} />
+              <Text style={styles.hint}>账号由组织 Owner 创建和管理</Text>
+            </View>
           </Card>
         </View>
       </ScrollView>
@@ -216,17 +159,6 @@ const createStyles = (colors, shadows) => StyleSheet.create({
   },
   card: {
     marginHorizontal: 0,
-  },
-  modeSwitch: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    padding: SPACING.xs,
-    borderRadius: RADIUS.lg,
-    backgroundColor: colors.surfaceMuted,
-    marginBottom: SPACING.md,
-  },
-  modeButton: {
-    flex: 1,
   },
   submitButton: {
     marginTop: SPACING.lg,

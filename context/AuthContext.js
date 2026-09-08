@@ -84,12 +84,6 @@ export const AuthProvider = ({ children }) => {
     return result;
   }, []);
 
-  const register = useCallback(async (payload) => {
-    const result = await authAPI.register(payload);
-    setUser(result.user || null);
-    return result;
-  }, []);
-
   const signOut = useCallback(async () => {
     await authAPI.logout();
     setUser(null);
@@ -100,10 +94,9 @@ export const AuthProvider = ({ children }) => {
     initializing,
     isAuthenticated: Boolean(user),
     signIn,
-    register,
     signOut,
     refreshUser,
-  }), [user, initializing, signIn, register, signOut, refreshUser]);
+  }), [user, initializing, signIn, signOut, refreshUser]);
 
   return (
     <AuthContext.Provider value={value}>

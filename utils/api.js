@@ -15,7 +15,7 @@ export const setUnauthorizedHandler = (handler) => {
 export const isAuthRequiredError = (error) => Boolean(error?.authRequired);
 
 const isLoginEndpoint = (endpoint) => (
-  endpoint === '/auth/login' || endpoint === '/auth/register'
+  endpoint === '/auth/login'
 );
 
 // 获取认证token
@@ -159,22 +159,32 @@ export const authAPI = {
     return result;
   },
 
-  register: async (userData) => {
-    const result = await apiRequest('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(userData),
-    });
-    if (result.token) {
-      await storage.setItem('jwtToken', result.token);
-    }
-    return result;
-  },
-
   me: async () => apiRequest('/auth/me'),
+
+  changePassword: async (payload) => apiRequest('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
 
   logout: async () => {
     await storage.deleteItem('jwtToken');
   },
+};
+
+export const usersAPI = {
+  getAll: async () => apiRequest('/users'),
+  create: async (payload) => apiRequest('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  update: async (id, payload) => apiRequest(`/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  }),
+  resetPassword: async (id, password) => apiRequest(`/users/${id}/reset-password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  }),
 };
 
 // 订单API

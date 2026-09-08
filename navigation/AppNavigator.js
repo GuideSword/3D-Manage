@@ -20,6 +20,7 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import OSSConfigScreen from '../screens/OSSConfigScreen';
 import DataImportScreen from '../screens/DataImportScreen';
+import UsersScreen from '../screens/UsersScreen';
 import AgentStack from './AgentStack';
 import { ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
@@ -141,6 +142,11 @@ const AppNavigator = () => {
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
               options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
+            />
+            <Stack.Screen
+              name={ROUTES.USERS}
+              component={UsersScreen}
+              options={{ title: SCREEN_TITLES[ROUTES.USERS] }}
             />
             <Stack.Screen
               name={ROUTES.AGENT}

@@ -3,7 +3,7 @@ const bcrypt = require('bcryptjs');
 const crypto = require('node:crypto');
 const { z } = require('zod');
 const { withData, nextId, appendAudit, now } = require('../utils/store');
-const { publicUser } = require('../middleware/auth');
+const { publicUser, requireRoles } = require('../middleware/auth');
 const { issueToken } = require('../utils/authTokens');
 const { parseRequest } = require('../utils/validation');
 const { createFailureLimiter } = require('../utils/rateLimit');
@@ -24,6 +24,10 @@ const bootstrapSchema = z.object({
   ownerName: z.string().trim().min(1).max(120),
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
   password: passwordSchema,
+}).strict();
+
+const organizationSchema = z.object({
+  organizationName: z.string().trim().min(1).max(120),
 }).strict();
 
 const bootstrapLimiter = createFailureLimiter({
@@ -135,6 +139,29 @@ router.post('/bootstrap', async (req, res) => {
       code: 'BOOTSTRAP_FAILED',
       error: 'System bootstrap failed',
     });
+  }
+});
+
+router.patch('/organization', requireRoles('owner'), async (req, res) => {
+  const input = parseRequest(organizationSchema, req.body, res);
+  if (!input) return undefined;
+
+  try {
+    const organization = await withData((data) => {
+      const before = data.system.organizationName;
+      data.system.organizationName = input.organizationName;
+      appendAudit(data, {
+        actorId: req.user.id,
+        entity: 'system',
+        entityId: data.system.serverId,
+        action: 'organization.update',
+        diff: { before, after: input.organizationName },
+      });
+      return { organizationName: data.system.organizationName };
+    });
+    return res.json(organization);
+  } catch (error) {
+    return res.status(500).json({ code: 'ORGANIZATION_UPDATE_FAILED', error: 'Update organization failed' });
   }
 });
 

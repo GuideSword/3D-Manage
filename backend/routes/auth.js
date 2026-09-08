@@ -5,6 +5,8 @@ const { withData, appendAudit, now } = require('../utils/store');
 const { publicUser, requireAuth } = require('../middleware/auth');
 const { issueToken } = require('../utils/authTokens');
 const { createFailureLimiter } = require('../utils/rateLimit');
+const { z } = require('zod');
+const { parseRequest } = require('../utils/validation');
 
 const normalizeEmail = (email) => String(email || '').trim().toLowerCase();
 
@@ -12,6 +14,15 @@ const loginLimiter = createFailureLimiter({
   maxEnv: 'LOGIN_RATE_LIMIT_MAX',
   windowEnv: 'LOGIN_RATE_LIMIT_WINDOW_MS',
 });
+
+const passwordSchema = z.string()
+  .min(12, 'Password must be at least 12 characters')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes');
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: passwordSchema,
+}).strict();
 
 const validateCredentials = ({ email, password }) => {
   if (!normalizeEmail(email)) {
@@ -81,6 +92,38 @@ router.post('/login', async (req, res) => {
 router.get('/me', requireAuth, (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
   return res.json({ user: req.user });
+});
+
+router.post('/change-password', requireAuth, async (req, res) => {
+  const input = parseRequest(changePasswordSchema, req.body, res);
+  if (!input) return undefined;
+
+  try {
+    const result = await withData((data) => {
+      const user = data.users.find((item) => item.id === req.user.id);
+      if (!user || !bcrypt.compareSync(input.currentPassword, user.passwordHash)) {
+        return {
+          status: 403,
+          body: { code: 'CURRENT_PASSWORD_INVALID', error: 'Current password is invalid' },
+        };
+      }
+
+      user.passwordHash = bcrypt.hashSync(input.newPassword, 12);
+      user.tokenVersion = (user.tokenVersion || 0) + 1;
+      user.updatedAt = now();
+      appendAudit(data, {
+        actorId: user.id,
+        entity: 'users',
+        entityId: user.id,
+        action: 'password.change',
+        diff: { tokenVersion: user.tokenVersion },
+      });
+      return { status: 200, body: { success: true } };
+    });
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return res.status(500).json({ code: 'PASSWORD_CHANGE_FAILED', error: 'Change password failed' });
+  }
 });
 
 module.exports = router;
