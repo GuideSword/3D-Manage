@@ -320,6 +320,9 @@ if (typeof __DEV__ !== 'undefined' && __DEV__) {
 }
 
 export const ROUTES = {
+  SERVER_SETUP: 'ServerSetup',
+  SERVER_CONNECTION_ERROR: 'ServerConnectionError',
+  BOOTSTRAP_OWNER: 'BootstrapOwner',
   HOME: 'Home',
   ORDERS: 'Orders',
   MODELS: 'Models',
@@ -341,6 +344,9 @@ export const ROUTES = {
 };
 
 export const SCREEN_TITLES = {
+  [ROUTES.SERVER_SETUP]: '服务器设置',
+  [ROUTES.SERVER_CONNECTION_ERROR]: '连接失败',
+  [ROUTES.BOOTSTRAP_OWNER]: '初始化 Owner',
   [ROUTES.HOME]: '首页',
   [ROUTES.ORDERS]: '订单',
   [ROUTES.MODELS]: '模型',

@@ -211,6 +211,13 @@ export const authAPI = {
     const captured = getServerRuntime();
     if (captured.serverKey) await clearToken(captured.serverKey);
   },
+
+  saveToken: async (token) => {
+    const captured = requireRuntime();
+    const stored = await setTokenForSnapshot(captured, token);
+    if (!stored) throw new StaleSessionError();
+    return true;
+  },
 };
 
 export const systemAPI = {

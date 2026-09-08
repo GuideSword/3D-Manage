@@ -20,10 +20,14 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import DataImportScreen from '../screens/DataImportScreen';
 import UsersScreen from '../screens/UsersScreen';
+import ServerSetupScreen from '../screens/ServerSetupScreen';
+import ServerConnectionErrorScreen from '../screens/ServerConnectionErrorScreen';
+import BootstrapOwnerScreen from '../screens/BootstrapOwnerScreen';
 import AgentStack from './AgentStack';
 import { ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
 
 const Stack = createNativeStackNavigator();
 
@@ -43,7 +47,8 @@ const LoadingScreen = () => {
 };
 
 const AppNavigator = () => {
-  const { initializing, isAuthenticated } = useAuth();
+  const { initializing: authInitializing, isAuthenticated } = useAuth();
+  const { initializing: serverInitializing, server, connectionError } = useServerConfig();
   const { colors, isDark } = useAppTheme();
   const navigationTheme = useMemo(() => {
     const baseTheme = isDark ? DarkTheme : DefaultTheme;
@@ -80,7 +85,18 @@ const AppNavigator = () => {
           },
         }}
       >
-        {initializing ? (
+        {serverInitializing ? (
+          <Stack.Screen name="Loading" component={LoadingScreen} options={{ headerShown: false }} />
+        ) : !server ? (
+          <Stack.Screen name={ROUTES.SERVER_SETUP} component={ServerSetupScreen} options={{ headerShown: false }} />
+        ) : connectionError ? (
+          <>
+            <Stack.Screen name={ROUTES.SERVER_CONNECTION_ERROR} component={ServerConnectionErrorScreen} options={{ headerShown: false }} />
+            <Stack.Screen name={ROUTES.SERVER_SETUP} component={ServerSetupScreen} options={{ title: SCREEN_TITLES[ROUTES.SERVER_SETUP] }} />
+          </>
+        ) : !server.initialized ? (
+          <Stack.Screen name={ROUTES.BOOTSTRAP_OWNER} component={BootstrapOwnerScreen} options={{ headerShown: false }} />
+        ) : authInitializing ? (
           <Stack.Screen name="Loading" component={LoadingScreen} options={{ headerShown: false }} />
         ) : !isAuthenticated ? (
           <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
@@ -146,6 +162,11 @@ const AppNavigator = () => {
               name={ROUTES.AGENT}
               component={AgentStack}
               options={{ headerShown: false, presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name={ROUTES.SERVER_SETUP}
+              component={ServerSetupScreen}
+              options={{ title: SCREEN_TITLES[ROUTES.SERVER_SETUP], presentation: 'modal' }}
             />
           </>
         )}

@@ -13,11 +13,13 @@ import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
 
 const LoginScreen = () => {
   const { colors, shadows } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const { signIn } = useAuth();
+  const { server } = useServerConfig();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
@@ -75,6 +77,13 @@ const LoginScreen = () => {
             <Text style={styles.subtitle}>
               登录后访问订单、模型、耗材和库存数据。
             </Text>
+            <View style={styles.serverBadge}>
+              <Ionicons name="server-outline" size={16} color={colors.primary} />
+              <View style={styles.serverText}>
+                <Text style={styles.serverName}>{server?.organizationName || '3D Manage'}</Text>
+                <Text style={styles.serverEndpoint}>{server?.apiBaseUrl}</Text>
+              </View>
+            </View>
           </View>
 
           <Card style={styles.card} padding="large">
@@ -157,6 +166,18 @@ const createStyles = (colors, shadows) => StyleSheet.create({
     color: colors.textSecondary,
     marginTop: SPACING.sm,
   },
+  serverBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: colors.primarySoft,
+  },
+  serverText: { flex: 1 },
+  serverName: { ...TYPOGRAPHY.meta, color: colors.text },
+  serverEndpoint: { ...TYPOGRAPHY.caption, color: colors.textSecondary, marginTop: 2 },
   card: {
     marginHorizontal: 0,
   },
