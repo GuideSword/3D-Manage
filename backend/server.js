@@ -38,7 +38,7 @@ const configuredAllowedOrigins = parseAllowedOrigins(
 );
 const allowedOrigins = configuredAllowedOrigins.length > 0
   ? configuredAllowedOrigins
-  : DEFAULT_ALLOWED_ORIGINS;
+  : (process.env.NODE_ENV === 'production' ? [] : DEFAULT_ALLOWED_ORIGINS);
 
 app.use(helmet());
 app.use(cors({
