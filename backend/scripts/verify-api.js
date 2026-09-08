@@ -8,6 +8,12 @@ process.env.UPLOAD_DIR = path.join(tempDir, 'uploads');
 process.env.JWT_SECRET = 'verify-secret-with-at-least-thirty-two-characters';
 process.env.AGENT_KEY_ENC_SECRET = 'verify-agent-key-secret-at-least-32-chars';
 process.env.BOOTSTRAP_TOKEN = 'verify-bootstrap-token-at-least-32-chars';
+process.env.OSS_ENABLED = 'true';
+process.env.OSS_ACCESS_KEY_ID = 'verify-key';
+process.env.OSS_SECRET_ACCESS_KEY = 'verify-secret';
+process.env.OSS_BUCKET = 'verify-bucket';
+process.env.OSS_REGION = 'oss-cn-hangzhou';
+process.env.OSS_TEST_SKIP_NETWORK = 'true';
 process.env.STORE_DRIVER = 'file';
 process.env.NODE_ENV = 'test';
 process.env.SKIP_WINDOWS_SHELL_THUMBNAIL = '1';
@@ -191,8 +197,15 @@ const main = async () => {
     }
 
     const publicImageResponse = await fetch(`${baseUrl}${imageUpload.image.fileUrl}`);
-    if (!publicImageResponse.ok) {
-      throw new Error(`Public model image should be readable without auth, got ${publicImageResponse.status}`);
+    if (publicImageResponse.status !== 401) {
+      throw new Error(`Model image should require auth, got ${publicImageResponse.status}`);
+    }
+
+    const protectedImageResponse = await fetch(`${baseUrl}${imageUpload.image.fileUrl}`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+    });
+    if (!protectedImageResponse.ok || protectedImageResponse.headers.get('cache-control') !== 'private, no-store') {
+      throw new Error(`Authenticated model image should be readable without caching, got ${protectedImageResponse.status}`);
     }
 
     const protectedModelFileResponse = await fetch(`${baseUrl}${modelUpload.file.fileUrl}`);
@@ -303,13 +316,7 @@ const main = async () => {
 
     const oss = await request('/api/oss/test-connection', {
       method: 'POST',
-      body: JSON.stringify({
-        accessKeyId: 'verify-key',
-        secretAccessKey: 'verify-secret',
-        bucket: 'verify-bucket',
-        region: 'oss-cn-hangzhou',
-        skipNetwork: true,
-      }),
+      body: JSON.stringify({}),
     });
     if (!oss.success || oss.buckets[0] !== 'verify-bucket' || !oss.uploadUrl) {
       throw new Error('OSS config validation failed');
@@ -318,30 +325,34 @@ const main = async () => {
     const signedUpload = await request('/api/oss/upload-url', {
       method: 'POST',
       body: JSON.stringify({
-        objectKey: 'verify/model.stl',
+        purpose: 'model-file',
+        entityId: model.id,
+        fileName: 'model.stl',
+        contentType: 'application/sla',
+        size: 123,
         expire: 60,
-        accessKeyId: 'verify-key',
-        secretAccessKey: 'verify-secret',
-        bucket: 'verify-bucket',
-        region: 'oss-cn-hangzhou',
       }),
     });
-    if (signedUpload.method !== 'PUT' || !signedUpload.url.includes('verify/model.stl')) {
+    if (signedUpload.method !== 'PUT' || !signedUpload.url.includes(signedUpload.objectKey) || !signedUpload.uploadId) {
       throw new Error('OSS upload signature did not include the expected object key');
+    }
+
+    const completedUpload = await request('/api/oss/complete-upload', {
+      method: 'POST',
+      body: JSON.stringify({ uploadId: signedUpload.uploadId }),
+    });
+    if (completedUpload.objectKey !== signedUpload.objectKey) {
+      throw new Error('OSS completion did not preserve the generated object key');
     }
 
     const signedDownload = await request('/api/oss/download-url', {
       method: 'POST',
       body: JSON.stringify({
-        objectKey: 'verify/model.stl',
+        objectKey: signedUpload.objectKey,
         expire: 60,
-        accessKeyId: 'verify-key',
-        secretAccessKey: 'verify-secret',
-        bucket: 'verify-bucket',
-        region: 'oss-cn-hangzhou',
       }),
     });
-    if (signedDownload.method !== 'GET' || !signedDownload.url.includes('verify/model.stl')) {
+    if (signedDownload.method !== 'GET' || !signedDownload.url.includes(signedUpload.objectKey)) {
       throw new Error('OSS download signature did not include the expected object key');
     }
 

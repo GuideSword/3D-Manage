@@ -18,7 +18,6 @@ import ModelDetailScreen from '../screens/ModelDetailScreen';
 import InboundTransactionScreen from '../screens/InboundTransactionScreen';
 import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
-import OSSConfigScreen from '../screens/OSSConfigScreen';
 import DataImportScreen from '../screens/DataImportScreen';
 import UsersScreen from '../screens/UsersScreen';
 import AgentStack from './AgentStack';
@@ -132,11 +131,6 @@ const AppNavigator = () => {
               name={ROUTES.ADJUST_TRANSACTION}
               component={AdjustTransactionScreen}
               options={{ title: SCREEN_TITLES[ROUTES.ADJUST_TRANSACTION] }}
-            />
-            <Stack.Screen
-              name={ROUTES.OSS_CONFIG}
-              component={OSSConfigScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.OSS_CONFIG] }}
             />
             <Stack.Screen
               name={ROUTES.DATA_IMPORT}

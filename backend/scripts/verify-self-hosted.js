@@ -11,6 +11,11 @@ process.env.STORE_DRIVER = 'file';
 process.env.JWT_SECRET = 'self-hosted-verify-secret-with-at-least-32-characters';
 process.env.AGENT_KEY_ENC_SECRET = 'agent-verify-secret-with-at-least-32-characters';
 process.env.BOOTSTRAP_TOKEN = 'bootstrap-test-only-32-byte-equivalent-secret';
+process.env.OSS_ENABLED = 'true';
+process.env.OSS_ACCESS_KEY_ID = 'server-owned-access-key';
+process.env.OSS_SECRET_ACCESS_KEY = 'server-owned-secret-key';
+process.env.OSS_BUCKET = 'server-owned-bucket';
+process.env.OSS_REGION = 'oss-cn-hangzhou';
 process.env.NODE_ENV = 'test';
 process.env.SKIP_WINDOWS_SHELL_THUMBNAIL = '1';
 
@@ -319,6 +324,46 @@ const main = async () => {
     });
     assert.equal(auditStaffLoginResponse.status, 200);
     const auditStaffLogin = await readJson(auditStaffLoginResponse);
+
+    const injectedOssConfig = await fetch(`${baseUrl}/api/oss/upload-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auditStaffLogin.token}`,
+      },
+      body: JSON.stringify({
+        objectKey: 'verify/model.stl',
+        expire: 60,
+        config: {
+          accessKeyId: 'attacker-key',
+          secretAccessKey: 'attacker-secret',
+          bucket: 'attacker-bucket',
+          region: 'oss-cn-beijing',
+        },
+      }),
+    });
+    assert.equal(injectedOssConfig.status, 400);
+    assert.equal((await readJson(injectedOssConfig)).code, 'SENSITIVE_CONFIG_NOT_ACCEPTED');
+
+    const viewerUploadSigning = await fetch(`${baseUrl}/api/oss/upload-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${viewerRelogin.token}`,
+      },
+      body: JSON.stringify({ objectKey: 'verify/viewer.stl', expire: 60 }),
+    });
+    assert.equal(viewerUploadSigning.status, 403);
+
+    const viewerDownloadSigning = await fetch(`${baseUrl}/api/oss/download-url`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${viewerRelogin.token}`,
+      },
+      body: JSON.stringify({ objectKey: 'verify/model.stl', expire: 60 }),
+    });
+    assert.equal(viewerDownloadSigning.status, 404);
 
     const staffRequest = (endpoint, options = {}) => fetch(`${baseUrl}${endpoint}`, {
       ...options,

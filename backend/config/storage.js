@@ -21,7 +21,8 @@ const sanitizeFolder = (folder) => String(folder || 'models')
 const safeStoragePath = (relativePath) => {
   const resolvedDir = path.resolve(UPLOAD_DIR);
   const resolvedPath = path.resolve(path.join(UPLOAD_DIR, relativePath));
-  if (!resolvedPath.startsWith(resolvedDir)) {
+  const relative = path.relative(resolvedDir, resolvedPath);
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error('Access denied: Invalid file path');
   }
   return resolvedPath;

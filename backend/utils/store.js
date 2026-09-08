@@ -11,7 +11,16 @@ const POSTGRES_STORE_ID = process.env.STORE_ID || 'default';
 
 const now = () => new Date().toISOString();
 
-const COLLECTION_KEYS = ['users', 'orders', 'models', 'materials', 'stockLots', 'inventoryTxns', 'auditLogs'];
+const COLLECTION_KEYS = [
+  'users',
+  'orders',
+  'models',
+  'materials',
+  'stockLots',
+  'inventoryTxns',
+  'auditLogs',
+  'objectUploads',
+];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -31,6 +40,7 @@ const createFreshData = () => {
     stockLots: [],
     inventoryTxns: [],
     auditLogs: [],
+    objectUploads: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };

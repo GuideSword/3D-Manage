@@ -3,17 +3,22 @@ const dotenv = require('dotenv');
 
 dotenv.config();
 
-const normalizeConfig = (config = {}) => ({
-  region: config.region || process.env.OSS_REGION || 'oss-cn-hangzhou',
-  accessKeyId: config.accessKeyId || process.env.OSS_ACCESS_KEY_ID || '',
-  accessKeySecret: config.secretAccessKey || config.accessKeySecret || process.env.OSS_SECRET_ACCESS_KEY || '',
-  bucket: config.bucket || process.env.OSS_BUCKET || '',
-  endpoint: config.endpoint || process.env.OSS_ENDPOINT || '',
-  secure: config.secure !== undefined ? Boolean(config.secure) : process.env.OSS_SECURE !== 'false',
+const normalizeConfig = () => ({
+  region: process.env.OSS_REGION || 'oss-cn-hangzhou',
+  accessKeyId: process.env.OSS_ACCESS_KEY_ID || '',
+  accessKeySecret: process.env.OSS_SECRET_ACCESS_KEY || '',
+  bucket: process.env.OSS_BUCKET || '',
+  endpoint: process.env.OSS_ENDPOINT || '',
+  secure: process.env.OSS_SECURE !== 'false',
 });
 
-const assertConfig = (config = {}) => {
-  const normalized = normalizeConfig(config);
+const assertConfig = () => {
+  if (process.env.OSS_ENABLED !== 'true') {
+    const error = new Error('Object storage is not enabled on this server');
+    error.code = 'OBJECT_STORAGE_DISABLED';
+    throw error;
+  }
+  const normalized = normalizeConfig();
   const required = ['region', 'accessKeyId', 'accessKeySecret', 'bucket'];
   const missing = required.filter((key) => !normalized[key]);
 
@@ -24,8 +29,8 @@ const assertConfig = (config = {}) => {
   return normalized;
 };
 
-const createClient = (config = {}) => {
-  const normalized = assertConfig(config);
+const createClient = () => {
+  const normalized = assertConfig();
   const clientConfig = {
     region: normalized.region,
     accessKeyId: normalized.accessKeyId,
@@ -47,8 +52,8 @@ const normalizeObjectKey = (objectKey) => {
   return key;
 };
 
-const generateUploadUrl = async (objectKey, expire = 600, config = {}) => {
-  const { client, config: normalized } = createClient(config);
+const generateUploadUrl = async (objectKey, expire = 600) => {
+  const { client, config: normalized } = createClient();
   const key = normalizeObjectKey(objectKey);
   const url = client.signatureUrl(key, {
     expires: Number(expire) || 600,
@@ -66,8 +71,8 @@ const generateUploadUrl = async (objectKey, expire = 600, config = {}) => {
   };
 };
 
-const generateDownloadUrl = async (objectKey, expire = 3600, config = {}) => {
-  const { client, config: normalized } = createClient(config);
+const generateDownloadUrl = async (objectKey, expire = 3600) => {
+  const { client, config: normalized } = createClient();
   const key = normalizeObjectKey(objectKey);
   const url = client.signatureUrl(key, {
     expires: Number(expire) || 3600,
@@ -85,10 +90,12 @@ const generateDownloadUrl = async (objectKey, expire = 3600, config = {}) => {
   };
 };
 
-const completeUpload = async (objectKey, config = {}) => {
-  const { client, config: normalized } = createClient(config);
+const completeUpload = async (objectKey, options = {}) => {
+  const { client, config: normalized } = createClient();
   const key = normalizeObjectKey(objectKey);
-  const head = await client.head(key);
+  const head = options.skipNetwork
+    ? { res: { headers: { etag: 'test-etag', 'content-length': String(options.size || 0), 'content-type': options.contentType || '' } } }
+    : await client.head(key);
   return {
     provider: 'aliyun-oss',
     mode: 'head-verified',
@@ -101,10 +108,10 @@ const completeUpload = async (objectKey, config = {}) => {
   };
 };
 
-const testConnection = async (config = {}, options = {}) => {
-  const { client, config: normalized } = createClient(config);
-  if (options.skipNetwork || config.skipNetwork) {
-    const signed = await generateUploadUrl(`health/${Date.now()}.txt`, 60, normalized);
+const testConnection = async (options = {}) => {
+  const { client, config: normalized } = createClient();
+  if (options.skipNetwork) {
+    const signed = await generateUploadUrl(`health/${Date.now()}.txt`, 60);
     return {
       success: true,
       mode: 'signature-only',
@@ -123,8 +130,8 @@ const testConnection = async (config = {}, options = {}) => {
   };
 };
 
-const deleteObject = async (objectKey, config = {}) => {
-  const { client, config: normalized } = createClient(config);
+const deleteObject = async (objectKey) => {
+  const { client, config: normalized } = createClient();
   const key = normalizeObjectKey(objectKey);
   await client.delete(key);
   return {

@@ -4,7 +4,6 @@ const router = express.Router();
 const { getFile, getFileInfo, UPLOAD_DIR } = require('../config/storage');
 const { requireRoles } = require('../middleware/auth');
 
-const PUBLIC_IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
 const protectedFileAccess = requireRoles('owner', 'staff', 'viewer');
 
 const sendStoredFile = async (req, res) => {
@@ -12,7 +11,8 @@ const sendStoredFile = async (req, res) => {
     const filePath = req.path.replace(/^\/+/, '');
     const resolvedPath = path.resolve(path.join(UPLOAD_DIR, filePath));
     const resolvedDir = path.resolve(UPLOAD_DIR);
-    if (!resolvedPath.startsWith(resolvedDir)) {
+    const relative = path.relative(resolvedDir, resolvedPath);
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
       return res.status(403).json({ error: 'Access denied' });
     }
 
@@ -34,7 +34,7 @@ const sendStoredFile = async (req, res) => {
       '.csv': 'text/csv',
     };
 
-    res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
     res.setHeader('Content-Length', fileInfo.size);
     res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
@@ -62,17 +62,11 @@ const sendStoredFile = async (req, res) => {
   }
 };
 
-router.get(/.*/, async (req, res, next) => {
-  const ext = path.extname(req.path).toLowerCase();
-  if (PUBLIC_IMAGE_EXTENSIONS.has(ext)) {
-    return sendStoredFile(req, res);
-  }
-  return protectedFileAccess(req, res, (error) => {
+router.get(/.*/, async (req, res, next) => protectedFileAccess(req, res, (error) => {
     if (error) {
       return next(error);
     }
     return sendStoredFile(req, res);
-  });
-});
+  }));
 
 module.exports = router;

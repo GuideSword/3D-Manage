@@ -22,6 +22,14 @@ const assertRuntimeConfig = () => {
   if (process.env.ADMIN_PASSWORD || process.env.ADMIN_EMAIL) {
     throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD are not supported in production; use system bootstrap.');
   }
+
+  if (process.env.OSS_ENABLED === 'true') {
+    const ossRequired = ['OSS_ACCESS_KEY_ID', 'OSS_SECRET_ACCESS_KEY', 'OSS_BUCKET', 'OSS_REGION'];
+    const missingOss = ossRequired.filter((key) => !process.env[key]);
+    if (missingOss.length > 0) {
+      throw new Error(`Missing object-storage configuration: ${missingOss.join(', ')}`);
+    }
+  }
 };
 
 module.exports = {

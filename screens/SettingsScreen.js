@@ -104,14 +104,6 @@ const SettingsScreen = () => {
           <ActionRow
             styles={styles}
             colors={colors}
-            icon="cloud-upload-outline"
-            label="OSS 配置"
-            hint="配置模型文件和图片存储"
-            onPress={() => navigation.navigate(ROUTES.OSS_CONFIG)}
-          />
-          <ActionRow
-            styles={styles}
-            colors={colors}
             icon="document-attach-outline"
             label="CSV 导入"
             hint="批量导入订单、耗材或库存数据"
