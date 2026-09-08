@@ -2,9 +2,13 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const dotenv = require('dotenv');
-const { initStorage } = require('./config/storage');
 
 dotenv.config();
+
+const { assertRuntimeConfig } = require('./config/runtime');
+assertRuntimeConfig();
+
+const { initStorage } = require('./config/storage');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -46,6 +50,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 initStorage().catch((err) => console.error('Storage initialization failed:', err));
 
+app.use('/api/system', require('./routes/system'));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/orders', require('./routes/orders'));
 app.use('/api/models', require('./routes/models'));

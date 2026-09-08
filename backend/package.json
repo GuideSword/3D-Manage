@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "store:init": "node scripts/init-store.js",
     "db:sync": "npm run store:init",
-    "verify": "node scripts/verify-api.js"
+    "verify": "node scripts/verify-api.js",
+    "verify:self-hosted": "node scripts/verify-self-hosted.js"
   },
   "keywords": [],
   "author": "",

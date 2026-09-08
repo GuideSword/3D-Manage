@@ -1,5 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
+const { randomUUID } = require('node:crypto');
+const { CURRENT_SCHEMA_VERSION } = require('../config/runtime');
 
 const FILE_DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const DATA_FILE = path.join(FILE_DATA_DIR, 'store.json');
@@ -9,22 +11,30 @@ const POSTGRES_STORE_ID = process.env.STORE_ID || 'default';
 
 const now = () => new Date().toISOString();
 
-const DEFAULT_DATA = {
-  schemaVersion: 1,
-  users: [],
-  orders: [],
-  models: [],
-  materials: [],
-  stockLots: [],
-  inventoryTxns: [],
-  auditLogs: [],
-  createdAt: now(),
-  updatedAt: now(),
-};
-
 const COLLECTION_KEYS = ['users', 'orders', 'models', 'materials', 'stockLots', 'inventoryTxns', 'auditLogs'];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
+
+const createFreshData = () => {
+  const timestamp = now();
+  return {
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    system: {
+      serverId: randomUUID(),
+      organizationName: '',
+      initializedAt: null,
+    },
+    users: [],
+    orders: [],
+    models: [],
+    materials: [],
+    stockLots: [],
+    inventoryTxns: [],
+    auditLogs: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+};
 
 let initPromise;
 let writeQueue = Promise.resolve();
@@ -46,6 +56,46 @@ const ensureCollections = (data) => {
     data.updatedAt = now();
   }
   return data;
+};
+
+const migrateData = (input) => {
+  const data = ensureCollections(input);
+  const sourceVersion = Number(data.schemaVersion || 1);
+  if (sourceVersion > CURRENT_SCHEMA_VERSION) {
+    throw new Error(
+      `Store schema ${sourceVersion} is newer than supported schema ${CURRENT_SCHEMA_VERSION}; upgrade the server before opening this data.`
+    );
+  }
+
+  let changed = sourceVersion !== CURRENT_SCHEMA_VERSION;
+  if (!data.system) {
+    const activeOwner = data.users.find((user) => user.role === 'owner' && user.active !== false);
+    if (data.users.length > 0 && !activeOwner) {
+      throw new Error(
+        'Existing data has users but no active Owner. Run the host-only Owner recovery command before starting the service.'
+      );
+    }
+    data.system = {
+      serverId: randomUUID(),
+      organizationName: activeOwner ? 'Legacy organization' : '',
+      initializedAt: activeOwner ? (data.createdAt || now()) : null,
+    };
+    changed = true;
+  }
+
+  for (const user of data.users) {
+    if (!Number.isInteger(user.tokenVersion) || user.tokenVersion < 1) {
+      user.tokenVersion = 1;
+      changed = true;
+    }
+  }
+
+  if (data.schemaVersion !== CURRENT_SCHEMA_VERSION) {
+    data.schemaVersion = CURRENT_SCHEMA_VERSION;
+    changed = true;
+  }
+
+  return { data, changed };
 };
 
 const assertSupportedDriver = () => {
@@ -91,12 +141,15 @@ const ensureFileStore = async () => {
   await fs.mkdir(FILE_DATA_DIR, { recursive: true });
   try {
     const raw = await fs.readFile(DATA_FILE, 'utf8');
-    ensureCollections(JSON.parse(raw));
+    const migrated = migrateData(JSON.parse(raw));
+    if (migrated.changed) {
+      await writeFileData(migrated.data);
+    }
   } catch (error) {
     if (error.code !== 'ENOENT') {
       throw error;
     }
-    await writeFileData(clone(DEFAULT_DATA));
+    await writeFileData(createFreshData());
   }
 };
 
@@ -110,12 +163,28 @@ const ensurePostgresStore = async () => {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
-  await pool.query(
-    `INSERT INTO ${table} (id, data, updated_at)
-     VALUES ($1, $2::jsonb, now())
-     ON CONFLICT (id) DO NOTHING`,
-    [POSTGRES_STORE_ID, JSON.stringify(ensureCollections(clone(DEFAULT_DATA)))]
-  );
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query(`SELECT data FROM ${table} WHERE id = $1 FOR UPDATE`, [POSTGRES_STORE_ID]);
+    if (!rows[0]) {
+      await client.query(
+        `INSERT INTO ${table} (id, data, updated_at) VALUES ($1, $2::jsonb, now())`,
+        [POSTGRES_STORE_ID, JSON.stringify(createFreshData())]
+      );
+    } else {
+      const migrated = migrateData(rows[0].data);
+      if (migrated.changed) {
+        await writePostgresData(migrated.data, client);
+      }
+    }
+    await client.query('COMMIT');
+  } catch (error) {
+    await client.query('ROLLBACK');
+    throw error;
+  } finally {
+    client.release();
+  }
 };
 
 const ensureStore = async () => {
@@ -129,7 +198,7 @@ const ensureStore = async () => {
 const readFileData = async () => {
   await ensureStore();
   const raw = await fs.readFile(DATA_FILE, 'utf8');
-  return ensureCollections(JSON.parse(raw));
+  return migrateData(JSON.parse(raw)).data;
 };
 
 const readPostgresData = async () => {
@@ -137,9 +206,9 @@ const readPostgresData = async () => {
   const table = getPostgresTableSql();
   const { rows } = await getPgPool().query(`SELECT data FROM ${table} WHERE id = $1`, [POSTGRES_STORE_ID]);
   if (!rows[0]) {
-    return ensureCollections(clone(DEFAULT_DATA));
+    return createFreshData();
   }
-  return ensureCollections(rows[0].data);
+  return migrateData(rows[0].data).data;
 };
 
 const readData = () => (isPostgresStore() ? readPostgresData() : readFileData());
@@ -162,7 +231,7 @@ const mutatePostgresData = async (mutator) => {
   try {
     await client.query('BEGIN');
     const { rows } = await client.query(`SELECT data FROM ${table} WHERE id = $1 FOR UPDATE`, [POSTGRES_STORE_ID]);
-    const data = ensureCollections(rows[0] ? rows[0].data : clone(DEFAULT_DATA));
+    const data = rows[0] ? migrateData(rows[0].data).data : createFreshData();
     const result = await mutator(data);
     await writePostgresData(data, client);
     await client.query('COMMIT');
@@ -221,6 +290,7 @@ const appendAudit = (data, { actorId = 'system', entity, entityId, action, diff 
 };
 
 const closeStore = async () => {
+  await writeQueue;
   if (pgPool) {
     await pgPool.end();
     pgPool = null;
@@ -239,4 +309,6 @@ module.exports = {
   now,
   initializeStore: ensureStore,
   closeStore,
+  createFreshData,
+  migrateData,
 };
