@@ -14,10 +14,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { API_CONFIG, RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
-import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { authAPI, buildFileUrl, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 
 const SOURCE_LABELS = {
@@ -46,10 +46,7 @@ const buildAssetSource = (fileUrl, token) => {
   if (!fileUrl) {
     return null;
   }
-  const apiRoot = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
-  const uri = fileUrl.startsWith('http')
-    ? fileUrl
-    : `${fileUrl.startsWith('/api') ? apiRoot : API_CONFIG.BASE_URL}${fileUrl}`;
+  const uri = buildFileUrl(fileUrl);
   return {
     uri,
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),

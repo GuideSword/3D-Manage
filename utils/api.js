@@ -1,5 +1,14 @@
-import { API_CONFIG } from '../constants';
-import storage from './storage';
+import {
+  getServerRuntime,
+  isCurrentRuntime,
+  registerOperation,
+  StaleSessionError,
+} from './serverRuntime';
+import {
+  clearToken,
+  getToken,
+  setTokenForSnapshot,
+} from './sessionStorage';
 
 let unauthorizedHandler = null;
 
@@ -15,36 +24,40 @@ export const setUnauthorizedHandler = (handler) => {
 export const isAuthRequiredError = (error) => Boolean(error?.authRequired);
 
 const isLoginEndpoint = (endpoint) => (
-  endpoint === '/auth/login'
+  endpoint === '/auth/login' || endpoint === '/system/bootstrap'
 );
 
-// 获取认证token
-const getAuthToken = async () => {
-  try {
-    return await storage.getItem('jwtToken');
-  } catch (error) {
-    console.warn('获取 token 失败:', error?.message || error);
-    return null;
+const requireRuntime = () => {
+  const captured = getServerRuntime();
+  if (!captured.apiBaseUrl || !captured.serverKey) {
+    const error = new Error('尚未配置服务器');
+    error.code = 'SERVER_NOT_CONFIGURED';
+    throw error;
   }
-};
-
-const clearAuthToken = async () => {
-  try {
-    await storage.deleteItem('jwtToken');
-  } catch (error) {
-    console.warn('清除 token 失败:', error?.message || error);
-  }
+  return captured;
 };
 
 // 通用API请求函数
-const apiRequest = async (endpoint, options = {}) => {
-  const token = await getAuthToken();
-  const url = `${API_CONFIG.BASE_URL}${endpoint}`;
+export const apiRequest = async (endpoint, options = {}) => {
+  const captured = requireRuntime();
+  const {
+    auth = true,
+    timeoutMs = 30000,
+    headers: optionHeaders = {},
+    signal: externalSignal,
+    ...requestOptions
+  } = options;
+  const token = auth ? await getToken(captured.serverKey) : null;
+  if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+  const url = `${captured.apiBaseUrl}${endpoint}`;
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
-  const { headers: optionHeaders = {}, ...requestOptions } = options;
-  
+  const { controller, release } = registerOperation(captured, externalSignal);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
   const defaultOptions = {
     ...requestOptions,
+    cache: 'no-store',
+    signal: controller.signal,
     headers: {
       ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
       ...(token && { 'Authorization': `Bearer ${token}` }),
@@ -54,7 +67,7 @@ const apiRequest = async (endpoint, options = {}) => {
 
   try {
     const response = await fetch(url, defaultOptions);
-    
+    if (!isCurrentRuntime(captured)) throw new StaleSessionError();
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({ error: '请求失败' }));
       const errorMessage = errorData.error || `HTTP ${response.status}`;
@@ -64,21 +77,31 @@ const apiRequest = async (endpoint, options = {}) => {
 
       if (response.status === 401 && !isLoginEndpoint(endpoint)) {
         error.authRequired = true;
-        await clearAuthToken();
-        if (unauthorizedHandler) {
-          unauthorizedHandler();
+        if (isCurrentRuntime(captured)) {
+          await clearToken(captured.serverKey);
+          if (unauthorizedHandler && isCurrentRuntime(captured)) {
+            unauthorizedHandler(captured);
+          }
         }
       }
 
       throw error;
     }
 
-    return await response.json();
+    const text = await response.text();
+    if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+    return text ? JSON.parse(text) : null;
   } catch (error) {
-    if (!isAuthRequiredError(error)) {
+    if (error?.name === 'AbortError' && !isCurrentRuntime(captured)) {
+      throw new StaleSessionError();
+    }
+    if (!isAuthRequiredError(error) && !error?.staleSession) {
       console.error('API请求失败:', error);
     }
     throw error;
+  } finally {
+    clearTimeout(timeout);
+    release();
   }
 };
 
@@ -89,72 +112,90 @@ const buildQuery = (params = {}) => {
   return new URLSearchParams(filteredParams).toString();
 };
 
-export const buildFileUrl = (fileUrl = '') => {
+export const buildFileUrl = (fileUrl = '', captured = requireRuntime()) => {
   if (!fileUrl) {
     return '';
   }
   if (String(fileUrl).startsWith('http')) {
     return fileUrl;
   }
-  const apiRoot = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
-  return `${String(fileUrl).startsWith('/api') ? apiRoot : API_CONFIG.BASE_URL}${fileUrl}`;
+  const apiRoot = captured.apiBaseUrl.replace(/\/api\/?$/, '');
+  return `${String(fileUrl).startsWith('/api') ? apiRoot : captured.apiBaseUrl}${fileUrl}`;
 };
 
 const downloadProtectedFile = async ({ fileUrl, filename }) => {
-  const token = await getAuthToken();
-  const url = buildFileUrl(fileUrl);
+  const captured = requireRuntime();
+  const url = buildFileUrl(fileUrl, captured);
   if (!url) {
     throw new Error('文件地址不存在');
   }
 
-  const response = await fetch(url, {
-    headers: {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-  });
+  const apiOrigin = new URL(captured.apiBaseUrl).origin;
+  const targetOrigin = new URL(url).origin;
+  const isApiOrigin = apiOrigin === targetOrigin;
+  const token = isApiOrigin ? await getToken(captured.serverKey) : null;
+  if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+  const { controller, release } = registerOperation(captured);
 
-  if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
-    const error = new Error(errorData.error || `HTTP ${response.status}`);
-    error.status = response.status;
-    error.data = errorData;
-    if (response.status === 401) {
-      error.authRequired = true;
-      await clearAuthToken();
-      if (unauthorizedHandler) {
-        unauthorizedHandler();
+  try {
+    const response = await fetch(url, {
+      cache: 'no-store',
+      redirect: isApiOrigin ? 'manual' : 'follow',
+      signal: controller.signal,
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    });
+    if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ error: `HTTP ${response.status}` }));
+      const error = new Error(errorData.error || `HTTP ${response.status}`);
+      error.status = response.status;
+      error.data = errorData;
+      if (response.status === 401 && isApiOrigin && isCurrentRuntime(captured)) {
+        error.authRequired = true;
+        await clearToken(captured.serverKey);
+        unauthorizedHandler?.(captured);
       }
+      throw error;
     }
-    throw error;
-  }
 
-  const blob = await response.blob();
-  if (typeof window === 'undefined' || !window.URL || !window.document) {
-    throw new Error('当前平台暂不支持直接下载，请在 Web 端操作');
-  }
+    const blob = await response.blob();
+    if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+    if (typeof window === 'undefined' || !window.URL || !window.document) {
+      throw new Error('当前平台暂不支持直接下载，请在 Web 端操作');
+    }
 
-  const objectUrl = window.URL.createObjectURL(blob);
-  const anchor = window.document.createElement('a');
-  anchor.href = objectUrl;
-  anchor.download = filename || 'download';
-  anchor.style.display = 'none';
-  window.document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
-  return true;
+    const objectUrl = window.URL.createObjectURL(blob);
+    const anchor = window.document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = filename || 'download';
+    anchor.style.display = 'none';
+    window.document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
+    return true;
+  } finally {
+    release();
+  }
 };
 
 export const authAPI = {
-  getToken: async () => getAuthToken(),
+  getToken: async () => {
+    const captured = getServerRuntime();
+    return captured.serverKey ? getToken(captured.serverKey) : null;
+  },
 
   login: async (credentials) => {
+    const captured = requireRuntime();
     const result = await apiRequest('/auth/login', {
       method: 'POST',
+      auth: false,
       body: JSON.stringify(credentials),
     });
     if (result.token) {
-      await storage.setItem('jwtToken', result.token);
+      const stored = await setTokenForSnapshot(captured, result.token);
+      if (!stored) throw new StaleSessionError();
     }
     return result;
   },
@@ -167,8 +208,19 @@ export const authAPI = {
   }),
 
   logout: async () => {
-    await storage.deleteItem('jwtToken');
+    const captured = getServerRuntime();
+    if (captured.serverKey) await clearToken(captured.serverKey);
   },
+};
+
+export const systemAPI = {
+  info: async () => apiRequest('/system/info', { auth: false, timeoutMs: 8000 }),
+  bootstrap: async (payload, bootstrapToken) => apiRequest('/system/bootstrap', {
+    method: 'POST',
+    auth: false,
+    headers: { 'X-Bootstrap-Token': bootstrapToken },
+    body: JSON.stringify(payload),
+  }),
 };
 
 export const usersAPI = {

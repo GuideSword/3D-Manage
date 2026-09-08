@@ -37,7 +37,20 @@ export function streamSSE(url, opts = {}, onEvent) {
     }
 
     const xhr = new XMLHttpRequest();
-    const { method = 'GET', headers = {}, body = null, timeoutMs = 180000 } = opts;
+    const {
+      method = 'GET',
+      headers = {},
+      body = null,
+      timeoutMs = 180000,
+      signal,
+    } = opts;
+
+    if (signal?.aborted) {
+      const error = new Error('Request aborted');
+      error.name = 'AbortError';
+      reject(error);
+      return;
+    }
 
     xhr.open(method, url, true);
 
@@ -55,12 +68,19 @@ export function streamSSE(url, opts = {}, onEvent) {
     let buffer = '';
     let settled = false;
 
+    const abortRequest = () => {
+      try { xhr.abort(); } catch (_) {}
+    };
+
     const settle = (err) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener('abort', abortRequest);
       if (err) reject(err);
       else resolve();
     };
+
+    signal?.addEventListener('abort', abortRequest, { once: true });
 
     // Fired every time new data arrives. xhr.responseText contains the FULL
     // accumulated body — we slice off what we haven't seen yet.

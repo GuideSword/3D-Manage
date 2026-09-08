@@ -7,18 +7,28 @@ import React, {
   useState,
 } from 'react';
 import { authAPI, isAuthRequiredError, setUnauthorizedHandler } from '../utils/api';
+import { useServerConfig } from './ServerConfigContext';
+import { clearSessionSafely } from '../utils/sessionStorage';
+import { beginSessionInvalidation, subscribeServerRuntime } from '../utils/serverRuntime';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
+  const {
+    initializing: serverInitializing,
+    server,
+    connectionError,
+  } = useServerConfig();
   const [user, setUser] = useState(null);
   const [initializing, setInitializing] = useState(true);
+  const [cleanupError, setCleanupError] = useState(null);
 
   const clearUser = useCallback(() => {
     setUser(null);
   }, []);
 
   useEffect(() => setUnauthorizedHandler(clearUser), [clearUser]);
+  useEffect(() => subscribeServerRuntime(clearUser), [clearUser]);
 
   const refreshUser = useCallback(async () => {
     const token = await authAPI.getToken();
@@ -45,6 +55,13 @@ export const AuthProvider = ({ children }) => {
     let active = true;
 
     const initializeAuth = async () => {
+      if (serverInitializing) return;
+      if (!server || connectionError || !server.initialized) {
+        setUser(null);
+        setInitializing(false);
+        return;
+      }
+      setInitializing(true);
       try {
         const token = await authAPI.getToken();
         if (!active) {
@@ -76,7 +93,7 @@ export const AuthProvider = ({ children }) => {
     return () => {
       active = false;
     };
-  }, []);
+  }, [serverInitializing, server?.serverKey, server?.initialized, connectionError?.code]);
 
   const signIn = useCallback(async (credentials) => {
     const result = await authAPI.login(credentials);
@@ -85,9 +102,31 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const signOut = useCallback(async () => {
-    await authAPI.logout();
+    const serverKey = server?.serverKey;
+    beginSessionInvalidation();
     setUser(null);
-  }, []);
+    setCleanupError(null);
+    try {
+      if (serverKey) await clearSessionSafely(serverKey);
+      return true;
+    } catch (error) {
+      setCleanupError(error);
+      throw error;
+    }
+  }, [server?.serverKey]);
+
+  const retrySessionCleanup = useCallback(async () => {
+    const serverKey = server?.serverKey;
+    if (!serverKey) return true;
+    try {
+      await clearSessionSafely(serverKey);
+      setCleanupError(null);
+      return true;
+    } catch (error) {
+      setCleanupError(error);
+      throw error;
+    }
+  }, [server?.serverKey]);
 
   const value = useMemo(() => ({
     user,
@@ -96,7 +135,9 @@ export const AuthProvider = ({ children }) => {
     signIn,
     signOut,
     refreshUser,
-  }), [user, initializing, signIn, signOut, refreshUser]);
+    cleanupError,
+    retrySessionCleanup,
+  }), [user, initializing, signIn, signOut, refreshUser, cleanupError, retrySessionCleanup]);
 
   return (
     <AuthContext.Provider value={value}>

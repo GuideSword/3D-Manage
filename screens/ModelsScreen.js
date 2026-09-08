@@ -13,7 +13,6 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  API_CONFIG,
   RADIUS,
   ROUTES,
   SPACING,
@@ -21,7 +20,7 @@ import {
 } from '../constants';
 import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
-import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { authAPI, buildFileUrl, isAuthRequiredError, modelsAPI } from '../utils/api';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -42,10 +41,7 @@ const buildImageSource = (image, token) => {
   if (!image?.fileUrl) {
     return null;
   }
-  const apiRoot = API_CONFIG.BASE_URL.replace(/\/api\/?$/, '');
-  const uri = image.fileUrl.startsWith('http')
-    ? image.fileUrl
-    : `${image.fileUrl.startsWith('/api') ? apiRoot : API_CONFIG.BASE_URL}${image.fileUrl}`;
+  const uri = buildFileUrl(image.fileUrl);
   return {
     uri,
     ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),

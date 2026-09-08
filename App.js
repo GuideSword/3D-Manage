@@ -5,6 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import DraggableFab from './components/agent/DraggableFab';
 import { ROUTES } from './constants';
 import { ThemeProvider, useAppTheme } from './context/ThemeContext';
+import { ServerConfigProvider } from './context/ServerConfigContext';
 
 // Mounts the draggable FAB only when the user is authenticated.
 // The FAB lives OUTSIDE the NavigationContainer, so we use the navigation
@@ -40,7 +41,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <ServerConfigProvider>
+        <AppContent />
+      </ServerConfigProvider>
     </ThemeProvider>
   );
 }
