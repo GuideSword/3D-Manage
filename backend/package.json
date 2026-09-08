@@ -10,6 +10,10 @@
     "db:sync": "npm run store:init",
     "verify": "node scripts/verify-api.js",
     "verify:self-hosted": "node scripts/verify-self-hosted.js",
+    "verify:runtime": "node scripts/verify-runtime.js",
+    "verify:postgres": "node scripts/verify-postgres.js",
+    "migrate:file-to-postgres": "node scripts/migrate-file-to-postgres.js",
+    "agent:checkpoint": "node scripts/checkpoint-agent-db.js",
     "owner:reset-password": "node scripts/reset-owner-password.js"
   },
   "keywords": [],
@@ -27,6 +31,7 @@
     "multer": "^2.0.2",
     "nodemon": "^3.1.11",
     "openai": "^4.67.0",
+    "pg": "^8.23.0",
     "zod": "^3.23.8"
   },
   "devDependencies": {

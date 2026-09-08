@@ -21,6 +21,7 @@ process.env.SKIP_WINDOWS_SHELL_THUMBNAIL = '1';
 
 const app = require('../server');
 const { closeStore } = require('../utils/store');
+const { closeDb } = require('../db/agent');
 
 const readJson = async (response) => {
   const text = await response.text();
@@ -499,6 +500,7 @@ const main = async () => {
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     await closeStore();
+    closeDb();
     fs.rmSync(tempDir, { recursive: true, force: true });
   }
 };

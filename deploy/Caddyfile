@@ -1,0 +1,13 @@
+{$APP_DOMAIN} {
+  encode zstd gzip
+  request_body {
+    max_size 500MB
+  }
+  reverse_proxy app:5000 {
+    flush_interval -1
+  }
+  header {
+    Cache-Control "no-store"
+    Strict-Transport-Security "max-age=31536000; includeSubDomains"
+  }
+}

@@ -1,0 +1,79 @@
+name: ${COMPOSE_PROJECT_NAME:-manage3d}
+
+services:
+  init-volumes:
+    image: alpine:3.22
+    user: "0:0"
+    command: ["sh", "-c", "mkdir -p /data /uploads && chown -R 1000:1000 /data /uploads"]
+    volumes:
+      - ./runtime/data:/data
+      - ./runtime/uploads:/uploads
+    restart: "no"
+
+  db:
+    image: postgres:16-bookworm
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-manage3d}
+      POSTGRES_USER: ${POSTGRES_USER:-manage3d}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - ./runtime/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+  app:
+    build: ./backend
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 5000
+      DATA_DIR: /app/data
+      UPLOAD_DIR: /app/uploads
+      STORE_DRIVER: postgres
+      STORE_TABLE: ${STORE_TABLE:-app_store}
+      STORE_ID: ${STORE_ID:-default}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-manage3d}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}@db:5432/${POSTGRES_DB:-manage3d}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+      AGENT_KEY_ENC_SECRET: ${AGENT_KEY_ENC_SECRET:?AGENT_KEY_ENC_SECRET is required}
+      BOOTSTRAP_TOKEN: ${BOOTSTRAP_TOKEN:?BOOTSTRAP_TOKEN is required}
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      AGENT_ENABLED: ${AGENT_ENABLED:-true}
+      OSS_ENABLED: ${OSS_ENABLED:-false}
+      OSS_REGION: ${OSS_REGION:-}
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-}
+      OSS_SECRET_ACCESS_KEY: ${OSS_SECRET_ACCESS_KEY:-}
+      OSS_BUCKET: ${OSS_BUCKET:-}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-}
+      OSS_SECURE: ${OSS_SECURE:-true}
+      MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-524288000}
+      MAX_UPLOAD_CONCURRENCY: ${MAX_UPLOAD_CONCURRENCY:-2}
+    volumes:
+      - ./runtime/data:/app/data
+      - ./runtime/uploads:/app/uploads
+    ports:
+      - "${APP_PORT:-5000}:5000"
+    depends_on:
+      init-volumes:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "scripts/healthcheck.js"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+    mem_limit: ${APP_MEMORY_LIMIT:-768m}
+    cpus: ${APP_CPU_LIMIT:-1.5}
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }

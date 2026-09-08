@@ -13,6 +13,18 @@ const isWeakSecret = (value) => (
 const assertRuntimeConfig = () => {
   if (process.env.NODE_ENV !== 'production') return;
 
+  const port = Number(process.env.PORT || 5000);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be an integer from 1 to 65535.');
+  }
+  const driver = String(process.env.STORE_DRIVER || 'file').toLowerCase();
+  if (!['file', 'postgres', 'pg'].includes(driver)) {
+    throw new Error(`Unsupported STORE_DRIVER "${driver}".`);
+  }
+  if ((driver === 'postgres' || driver === 'pg') && !process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is required for PostgreSQL storage.');
+  }
+
   const requiredSecrets = ['JWT_SECRET', 'AGENT_KEY_ENC_SECRET', 'BOOTSTRAP_TOKEN'];
   const missing = requiredSecrets.filter((key) => isWeakSecret(process.env[key]));
   if (missing.length > 0) {

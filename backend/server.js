@@ -9,9 +9,16 @@ const { assertRuntimeConfig } = require('./config/runtime');
 assertRuntimeConfig();
 
 const { initStorage } = require('./config/storage');
+const { initializeStore, closeStore } = require('./utils/store');
+const { getDb, closeDb } = require('./db/agent');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const readiness = Promise.all([
+  initializeStore(),
+  initStorage(),
+  Promise.resolve().then(() => getDb().prepare('SELECT 1').get()),
+]);
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -48,7 +55,10 @@ app.use(cors({
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-initStorage().catch((err) => console.error('Storage initialization failed:', err));
+app.use(async (req, res, next) => {
+  try { await readiness; next(); }
+  catch (error) { next(error); }
+});
 
 app.use('/api/system', require('./routes/system'));
 app.use('/api/auth', require('./routes/auth'));
@@ -93,14 +103,48 @@ app.use((err, req, res, next) => {
   res.status(err.status || 500).json({ error: err.message || 'Something went wrong' });
 });
 
-if (require.main === module) {
+let httpServer;
+let shuttingDown = false;
+
+const start = async () => {
+  await readiness;
   const HOST = process.env.HOST || '0.0.0.0';
-  const server = app.listen(PORT, HOST, () => {
-    console.log(`Server running on ${HOST}:${PORT}`);
-    console.log(`Frontend CORS allowed: ${allowedOrigins.join(', ')}`);
+  httpServer = await new Promise((resolve, reject) => {
+    const listener = app.listen(PORT, HOST, () => resolve(listener));
+    listener.once('error', reject);
   });
-  server.on('error', (err) => {
-    console.error('[server.listen error]', err);
+  console.log(`Server running on ${HOST}:${PORT}`);
+  console.log(`Frontend CORS allowed: ${allowedOrigins.join(', ')}`);
+  return httpServer;
+};
+
+const shutdown = async (signal = 'shutdown') => {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`${signal} received, draining requests`);
+  const deadline = setTimeout(() => {
+    console.error('Graceful shutdown timed out');
+    process.exitCode = 1;
+    process.exit(1);
+  }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 25000));
+  deadline.unref();
+  try {
+    if (httpServer) {
+      await new Promise((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
+      httpServer.closeAllConnections?.();
+    }
+    await closeStore();
+    closeDb();
+    console.log('Graceful shutdown complete');
+  } finally {
+    clearTimeout(deadline);
+  }
+};
+
+if (require.main === module) {
+  start().catch((error) => {
+    console.error('[startup failed]', error.stack || error);
+    process.exitCode = 1;
   });
 }
 
@@ -117,9 +161,15 @@ process.on('exit', (code) => {
   console.error('[exit] code=' + code);
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
-  process.exit(0);
-});
+process.on('SIGTERM', () => shutdown('SIGTERM').catch((error) => {
+  console.error('[shutdown failed]', error.stack || error);
+  process.exitCode = 1;
+}));
+process.on('SIGINT', () => shutdown('SIGINT').catch((error) => {
+  console.error('[shutdown failed]', error.stack || error);
+  process.exitCode = 1;
+}));
 
 module.exports = app;
+module.exports.start = start;
+module.exports.shutdown = shutdown;
