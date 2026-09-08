@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useAppTheme } from '../../context/ThemeContext';
+import { useAuth } from '../../context/AuthContext';
+import { canWrite } from '../../utils/permissions';
 
 // Draft confirmation card.
 //
@@ -21,6 +23,8 @@ import { useAppTheme } from '../../context/ThemeContext';
 
 export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
   const { colors, isDark } = useAppTheme();
+  const { user } = useAuth();
+  const allowConfirm = canWrite(user);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [editing, setEditing] = useState(draft);
 
@@ -151,12 +155,16 @@ export default function DraftConfirmCard({ draft, onConfirm, onCancel }) {
         >
           <Text style={styles.btnText}>取消</Text>
         </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.btn, styles.confirm]}
-          onPress={handleConfirm}
-        >
-          <Text style={styles.btnText}>确认并创建</Text>
-        </TouchableOpacity>
+        {allowConfirm ? (
+          <TouchableOpacity
+            style={[styles.btn, styles.confirm]}
+            onPress={handleConfirm}
+          >
+            <Text style={styles.btnText}>确认并创建</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.readOnly}>Viewer 仅可查看草稿</Text>
+        )}
       </View>
     </View>
   );
@@ -349,4 +357,5 @@ const createStyles = (colors) => StyleSheet.create({
   cancel: { backgroundColor: colors.textTertiary },
   confirm: { backgroundColor: colors.success },
   btnText: { color: colors.onSuccess, fontWeight: '600' },
+  readOnly: { color: colors.textSecondary, fontSize: 12, alignSelf: 'center' },
 });

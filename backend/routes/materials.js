@@ -64,6 +64,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     const materials = await withData((data) => {
       const filteredMaterials = filterMaterials(data.materials, req.query);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'materials',
         entityId: null,
         action: 'export',
@@ -124,6 +125,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
       });
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'materials',
         entityId: null,
         action: 'import',
@@ -168,6 +170,7 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
       material.id = nextId(data.materials);
       data.materials.push(material);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'materials',
         entityId: material.id,
         action: 'create',
@@ -216,6 +219,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       const material = normalizeMaterialPayload(req.body, before);
       data.materials[materialIndex] = material;
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'materials',
         entityId: material.id,
         action: 'update',
@@ -246,6 +250,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       data.stockLots = data.stockLots.filter((lot) => String(lot.materialId || lot.material_id) !== String(material.id));
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'materials',
         entityId: material.id,
         action: 'delete',

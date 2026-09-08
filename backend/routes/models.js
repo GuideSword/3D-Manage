@@ -218,6 +218,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     const models = await withData((data) => {
       const filteredModels = filterModels(data.models, req.query);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: null,
         action: 'export',
@@ -279,6 +280,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
       }
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: null,
         action: 'import',
@@ -327,6 +329,7 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
       model.id = nextId(data.models);
       data.models.push(model);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: model.id,
         action: 'create',
@@ -390,6 +393,7 @@ router.post('/:id/files', requireRoles('owner', 'staff'), modelFileUpload.single
 
       model.updatedAt = now();
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: model.id,
         action: 'file.create',
@@ -443,6 +447,7 @@ router.post('/:id/images', requireRoles('owner', 'staff'), imageUpload.single('f
 
       model.updatedAt = now();
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: model.id,
         action: 'image.create',
@@ -499,6 +504,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
 
       data.models[modelIndex] = model;
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: model.id,
         action: 'update',
@@ -525,6 +531,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       await deleteModelAssets(model);
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'models',
         entityId: model.id,
         action: 'delete',

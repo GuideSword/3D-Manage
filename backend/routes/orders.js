@@ -6,6 +6,7 @@ const { saveFile, deleteFile, getFileUrl } = require('../config/storage');
 const { withData, nextId, appendAudit, now } = require('../utils/store');
 const { toCsv, fromCsv } = require('../utils/csv');
 const { requireRoles } = require('../middleware/auth');
+const { createOrderInData, normalizeOrderPayload } = require('../services/orders');
 
 const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -33,60 +34,6 @@ const allowedTransitions = {
   in_progress: ['completed', 'cancelled', 'pending_review', 'draft'],
   completed: ['in_progress', 'pending_review', 'draft', 'cancelled'],
   cancelled: ['draft'],
-};
-
-const toNumber = (value, fallback = 0) => {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) ? number : fallback;
-};
-
-const normalizeOrderItem = (item = {}, index = 0) => {
-  const quantity = toNumber(item.quantity ?? item.qty, 0);
-  const unitPrice = toNumber(item.unitPrice ?? item.unit_price, 0);
-  return {
-    id: item.id ? String(item.id) : String(index + 1),
-    modelId: item.modelId || item.model_asset_id || item.modelAssetId || '',
-    modelName: item.modelName || item.model_name || '',
-    materialType: item.materialType || item.material_type || '',
-    color: item.color || '',
-    layerHeightMm: item.layerHeightMm || item.layer_height_mm || '',
-    quantity,
-    unitPrice,
-    subtotal: toNumber(item.subtotal, quantity * unitPrice),
-    externalFileUrl: item.externalFileUrl || item.external_file_url || '',
-    notes: item.notes || '',
-  };
-};
-
-const normalizeOrderPayload = (payload = {}, existing = null) => {
-  const timestamp = now();
-  const items = Array.isArray(payload.items || payload.orderItems)
-    ? (payload.items || payload.orderItems).map(normalizeOrderItem)
-    : existing?.items || [];
-  const total = payload.total == null
-    ? items.reduce((sum, item) => sum + item.subtotal, 0)
-    : toNumber(payload.total, 0);
-  const customer = payload.customer || {
-    id: payload.customerId || existing?.customer?.id || '',
-    name: payload.customerName || existing?.customer?.name || '',
-    email: payload.customerEmail || existing?.customer?.email || '',
-    phone: payload.customerPhone || existing?.customer?.phone || '',
-  };
-
-  return {
-    ...(existing || {}),
-    ...payload,
-    customer,
-    items,
-    total,
-    currency: payload.currency || existing?.currency || 'CNY',
-    status: payload.status || existing?.status || 'pending_review',
-    dueDate: payload.dueDate || payload.due_date || existing?.dueDate || null,
-    notes: payload.notes || existing?.notes || '',
-    attachments: payload.attachments || existing?.attachments || [],
-    createdAt: existing?.createdAt || timestamp,
-    updatedAt: timestamp,
-  };
 };
 
 const filterOrders = (orders, query = {}) => {
@@ -144,6 +91,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     const result = await withData((data) => {
       const orders = filterOrders(data.orders, req.query);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'orders',
         entityId: null,
         action: 'export',
@@ -226,6 +174,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
       });
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'orders',
         entityId: null,
         action: 'import',
@@ -253,6 +202,14 @@ router.post('/upload-attachment', requireRoles('owner', 'staff'), upload.single(
       req.file.originalname,
       'orders/attachments'
     );
+
+    await withData((data) => appendAudit(data, {
+      actorId: String(req.user.id),
+      entity: 'orders',
+      entityId: null,
+      action: 'attachment.upload',
+      diff: { fileKey: result.filePath, sha256: result.sha256, size: result.size },
+    }));
 
     return res.json({
       success: true,
@@ -294,18 +251,9 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
 
 router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
   try {
-    const created = await withData((data) => {
-      const newOrder = normalizeOrderPayload(req.body);
-      newOrder.id = nextId(data.orders);
-      data.orders.push(newOrder);
-      appendAudit(data, {
-        entity: 'orders',
-        entityId: newOrder.id,
-        action: 'create',
-        diff: newOrder,
-      });
-      return newOrder;
-    });
+    const created = await withData((data) => createOrderInData(data, req.body, {
+      actorId: req.user.id,
+    }));
 
     res.status(201).json(created);
   } catch (error) {
@@ -338,6 +286,12 @@ router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) =>
 });
 
 router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
+  if (Object.prototype.hasOwnProperty.call(req.body || {}, 'status')) {
+    return res.status(400).json({
+      code: 'STATUS_REQUIRES_TRANSITION_ENDPOINT',
+      error: 'Use the order status endpoint to change status',
+    });
+  }
   try {
     const updated = await withData((data) => {
       const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
@@ -348,6 +302,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       const order = normalizeOrderPayload(req.body, before);
       data.orders[orderIndex] = order;
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'orders',
         entityId: order.id,
         action: 'update',
@@ -387,6 +342,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       }
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'orders',
         entityId: order.id,
         action: 'delete',
@@ -432,6 +388,7 @@ router.patch('/:id/status', requireRoles('owner', 'staff'), async (req, res) => 
       order.statusReason = req.body.reason || '';
       order.updatedAt = now();
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'orders',
         entityId: order.id,
         action: 'status',

@@ -74,6 +74,7 @@ const searchModelsByKeywordSchema = z.object({
 
 const searchModelsByKeyword = {
   name: 'search_models_by_keyword',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description: '按模型名称或标签关键词精确查找模型资产。',
   schema: searchModelsByKeywordSchema,
   parameters: zodToJsonSchema(searchModelsByKeywordSchema),
@@ -92,6 +93,7 @@ const searchModelsSemanticSchema = z.object({
 
 const searchModelsSemantic = {
   name: 'search_models_semantic',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description:
     '按自然语言描述做语义搜索，适合外观/用途类模糊查询（\'莲花形状\'、\'做手机壳的\'）。',
   schema: searchModelsSemanticSchema,

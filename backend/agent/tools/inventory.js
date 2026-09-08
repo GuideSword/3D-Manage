@@ -73,6 +73,7 @@ const getInventorySummarySchema = z.object({
 
 const getInventorySummary = {
   name: 'get_inventory_summary',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description: '查耗材库存概要，按材料聚合。',
   schema: getInventorySummarySchema,
   parameters: zodToJsonSchema(getInventorySummarySchema),

@@ -275,6 +275,139 @@ const main = async () => {
     });
     assert.equal(organizationUpdate.status, 200);
 
+    const viewerReloginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'staff@example.com', password: 'ResetPassword123!' }),
+    });
+    assert.equal(viewerReloginResponse.status, 200);
+    const viewerRelogin = await readJson(viewerReloginResponse);
+    const viewerConfirm = await fetch(`${baseUrl}/api/agent/drafts/confirm`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${viewerRelogin.token}`,
+      },
+      body: JSON.stringify({
+        draft: {
+          customer_name: 'Forbidden Customer',
+          items: [{ material_type: 'PLA', qty: 1, unit_price: 10 }],
+        },
+      }),
+    });
+    assert.equal(viewerConfirm.status, 403);
+
+    const auditStaffResponse = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        name: 'Audit Staff',
+        email: 'audit-staff@example.com',
+        password: 'AuditStaffPassword123!',
+        role: 'staff',
+      }),
+    });
+    assert.equal(auditStaffResponse.status, 201);
+    const auditStaff = await readJson(auditStaffResponse);
+    const auditStaffLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'audit-staff@example.com', password: 'AuditStaffPassword123!' }),
+    });
+    assert.equal(auditStaffLoginResponse.status, 200);
+    const auditStaffLogin = await readJson(auditStaffLoginResponse);
+
+    const staffRequest = (endpoint, options = {}) => fetch(`${baseUrl}${endpoint}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${auditStaffLogin.token}`,
+        ...(options.headers || {}),
+      },
+    });
+
+    const materialResponse = await staffRequest('/api/materials', {
+      method: 'POST',
+      body: JSON.stringify({ type: 'PLA', brand: 'Verify', color: 'Black' }),
+    });
+    assert.equal(materialResponse.status, 201);
+    const material = await readJson(materialResponse);
+    const lotResponse = await staffRequest('/api/stock/lots', {
+      method: 'POST',
+      body: JSON.stringify({ materialId: material.id, lotNo: 'ACTOR-VERIFY', qty: 0 }),
+    });
+    assert.equal(lotResponse.status, 201);
+    const lot = await readJson(lotResponse);
+    const transactionResponse = await staffRequest('/api/stock/inventory/txns', {
+      method: 'POST',
+      body: JSON.stringify({ lotId: lot.id, type: 'in', qty: 100, actorId: 'forged-user' }),
+    });
+    assert.equal(transactionResponse.status, 201);
+    const transaction = await readJson(transactionResponse);
+    assert.equal(transaction.actorId, auditStaff.id);
+
+    const createOrder = (customerName) => staffRequest('/api/orders', {
+      method: 'POST',
+      body: JSON.stringify({
+        customer: { name: customerName },
+        items: [{ materialType: 'PLA', quantity: 1, unitPrice: 20 }],
+        status: 'pending_review',
+      }),
+    });
+    const firstOrderResponse = await createOrder('First Customer');
+    const secondOrderResponse = await createOrder('Second Customer');
+    assert.equal(firstOrderResponse.status, 201);
+    assert.equal(secondOrderResponse.status, 201);
+    const firstOrder = await readJson(firstOrderResponse);
+    const secondOrder = await readJson(secondOrderResponse);
+
+    const directStatus = await staffRequest(`/api/orders/${secondOrder.id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: 'completed' }),
+    });
+    assert.equal(directStatus.status, 400);
+    assert.equal((await readJson(directStatus)).code, 'STATUS_REQUIRES_TRANSITION_ENDPOINT');
+
+    const deleteFirst = await staffRequest(`/api/orders/${firstOrder.id}`, { method: 'DELETE' });
+    assert.equal(deleteFirst.status, 200);
+    const draftConfirm = await staffRequest('/api/agent/drafts/confirm', {
+      method: 'POST',
+      body: JSON.stringify({
+        draft: {
+          customer_name: 'AI Customer',
+          due_date: '2026-09-30',
+          notes: 'Created from verified draft',
+          items: [{
+            model_asset_id: 'model-1',
+            material_type: 'PETG',
+            color: 'Blue',
+            qty: 2,
+            unit_price: 30,
+          }],
+        },
+      }),
+    });
+    assert.equal(draftConfirm.status, 200);
+    const confirmedOrder = (await readJson(draftConfirm)).order;
+    assert.notEqual(confirmedOrder.id, secondOrder.id);
+    const confirmedDetailResponse = await staffRequest(`/api/orders/${confirmedOrder.id}`);
+    assert.equal(confirmedDetailResponse.status, 200);
+    const confirmedDetail = await readJson(confirmedDetailResponse);
+    assert.equal(confirmedDetail.customer.name, 'AI Customer');
+    assert.equal(confirmedDetail.items[0].quantity, 2);
+
+    const actorStore = JSON.parse(fs.readFileSync(path.join(process.env.DATA_DIR, 'store.json'), 'utf8'));
+    assert.equal(actorStore.inventoryTxns.find((item) => item.id === transaction.id).actorId, auditStaff.id);
+    const transactionAudit = actorStore.auditLogs.find((item) => (
+      item.entity === 'stockLots'
+      && item.entityId === lot.id
+      && item.action === 'inventory.in'
+    ));
+    assert.equal(transactionAudit.actorId, auditStaff.id);
+
     const persisted = fs.readFileSync(path.join(process.env.DATA_DIR, 'store.json'), 'utf8');
     assert.equal(persisted.includes(process.env.BOOTSTRAP_TOKEN), false);
     assert.equal(persisted.includes('OwnerPassword123!'), false);

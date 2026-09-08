@@ -17,6 +17,8 @@ import DraftConfirmCard from '../components/agent/DraftConfirmCard';
 import ImageAttachment from '../components/agent/ImageAttachment';
 import { streamChat, agentApi } from '../utils/agentApi';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { canWrite } from '../utils/permissions';
 
 // Full-screen Agent chat.
 //
@@ -40,6 +42,8 @@ import { useAppTheme } from '../context/ThemeContext';
 
 export default function AgentChatScreen({ route, navigation }) {
   const { colors } = useAppTheme();
+  const { user } = useAuth();
+  const allowWrite = canWrite(user);
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -218,7 +222,7 @@ export default function AgentChatScreen({ route, navigation }) {
       return (
         <DraftConfirmCard
           draft={item.draft}
-          onConfirm={onConfirmDraft}
+          onConfirm={allowWrite ? onConfirmDraft : undefined}
           onCancel={onCancelDraft}
         />
       );

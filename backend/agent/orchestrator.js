@@ -58,7 +58,7 @@ async function ensureConversation({ userId, conversationId, firstUserMessage }) 
  * @param {function} args.onEvent    (eventName, data) => void
  * @param {AbortSignal} [args.signal]  forwarded to LLM stream; abort kills the request
  */
-async function runConversation({ userId, conversationId, userMessage, imageParts = [], onEvent, signal }) {
+async function runConversation({ userId, role, conversationId, userMessage, imageParts = [], onEvent, signal }) {
   // 1. Load settings + decrypt API keys
   const settings = sqliteDb.getUserSettings(userId);
   if (!settings) {
@@ -99,6 +99,7 @@ async function runConversation({ userId, conversationId, userMessage, imageParts
   // 5. Build ctx
   const ctx = {
     userId,
+    role,
     db: dbBridge,
     embed: {
       embedQuery: async (text) => embedProvider.embedQuery({

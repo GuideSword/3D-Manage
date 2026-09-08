@@ -13,14 +13,35 @@
 const express = require('express');
 const crypto = require('../utils/crypto');
 const sqliteDb = require('../db/agent');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireRoles } = require('../middleware/auth');
 const { runConversation } = require('../agent/orchestrator');
 const { createLLMClient, listModels } = require('../agent/providers/llm');
 const embedProvider = require('../agent/providers/embed');
 const { withData, appendAudit } = require('../utils/store');
+const { createOrderInData } = require('../services/orders');
+const { z } = require('zod');
+const { parseRequest } = require('../utils/validation');
 
 const router = express.Router();
 router.use(requireAuth);
+
+const orderDraftSchema = z.object({
+  customer_name: z.string().trim().min(1).max(200),
+  due_date: z.string().trim().max(40).nullable().optional(),
+  notes: z.string().trim().max(5000).optional().default(''),
+  items: z.array(z.object({
+    model_asset_id: z.string().max(200).optional().default(''),
+    model_name: z.string().max(200).optional().default(''),
+    material_type: z.string().trim().min(1).max(120),
+    color: z.string().max(120).optional().default(''),
+    layer_height_mm: z.union([z.string(), z.number()]).optional().default(''),
+    qty: z.coerce.number().positive(),
+    unit_price: z.coerce.number().nonnegative(),
+    notes: z.string().max(1000).optional().default(''),
+  }).strict()).min(1),
+  confidence: z.number().min(0).max(1).optional(),
+  missing_fields: z.array(z.string()).optional(),
+}).strict();
 
 // 1) POST /chat — main entry, SSE
 router.post('/chat', async (req, res) => {
@@ -80,6 +101,7 @@ router.post('/chat', async (req, res) => {
   try {
     await runConversation({
       userId: req.user.id,
+      role: req.user.role,
       conversationId,
       userMessage: message,
       imageParts,
@@ -129,43 +151,30 @@ router.delete('/conversations/:id', (req, res) => {
 });
 
 // 5) POST /drafts/confirm
-router.post('/drafts/confirm', async (req, res) => {
-  const { draft } = req.body || {};
-  if (!draft || !Array.isArray(draft.items)) {
-    return res.status(400).json({ error: 'draft with items[] is required' });
-  }
+router.post('/drafts/confirm', requireRoles('owner', 'staff'), async (req, res) => {
+  const draft = parseRequest(orderDraftSchema, req.body?.draft, res);
+  if (!draft) return undefined;
   try {
-    // Create the order via the JSON store
-    const newOrder = await withData((d) => {
-      const id = (d.orders?.length || 0) + 1;
-      const total = (draft.items || []).reduce((s, it) => s + Number(it.qty || 0) * Number(it.unit_price || 0), 0);
-      const order = {
-        id: String(id),
-        customerId: null, // TODO: lookup or create customer
-        customerName: draft.customer_name || '',
-        status: 'draft',
-        total,
-        currency: 'CNY',
-        dueDate: draft.due_date || null,
-        notes: draft.notes || '',
-        items: (draft.items || []).map((it) => ({
-          materialType: it.material_type,
-          color: it.color,
-          layerHeightMm: it.layer_height_mm,
-          qty: it.qty,
-          unitPrice: it.unit_price,
-          subtotal: Number(it.qty || 0) * Number(it.unit_price || 0),
-          modelAssetId: it.model_asset_id,
-        })),
-        createdBy: req.user.id,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      d.orders = d.orders || [];
-      d.orders.push(order);
-      appendAudit(d, { actorId: String(req.user.id), entity: 'order', entityId: order.id, action: 'create_from_draft', diff: { draft } });
-      return order;
-    });
+    const newOrder = await withData((data) => createOrderInData(data, {
+      customer: { name: draft.customer_name, email: '', phone: '' },
+      status: 'draft',
+      currency: 'CNY',
+      dueDate: draft.due_date || null,
+      notes: draft.notes,
+      items: draft.items.map((item) => ({
+        modelId: item.model_asset_id,
+        modelName: item.model_name,
+        materialType: item.material_type,
+        color: item.color,
+        layerHeightMm: item.layer_height_mm,
+        quantity: item.qty,
+        unitPrice: item.unit_price,
+        notes: item.notes,
+      })),
+    }, {
+      actorId: req.user.id,
+      action: 'create_from_draft',
+    }));
     res.json({ order: newOrder });
   } catch (err) {
     res.status(500).json({ error: err.message });

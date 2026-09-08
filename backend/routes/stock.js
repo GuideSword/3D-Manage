@@ -74,6 +74,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
         ? filterTransactions(data.inventoryTxns, req.query)
         : filterLots(data.stockLots, req.query);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stock',
         entityId: null,
         action: `${exportType}.export`,
@@ -149,12 +150,13 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
           qty: lot.qty,
           notes: 'Imported stock lot.',
           createdAt: now(),
-          actorId: 'system',
+          actorId: String(req.user.id),
         });
         return lot;
       });
 
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stock',
         entityId: null,
         action: 'lots.import',
@@ -203,6 +205,7 @@ router.post('/lots', requireRoles('owner', 'staff'), async (req, res) => {
       lot.id = nextId(data.stockLots);
       data.stockLots.push(lot);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stockLots',
         entityId: lot.id,
         action: 'create',
@@ -284,10 +287,11 @@ router.post('/inventory/txns', requireRoles('owner', 'staff'), async (req, res) 
         notes: req.body.notes || req.body.reason || '',
         orderId: req.body.orderId || req.body.relatedOrderId || req.body.related_order_id || '',
         createdAt: now(),
-        actorId: req.body.actorId || 'system',
+        actorId: String(req.user.id),
       };
       data.inventoryTxns.push(txn);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stockLots',
         entityId: lot.id,
         action: `inventory.${type}`,
@@ -336,6 +340,7 @@ router.patch('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
       const lot = normalizeLotPayload(req.body, before);
       data.stockLots[lotIndex] = lot;
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stockLots',
         entityId: lot.id,
         action: 'update',
@@ -363,6 +368,7 @@ router.delete('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
 
       const [lot] = data.stockLots.splice(lotIndex, 1);
       appendAudit(data, {
+        actorId: String(req.user.id),
         entity: 'stockLots',
         entityId: lot.id,
         action: 'delete',

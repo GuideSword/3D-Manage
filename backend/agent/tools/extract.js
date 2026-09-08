@@ -92,6 +92,7 @@ const extractOrderDraftSchema = z.object({
 
 const extractOrderDraft = {
   name: 'extract_order_draft',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description:
     '从用户输入的文本里抽取订单信息，返回结构化草稿。**不会写入数据库**，只返回给前端展示并等待用户确认。',
   schema: extractOrderDraftSchema,

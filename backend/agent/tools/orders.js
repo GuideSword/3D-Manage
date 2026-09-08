@@ -68,7 +68,7 @@ function zodToJsonSchema(schema) {
 // ------------------------------------------------------------------
 const listOrdersSchema = z.object({
   status: z
-    .enum(['draft', 'pending', 'in_progress', 'done', 'cancelled'])
+    .enum(['draft', 'pending_review', 'in_progress', 'completed', 'cancelled'])
     .optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
@@ -77,6 +77,7 @@ const listOrdersSchema = z.object({
 
 const listOrders = {
   name: 'list_orders',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description: '按状态/日期范围查询订单列表，做统计/汇总用。',
   schema: listOrdersSchema,
   parameters: zodToJsonSchema(listOrdersSchema),
@@ -94,6 +95,7 @@ const getOrderDetailSchema = z.object({
 
 const getOrderDetail = {
   name: 'get_order_detail',
+  allowedRoles: ['owner', 'staff', 'viewer'],
   description: '取单个订单的完整明细（含订单行）。',
   schema: getOrderDetailSchema,
   parameters: zodToJsonSchema(getOrderDetailSchema),

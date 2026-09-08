@@ -36,6 +36,11 @@ async function dispatchTool(name, args, ctx) {
   if (!tool) {
     throw new Error(`Unknown tool: ${name}`);
   }
+  if (!Array.isArray(tool.allowedRoles) || !tool.allowedRoles.includes(ctx.role)) {
+    const error = new Error(`Tool ${name} is not allowed for this role`);
+    error.code = 'TOOL_ROLE_FORBIDDEN';
+    throw error;
+  }
   const validated = tool.schema.parse(args);
   return tool.handler(validated, ctx);
 }
