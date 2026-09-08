@@ -308,6 +308,10 @@ export const API_CONFIG = {
   TIMEOUT: 30000,
 };
 
+export const SERVER_ADDRESS_PREFILL = (
+  typeof __DEV__ !== 'undefined' && __DEV__ ? DEFAULT_API_BASE_URL : ''
+);
+
 if (typeof __DEV__ !== 'undefined' && __DEV__) {
   const expoHost = getExpoHost();
   const source = process.env?.EXPO_PUBLIC_API_BASE_URL

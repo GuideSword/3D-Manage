@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import {
   getServerRuntime,
   isCurrentRuntime,
@@ -9,6 +10,7 @@ import {
   getToken,
   setTokenForSnapshot,
 } from './sessionStorage';
+import { downloadAndShareNative } from './nativeDownload';
 
 let unauthorizedHandler = null;
 
@@ -123,6 +125,17 @@ export const buildFileUrl = (fileUrl = '', captured = requireRuntime()) => {
   return `${String(fileUrl).startsWith('/api') ? apiRoot : captured.apiBaseUrl}${fileUrl}`;
 };
 
+export const buildProtectedFileSource = (fileUrl, token) => {
+  if (!fileUrl) return null;
+  const captured = requireRuntime();
+  const uri = buildFileUrl(fileUrl, captured);
+  const sameOrigin = new URL(uri).origin === new URL(captured.apiBaseUrl).origin;
+  return {
+    uri,
+    ...(sameOrigin && token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
+  };
+};
+
 const downloadProtectedFile = async ({ fileUrl, filename }) => {
   const captured = requireRuntime();
   const url = buildFileUrl(fileUrl, captured);
@@ -138,6 +151,16 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
   const { controller, release } = registerOperation(captured);
 
   try {
+    if (Platform.OS !== 'web') return downloadAndShareNative({
+      url,
+      filename,
+      token,
+      captured,
+      controller,
+      isCurrent: isCurrentRuntime,
+      staleError: () => new StaleSessionError(),
+    });
+
     const response = await fetch(url, {
       cache: 'no-store',
       redirect: isApiOrigin ? 'manual' : 'follow',

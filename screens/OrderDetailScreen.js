@@ -19,10 +19,13 @@ import {
 } from '../constants';
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { canWrite } from '../utils/permissions';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
 
 const OrderDetailScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { orderId } = route.params;
@@ -263,7 +266,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           </Card>
         ) : null}
 
-        {isRestorable(order.status) ? (
+        {canWrite(user) && isRestorable(order.status) ? (
           <Card style={styles.section}>
             <SectionHeader title="回收站操作" />
             <View style={styles.restoreNotice}>
@@ -284,7 +287,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           </Card>
         ) : null}
 
-        {availableActions.length > 0 ? (
+        {canWrite(user) && availableActions.length > 0 ? (
           <Card style={styles.section}>
             <SectionHeader title="状态操作" />
             <View style={styles.actionStack}>
@@ -304,7 +307,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           </Card>
         ) : null}
 
-        <Card style={styles.dangerSection}>
+        {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />
           <Button
             title="删除订单"
@@ -313,7 +316,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
             variant="danger"
             fullWidth
           />
-        </Card>
+        </Card> : null}
       </ScrollView>
     </SafeAreaView>
   );

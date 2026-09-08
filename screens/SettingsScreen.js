@@ -3,7 +3,6 @@ import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'rea
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  API_CONFIG,
   RADIUS,
   ROLE_LABELS,
   ROLES,
@@ -11,20 +10,47 @@ import {
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Card, ThemeModePicker } from '../components';
+import { Button, Card, ThemeModePicker } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { canExport } from '../utils/permissions';
 
 const SettingsScreen = () => {
   const { colors, themeMode, setThemeMode } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const navigation = useNavigation();
-  const { user, signOut } = useAuth();
+  const { user, signOut, cleanupError, retrySessionCleanup } = useAuth();
+  const { server, refreshServer } = useServerConfig();
+  const [testingServer, setTestingServer] = React.useState(false);
 
   const handleLogout = async () => {
-    await signOut();
-    Alert.alert('成功', '已退出登录');
+    try {
+      await signOut();
+      Alert.alert('成功', '已退出登录');
+    } catch (error) {
+      Alert.alert('已退出，但清理未完成', `${error.message}\n请使用重试清理。`);
+    }
   };
+
+  const handleTestServer = async () => {
+    setTestingServer(true);
+    try {
+      await refreshServer();
+      Alert.alert('连接正常', '服务器身份与 API 版本验证通过。');
+    } catch (error) {
+      Alert.alert('连接失败', error.message || '无法连接服务器');
+    } finally { setTestingServer(false); }
+  };
+
+  const confirmReplacement = () => Alert.alert(
+    '更换服务器',
+    '新服务器验证成功后，当前账号会立即退出并清理本地会话。是否继续？',
+    [
+      { text: '取消', style: 'cancel' },
+      { text: '继续', style: 'destructive', onPress: () => navigation.navigate(ROUTES.SERVER_SETUP, { replacement: true }) },
+    ]
+  );
 
   return (
     <ScrollView
@@ -91,14 +117,17 @@ const SettingsScreen = () => {
             styles={styles}
             colors={colors}
             icon="server-outline"
-            label="API 地址"
-            value={API_CONFIG.BASE_URL}
-            hint="可通过 EXPO_PUBLIC_API_BASE_URL 配置开发环境 API 地址"
+            label="组织"
+            value={server?.organizationName || '未命名组织'}
+            hint={server?.apiBaseUrl}
           />
+          <InfoRow styles={styles} colors={colors} icon="git-branch-outline" label="版本" value={`服务端 ${server?.serverVersion || '未知'} · API ${server?.apiVersion || '未知'}`} hint="状态：已验证" />
+          <ActionRow styles={styles} colors={colors} icon="pulse-outline" label={testingServer ? '正在测试…' : '测试连接'} hint="重新验证服务器身份和兼容性" onPress={handleTestServer} />
+          <ActionRow styles={styles} colors={colors} icon="swap-horizontal-outline" label="更换服务器" hint="验证后退出当前账号并隔离会话" onPress={confirmReplacement} />
         </Card>
       </View>
 
-      <View style={styles.section}>
+      {canExport(user) ? <View style={styles.section}>
         <Text style={styles.sectionTitle}>工具</Text>
         <Card style={styles.card} padding="none">
           <ActionRow
@@ -110,7 +139,7 @@ const SettingsScreen = () => {
             onPress={() => navigation.navigate(ROUTES.DATA_IMPORT)}
           />
         </Card>
-      </View>
+      </View> : null}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>会话</Text>
@@ -119,6 +148,12 @@ const SettingsScreen = () => {
           <Text style={styles.logoutText}>退出登录</Text>
         </TouchableOpacity>
       </View>
+      {cleanupError ? (
+        <View style={styles.section}>
+          <Text style={styles.errorText}>本地会话清理未完成：{cleanupError.message}</Text>
+          <Button title="重试清理" onPress={() => retrySessionCleanup().catch(() => undefined)} fullWidth />
+        </View>
+      ) : null}
     </ScrollView>
   );
 };
@@ -241,6 +276,11 @@ const createStyles = (colors) => StyleSheet.create({
   logoutText: {
     ...TYPOGRAPHY.meta,
     color: colors.danger,
+  },
+  errorText: {
+    ...TYPOGRAPHY.meta,
+    color: colors.danger,
+    marginBottom: SPACING.md,
   },
 });
 

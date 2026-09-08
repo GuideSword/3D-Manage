@@ -9,7 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Button, Card, Input } from '../components';
-import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, SERVER_ADDRESS_PREFILL, SPACING, TYPOGRAPHY } from '../constants';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { useAppTheme } from '../context/ThemeContext';
 
@@ -26,7 +26,7 @@ const ServerSetupScreen = ({ route, navigation }) => {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { server, configureServer, replaceServer, isReplacing } = useServerConfig();
-  const [address, setAddress] = useState(replacement ? server?.apiBaseUrl || '' : '');
+  const [address, setAddress] = useState(replacement ? server?.apiBaseUrl || '' : SERVER_ADDRESS_PREFILL);
   const [submitting, setSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 

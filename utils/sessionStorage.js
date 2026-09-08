@@ -1,8 +1,9 @@
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
-import * as FileSystem from 'expo-file-system/legacy';
 import storage from './storage';
 import { isCurrentRuntime } from './serverRuntime';
+import { clearTrackedFiles } from './sessionFiles';
+export { clearTrackedFiles, trackPickedAsset, trackSessionFile } from './sessionFiles';
 
 const CLEANUP_PENDING_KEY = 'sessionCleanupPending.v1';
 const LEGACY_MIGRATION_KEY = 'legacyCredentialsRemoved.v1';
@@ -10,7 +11,6 @@ const memorySession = new Map();
 
 const tokenKey = (serverKey) => `jwtToken.v1.${serverKey}`;
 const draftsKey = (serverKey) => `drafts.v1.${serverKey}`;
-const filesKey = (serverKey) => `sessionFiles.v1.${serverKey}`;
 
 const getWebSessionStorage = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
@@ -73,52 +73,6 @@ export const setTokenForSnapshot = async (captured, token) => {
     return false;
   }
   return true;
-};
-
-const loadTrackedFiles = async (serverKey) => {
-  const raw = await storage.getItem(filesKey(serverKey));
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed.filter((item) => typeof item === 'string') : [];
-  } catch (error) {
-    return [];
-  }
-};
-
-export const trackSessionFile = async (serverKey, uri) => {
-  requireServerKey(serverKey);
-  if (!uri) return;
-  const files = await loadTrackedFiles(serverKey);
-  if (!files.includes(uri)) {
-    files.push(uri);
-    await storage.setItem(filesKey(serverKey), JSON.stringify(files));
-  }
-};
-
-const isAppCacheFile = (uri) => {
-  const cacheDirectory = FileSystem.cacheDirectory;
-  if (!cacheDirectory || typeof uri !== 'string') return false;
-  const base = cacheDirectory.endsWith('/') ? cacheDirectory : `${cacheDirectory}/`;
-  return uri.startsWith(base) && uri.length > base.length;
-};
-
-export const clearTrackedFiles = async (serverKey) => {
-  if (!serverKey) return;
-  const files = await loadTrackedFiles(serverKey);
-  const failures = [];
-  for (const uri of files) {
-    if (!isAppCacheFile(uri)) continue;
-    try {
-      await FileSystem.deleteAsync(uri, { idempotent: true });
-    } catch (error) {
-      failures.push({ uri, error });
-    }
-  }
-  if (failures.length > 0) {
-    throw new Error(`无法清理 ${failures.length} 个应用临时文件`);
-  }
-  await storage.deleteItem(filesKey(serverKey));
 };
 
 export const clearSession = async (serverKey) => {

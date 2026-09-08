@@ -28,6 +28,7 @@ import { ROUTES, SCREEN_TITLES } from '../constants';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
+import { canExport, canManage, canWrite } from '../utils/permissions';
 
 const Stack = createNativeStackNavigator();
 
@@ -47,7 +48,7 @@ const LoadingScreen = () => {
 };
 
 const AppNavigator = () => {
-  const { initializing: authInitializing, isAuthenticated } = useAuth();
+  const { initializing: authInitializing, isAuthenticated, user } = useAuth();
   const { initializing: serverInitializing, server, connectionError } = useServerConfig();
   const { colors, isDark } = useAppTheme();
   const navigationTheme = useMemo(() => {
@@ -108,56 +109,56 @@ const AppNavigator = () => {
               component={OrderDetailScreen}
               options={{ title: SCREEN_TITLES[ROUTES.ORDER_DETAIL] }}
             />
-            <Stack.Screen
+            {canWrite(user) ? <Stack.Screen
               name="CreateOrder"
               component={CreateOrderScreen}
               options={{ title: SCREEN_TITLES[ROUTES.CREATE_ORDER] }}
-            />
+            /> : null}
             <Stack.Screen
               name="MaterialDetail"
               component={MaterialDetailScreen}
               options={{ title: SCREEN_TITLES[ROUTES.MATERIAL_DETAIL] }}
             />
-            <Stack.Screen
+            {canWrite(user) ? <Stack.Screen
               name="CreateMaterial"
               component={CreateMaterialScreen}
               options={{ title: SCREEN_TITLES[ROUTES.CREATE_MATERIAL] }}
-            />
-            <Stack.Screen
+            /> : null}
+            {canWrite(user) ? <Stack.Screen
               name="CreateModel"
               component={CreateModelScreen}
               options={{ title: SCREEN_TITLES[ROUTES.CREATE_MODEL] }}
-            />
+            /> : null}
             <Stack.Screen
               name="ModelDetail"
               component={ModelDetailScreen}
               options={{ title: SCREEN_TITLES[ROUTES.MODEL_DETAIL] }}
             />
-            <Stack.Screen
+            {canWrite(user) ? <Stack.Screen
               name={ROUTES.INBOUND_TRANSACTION}
               component={InboundTransactionScreen}
               options={{ title: SCREEN_TITLES[ROUTES.INBOUND_TRANSACTION] }}
-            />
-            <Stack.Screen
+            /> : null}
+            {canWrite(user) ? <Stack.Screen
               name={ROUTES.OUTBOUND_TRANSACTION}
               component={OutboundTransactionScreen}
               options={{ title: SCREEN_TITLES[ROUTES.OUTBOUND_TRANSACTION] }}
-            />
-            <Stack.Screen
+            /> : null}
+            {canWrite(user) ? <Stack.Screen
               name={ROUTES.ADJUST_TRANSACTION}
               component={AdjustTransactionScreen}
               options={{ title: SCREEN_TITLES[ROUTES.ADJUST_TRANSACTION] }}
-            />
-            <Stack.Screen
+            /> : null}
+            {canExport(user) ? <Stack.Screen
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
               options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
-            />
-            <Stack.Screen
+            /> : null}
+            {canManage(user) ? <Stack.Screen
               name={ROUTES.USERS}
               component={UsersScreen}
               options={{ title: SCREEN_TITLES[ROUTES.USERS] }}
-            />
+            /> : null}
             <Stack.Screen
               name={ROUTES.AGENT}
               component={AgentStack}

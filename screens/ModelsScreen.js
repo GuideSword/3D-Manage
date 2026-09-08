@@ -20,7 +20,9 @@ import {
 } from '../constants';
 import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
-import { authAPI, buildFileUrl, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { authAPI, buildProtectedFileSource, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { canWrite } from '../utils/permissions';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -41,14 +43,11 @@ const buildImageSource = (image, token) => {
   if (!image?.fileUrl) {
     return null;
   }
-  const uri = buildFileUrl(image.fileUrl);
-  return {
-    uri,
-    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-  };
+  return buildProtectedFileSource(image.fileUrl, token);
 };
 
 const ModelsScreen = ({ navigation }) => {
+  const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [models, setModels] = useState([]);
@@ -134,11 +133,11 @@ const ModelsScreen = ({ navigation }) => {
             active={sourceFilter !== 'all'}
             onPress={cycleSourceFilter}
           />
-          <IconButton
+          {canWrite(user) ? <IconButton
             icon="add"
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
-          />
+          /> : null}
           </View>
         )}
       />
@@ -204,21 +203,21 @@ const ModelsScreen = ({ navigation }) => {
               icon="cube-outline"
               title={searchQuery ? '图鉴里没有这一款' : '模型图鉴还是空的'}
               description="上传 STL、OBJ 或 3MF 文件后，小麦会替你整齐收好。"
-              actionLabel="创建第一个模型"
-              onAction={() => navigation.navigate(ROUTES.CREATE_MODEL)}
+              actionLabel={canWrite(user) ? '创建第一个模型' : undefined}
+              onAction={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_MODEL) : undefined}
               style={styles.emptyContainer}
             />
           )}
         />
       )}
 
-      <TouchableOpacity
+      {canWrite(user) ? <TouchableOpacity
         activeOpacity={0.84}
         style={styles.fab}
         onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
       >
         <Ionicons name="add" size={24} color={colors.onPrimary || colors.surfaceElevated} />
-      </TouchableOpacity>
+      </TouchableOpacity> : null}
     </SafeAreaView>
   );
 };

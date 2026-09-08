@@ -21,12 +21,15 @@ import {
 } from '../constants';
 import { Card, EmptyState } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI, stockAPI } from '../utils/api';
+import { canExport, canWrite } from '../utils/permissions';
 
 const LOW_STOCK_THRESHOLD_GRAMS = 100;
 
 const HomeScreen = () => {
   const navigation = useNavigation();
+  const { user } = useAuth();
   const { colors, isDark } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [refreshing, setRefreshing] = useState(false);
@@ -203,34 +206,34 @@ const HomeScreen = () => {
           />
         </View>
 
-        <View style={styles.section}>
+        {(canWrite(user) || canExport(user)) ? <View style={styles.section}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>快捷操作</Text>
           </View>
           <View style={styles.actionsGrid}>
-            <ActionCard
+            {canWrite(user) ? <ActionCard
               title="新建订单"
               icon="document-text-outline"
               onPress={() => navigation.navigate(ROUTES.CREATE_ORDER)}
-            />
-            <ActionCard
+            /> : null}
+            {canWrite(user) ? <ActionCard
               title="新增模型"
               icon="cube-outline"
               onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
-            />
-            <ActionCard
+            /> : null}
+            {canWrite(user) ? <ActionCard
               title="库存盘点"
               icon="swap-horizontal-outline"
               onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
-            />
-            <ActionCard
+            /> : null}
+            {canExport(user) ? <ActionCard
               title={exporting ? '导出中...' : '导出数据'}
               icon="download-outline"
               onPress={handleExport}
               disabled={exporting}
-            />
+            /> : null}
           </View>
-        </View>
+        </View> : null}
 
         <View style={styles.section}>
           <View style={styles.sectionHeader}>

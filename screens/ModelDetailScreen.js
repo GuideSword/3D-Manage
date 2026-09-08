@@ -17,8 +17,11 @@ import * as DocumentPicker from 'expo-document-picker';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
-import { authAPI, buildFileUrl, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
+import { authAPI, buildProtectedFileSource, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
+import { trackPickedAsset } from '../utils/sessionStorage';
+import { canWrite } from '../utils/permissions';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -46,14 +49,11 @@ const buildAssetSource = (fileUrl, token) => {
   if (!fileUrl) {
     return null;
   }
-  const uri = buildFileUrl(fileUrl);
-  return {
-    uri,
-    ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
-  };
+  return buildProtectedFileSource(fileUrl, token);
 };
 
 const ModelDetailScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { modelId } = route.params || {};
@@ -154,6 +154,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       }
 
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, MODEL_EXTENSIONS)) {
         Alert.alert('文件格式不支持', '请选择 STL、OBJ、3MF、STEP、STP 或 ZIP 模型文件');
         return;
@@ -184,6 +185,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       }
 
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, IMAGE_EXTENSIONS)) {
         Alert.alert('图片格式不支持', '请选择 JPG、PNG 或 WEBP 图片');
         return;
@@ -326,6 +328,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
           )}
         </Card>
 
+        {canWrite(user) ? <>
         <Card style={styles.section}>
           <SectionHeader title="上传图片" />
           <View style={styles.optionRow}>
@@ -373,8 +376,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
             />
           </View>
         </Card>
+        </> : null}
 
-        <Card style={styles.dangerSection}>
+        {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />
           <Button
             title="删除模型"
@@ -385,7 +389,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
             loading={deleting}
             fullWidth
           />
-        </Card>
+        </Card> : null}
       </ScrollView>
     </SafeAreaView>
   );

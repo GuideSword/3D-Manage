@@ -23,9 +23,13 @@ import {
 } from '../constants';
 import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
+import { canWrite } from '../utils/permissions';
 
 const MaterialsScreen = ({ navigation, route }) => {
+  const { user } = useAuth();
+  const editable = canWrite(user);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [materials, setMaterials] = useState([]);
@@ -193,7 +197,7 @@ const MaterialsScreen = ({ navigation, route }) => {
             active={showSearch}
             onPress={() => setShowSearch((value) => !value)}
           />
-          {activeTab === 'materials' ? (
+          {editable && activeTab === 'materials' ? (
             <IconButton
               icon="add"
               active
@@ -246,6 +250,7 @@ const MaterialsScreen = ({ navigation, route }) => {
           searchQuery,
           colors,
           styles,
+          editable,
         })
       ) : (
         renderInventoryList({
@@ -259,6 +264,7 @@ const MaterialsScreen = ({ navigation, route }) => {
           findMaterial,
           colors,
           styles,
+          editable,
         })
       )}
     </SafeAreaView>
@@ -278,6 +284,7 @@ const renderMaterialsList = ({
   searchQuery,
   colors,
   styles,
+  editable,
 }) => {
   if (loading && !refreshing) {
     return (
@@ -300,6 +307,7 @@ const renderMaterialsList = ({
           deletingId={deletingId}
           onDelete={handleDeleteMaterial}
           onPress={() => navigation.navigate(ROUTES.MATERIAL_DETAIL, { materialId: item.id })}
+          editable={editable}
         />
       )}
       refreshControl={(
@@ -337,6 +345,7 @@ const renderInventoryList = ({
   findMaterial,
   colors,
   styles,
+  editable,
 }) => (
   <ScrollView
     style={styles.inventoryScroll}
@@ -350,7 +359,7 @@ const renderInventoryList = ({
       />
     )}
   >
-    <InventoryActions navigation={navigation} />
+    {editable ? <InventoryActions navigation={navigation} /> : null}
     {stockLots.length > 0 ? stockLots.map((lot) => (
       <LotCard
         key={lot.id}
@@ -358,6 +367,7 @@ const renderInventoryList = ({
         material={findMaterial(lot.materialId || lot.material_id) || {}}
         deletingId={deletingId}
         onDelete={handleDeleteLot}
+        editable={editable}
       />
     )) : (
       <EmptyState
@@ -409,7 +419,7 @@ const SegmentButton = ({ label, icon, active, onPress }) => {
   );
 };
 
-const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPress }) => {
+const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPress, editable }) => {
   const { colors, styles } = useMaterialTheme();
   const materialType = material.type || material.materialType || '未知材质';
 
@@ -424,7 +434,7 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
               <Text style={styles.materialBrand} numberOfLines={1}>{material.brand || '未设置品牌'}</Text>
             </View>
           </View>
-          <TouchableOpacity
+          {editable ? <TouchableOpacity
             style={styles.deleteButton}
             onPress={(event) => {
               event.stopPropagation?.();
@@ -437,7 +447,7 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
             ) : (
               <Ionicons name="trash-outline" size={18} color={colors.danger} />
             )}
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
 
         <View style={styles.specRow}>
@@ -459,7 +469,7 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
   );
 };
 
-const LotCard = ({ lot, material, deletingId, onDelete }) => {
+const LotCard = ({ lot, material, deletingId, onDelete, editable }) => {
   const { colors, styles } = useMaterialTheme();
   const state = lot.state || lot.status;
   const statusColor = getStockStatusColor(state, colors);
@@ -478,7 +488,7 @@ const LotCard = ({ lot, material, deletingId, onDelete }) => {
         </View>
         <View style={styles.lotRight}>
           <Badge text={STOCK_STATUS_LABELS[state] || '未知'} color={statusColor} size="small" />
-          <TouchableOpacity
+          {editable ? <TouchableOpacity
             style={styles.deleteButton}
             onPress={() => onDelete(lot.id)}
             disabled={deletingId === lot.id}
@@ -488,7 +498,7 @@ const LotCard = ({ lot, material, deletingId, onDelete }) => {
             ) : (
               <Ionicons name="trash-outline" size={18} color={colors.danger} />
             )}
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
       </View>
       <View style={styles.stockSummary}>

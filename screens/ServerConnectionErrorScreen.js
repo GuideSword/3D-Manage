@@ -9,12 +9,15 @@ import { useAppTheme } from '../context/ThemeContext';
 const ServerConnectionErrorScreen = ({ navigation }) => {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { server, connectionError, refreshServer } = useServerConfig();
+  const { server, connectionError, refreshServer, retryPendingReplacement } = useServerConfig();
   const [retrying, setRetrying] = useState(false);
 
   const retry = async () => {
     setRetrying(true);
-    try { await refreshServer(); } catch (_) { /* context retains the visible error */ }
+    try {
+      if (connectionError?.code === 'SESSION_CLEANUP_FAILED') await retryPendingReplacement();
+      else await refreshServer();
+    } catch (_) { /* context retains the visible error */ }
     finally { setRetrying(false); }
   };
 
@@ -26,7 +29,7 @@ const ServerConnectionErrorScreen = ({ navigation }) => {
         <Text style={styles.message}>{connectionError?.message || '请检查服务器状态和网络连接。'}</Text>
         <Text style={styles.label}>{server?.organizationName || '3D Manage 服务器'}</Text>
         <Text style={styles.endpoint}>{server?.apiBaseUrl}</Text>
-        <Button title="重试连接" onPress={retry} loading={retrying} disabled={retrying} fullWidth style={styles.primary} />
+        <Button title={connectionError?.code === 'SESSION_CLEANUP_FAILED' ? '重试清理' : '重试连接'} onPress={retry} loading={retrying} disabled={retrying} fullWidth style={styles.primary} />
         <Button title="更换服务器" variant="secondary" onPress={() => navigation.navigate('ServerSetup', { replacement: true })} fullWidth />
       </Card>
     </View>

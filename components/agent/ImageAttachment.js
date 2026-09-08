@@ -8,6 +8,7 @@ import {
   ScrollView,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import { trackPickedAsset } from '../../utils/sessionStorage';
 import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
@@ -41,6 +42,7 @@ export default function ImageAttachment({ onAttach }) {
       if (res.canceled || !res.assets || res.assets.length === 0) return;
 
       const file = res.assets[0];
+      await trackPickedAsset(file);
 
       // Guard against huge files — base64-encoding a 20MB image in
       // memory on a phone will OOM. The backend's /agent/chat

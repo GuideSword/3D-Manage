@@ -21,9 +21,12 @@ import {
 } from '../constants';
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
+import { canWrite } from '../utils/permissions';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialDetailScreen = ({ route, navigation }) => {
+  const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { materialId } = route.params || {};
@@ -208,7 +211,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
           </View>
         </Card>
 
-        <Card style={styles.section}>
+        {canWrite(user) ? <Card style={styles.section}>
           <SectionHeader title="库存操作" />
           <View style={styles.actionGrid}>
             <TransactionAction
@@ -230,7 +233,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
               onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
             />
           </View>
-        </Card>
+        </Card> : null}
 
         <Card style={styles.section}>
           <SectionHeader title="库存批次" count={stockLots.length} />
@@ -241,7 +244,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
           )}
         </Card>
 
-        <Card style={styles.dangerSection}>
+        {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />
           <Button
             title="删除耗材"
@@ -252,7 +255,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
             loading={deleting}
             fullWidth
           />
-        </Card>
+        </Card> : null}
       </ScrollView>
     </SafeAreaView>
   );

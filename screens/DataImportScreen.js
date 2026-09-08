@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { trackPickedAsset } from '../utils/sessionStorage';
 import * as FileSystem from 'expo-file-system';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
@@ -59,6 +60,7 @@ const DataImportScreen = ({ navigation }) => {
         return;
       }
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, ['csv', 'txt'])) {
         Alert.alert('文件格式不支持', '请选择 CSV 或 TXT 文件');
         return;

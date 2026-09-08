@@ -47,7 +47,18 @@ const BootstrapOwnerScreen = () => {
       await refreshUser();
     } catch (error) {
       setForm((current) => ({ ...current, ...emptySecrets }));
-      setErrorMessage(error.message || '初始化失败。');
+      if (error?.name === 'AbortError' || /timeout|超时/i.test(error?.message || '')) {
+        try {
+          const refreshed = await refreshServer();
+          if (refreshed?.initialized) {
+            setErrorMessage('初始化结果未能确认；服务器已初始化，请使用 Owner 账号登录。');
+            return;
+          }
+        } catch (_) { /* retain the original unknown-result message */ }
+        setErrorMessage('初始化请求结果未知，请先重试连接并确认状态，不要立即重复创建。');
+      } else {
+        setErrorMessage(error.message || '初始化失败。');
+      }
     } finally { setSubmitting(false); }
   };
 

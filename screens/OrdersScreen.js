@@ -21,10 +21,13 @@ import {
 } from '../constants';
 import { Badge, Card, EmptyState, ScreenHeader, SearchBar, StatusActionSheet } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { isRestorable, isTerminalStatus } from '../utils/orderStatus';
+import { canWrite } from '../utils/permissions';
 
 const OrdersScreen = ({ navigation, route }) => {
+  const { user } = useAuth();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [orders, setOrders] = useState([]);
@@ -164,11 +167,11 @@ const OrdersScreen = ({ navigation, route }) => {
             active={showFilter && filterStatus !== 'all'}
             onPress={() => setShowFilter((value) => !value)}
           />
-          <IconButton
+          {canWrite(user) ? <IconButton
             icon="add"
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_ORDER)}
-          />
+          /> : null}
           </View>
         )}
       />
@@ -225,6 +228,7 @@ const OrdersScreen = ({ navigation, route }) => {
               updatingId={updatingId}
               onDelete={handleDelete}
               onLongPress={showStatusPicker}
+              editable={canWrite(user)}
             />
           )}
           refreshControl={(
@@ -244,14 +248,14 @@ const OrdersScreen = ({ navigation, route }) => {
               icon="receipt-outline"
               title={searchQuery ? '没有找到这份委托' : '还没有订单喵'}
               description="新建订单后，客户、交期和生产状态会显示在这里。"
-              actionLabel="新建订单"
-              onAction={() => navigation.navigate(ROUTES.CREATE_ORDER)}
+              actionLabel={canWrite(user) ? '新建订单' : undefined}
+              onAction={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_ORDER) : undefined}
               style={styles.emptyContainer}
             />
           )}
         />
       )}
-      <StatusActionSheet
+      {canWrite(user) ? <StatusActionSheet
         visible={Boolean(statusSheetOrder)}
         order={statusSheetOrder}
         mode={isRestorable(statusSheetOrder?.status) ? 'restore' : 'status'}
@@ -259,7 +263,7 @@ const OrdersScreen = ({ navigation, route }) => {
         onSelect={(status) => handleStatusChange(statusSheetOrder.id, status)}
         onConfirmRestore={(status) => handleStatusChange(statusSheetOrder.id, status)}
         onClose={closeStatusSheet}
-      />
+      /> : null}
     </SafeAreaView>
   );
 };
@@ -298,7 +302,7 @@ const FilterChip = ({ label, active, color, onPress }) => {
   );
 };
 
-const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress }) => {
+const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress, editable }) => {
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const customerName = order.customer?.name || order.customerName || '未知客户';
@@ -308,7 +312,7 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
   const isUpdating = updatingId === order.id;
   const isDeleting = deletingId === order.id;
   const isBusy = isUpdating || isDeleting;
-  const longPressEnabled = !isTerminalStatus(order.status);
+  const longPressEnabled = editable && !isTerminalStatus(order.status);
 
   return (
     <TouchableOpacity
@@ -336,7 +340,7 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
             ) : (
               <Badge text={statusLabel} color={statusColor} size="small" />
             )}
-            <TouchableOpacity
+            {editable ? <TouchableOpacity
               style={styles.deleteButton}
               onPress={(event) => {
                 event.stopPropagation?.();
@@ -352,7 +356,7 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
               ) : (
                 <Ionicons name="trash-outline" size={18} color={colors.danger} />
               )}
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
           </View>
         </View>
 

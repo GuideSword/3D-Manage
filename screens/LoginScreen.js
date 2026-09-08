@@ -18,7 +18,7 @@ import { useServerConfig } from '../context/ServerConfigContext';
 const LoginScreen = () => {
   const { colors, shadows } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
-  const { signIn } = useAuth();
+  const { signIn, cleanupError, retrySessionCleanup } = useAuth();
   const { server } = useServerConfig();
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -87,6 +87,12 @@ const LoginScreen = () => {
           </View>
 
           <Card style={styles.card} padding="large">
+            {cleanupError ? (
+              <View style={styles.cleanupWarning}>
+                <Text style={styles.cleanupText}>上次退出的本地清理未完成，完成清理前不可登录。</Text>
+                <Button title="重试清理" variant="secondary" onPress={() => retrySessionCleanup().catch(() => undefined)} fullWidth />
+              </View>
+            ) : null}
             <Input
               label="邮箱"
               placeholder="请输入邮箱"
@@ -106,7 +112,7 @@ const LoginScreen = () => {
               title="登录"
               onPress={handleAuthSubmit}
               loading={loading}
-              disabled={loading}
+              disabled={loading || Boolean(cleanupError)}
               iconLeft="log-in-outline"
               fullWidth
               style={styles.submitButton}
@@ -181,6 +187,13 @@ const createStyles = (colors, shadows) => StyleSheet.create({
   card: {
     marginHorizontal: 0,
   },
+  cleanupWarning: {
+    padding: SPACING.md,
+    borderRadius: RADIUS.md,
+    backgroundColor: colors.dangerSoft,
+    marginBottom: SPACING.lg,
+  },
+  cleanupText: { ...TYPOGRAPHY.meta, color: colors.danger, marginBottom: SPACING.sm },
   submitButton: {
     marginTop: SPACING.lg,
   },

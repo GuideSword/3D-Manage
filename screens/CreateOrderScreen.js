@@ -14,6 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as DocumentPicker from 'expo-document-picker';
+import { trackPickedAsset } from '../utils/sessionStorage';
 import {
   ORDER_STATUSES,
   RADIUS,
@@ -114,6 +115,7 @@ const CreateOrderScreen = ({ navigation }) => {
         return;
       }
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, ['png', 'jpg', 'jpeg', 'pdf'])) {
         Alert.alert('文件格式不支持', '请选择 PNG、JPG、JPEG 或 PDF 附件');
         return;

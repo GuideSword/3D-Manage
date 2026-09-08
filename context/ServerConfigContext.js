@@ -31,6 +31,7 @@ export const ServerConfigProvider = ({ children }) => {
   const [connectionError, setConnectionError] = useState(null);
   const [isReplacing, setIsReplacing] = useState(false);
   const serverRef = useRef(null);
+  const replacingRef = useRef(false);
 
   const publishServer = useCallback((nextServer) => {
     serverRef.current = nextServer;
@@ -112,11 +113,12 @@ export const ServerConfigProvider = ({ children }) => {
   }, [detectIdentityChange, publishServer]);
 
   const replaceServer = useCallback(async (input) => {
-    if (isReplacing) {
+    if (replacingRef.current) {
       const error = new Error('服务器更换正在进行');
       error.code = 'SERVER_REPLACEMENT_IN_PROGRESS';
       throw error;
     }
+    replacingRef.current = true;
     setIsReplacing(true);
     try {
       const candidate = await probeServer(input);
@@ -139,9 +141,39 @@ export const ServerConfigProvider = ({ children }) => {
         throw error;
       }
     } finally {
+      replacingRef.current = false;
       setIsReplacing(false);
     }
-  }, [isReplacing, publishServer]);
+  }, [publishServer]);
+
+  const retryPendingReplacement = useCallback(async () => {
+    const candidate = connectionError?.candidate;
+    if (!candidate) return refreshServer();
+    if (replacingRef.current) throw new Error('服务器更换正在进行');
+    replacingRef.current = true;
+    setIsReplacing(true);
+    try {
+      const current = serverRef.current;
+      beginSessionInvalidation();
+      if (current?.serverKey) await clearSessionSafely(current.serverKey);
+      if (candidate.serverKey !== current?.serverKey) await clearSessionSafely(candidate.serverKey);
+      const persisted = await saveServerConfig(candidate);
+      publishServer(persisted);
+      setConnectionError(null);
+      return persisted;
+    } catch (error) {
+      setConnectionError((previous) => ({
+        ...previous,
+        code: 'SESSION_CLEANUP_FAILED',
+        message: `服务器更换未完成：${error.message}`,
+        candidate,
+      }));
+      throw error;
+    } finally {
+      replacingRef.current = false;
+      setIsReplacing(false);
+    }
+  }, [connectionError, publishServer, refreshServer]);
 
   const clearServer = useCallback(async () => {
     const current = serverRef.current;
@@ -160,6 +192,7 @@ export const ServerConfigProvider = ({ children }) => {
     configureServer,
     refreshServer,
     replaceServer,
+    retryPendingReplacement,
     clearServer,
   }), [
     initializing,
@@ -169,6 +202,7 @@ export const ServerConfigProvider = ({ children }) => {
     configureServer,
     refreshServer,
     replaceServer,
+    retryPendingReplacement,
     clearServer,
   ]);
 

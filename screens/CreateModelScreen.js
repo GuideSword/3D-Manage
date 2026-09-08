@@ -15,6 +15,7 @@ import { Button, Card, Input } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
+import { trackPickedAsset } from '../utils/sessionStorage';
 
 const SOURCE_OPTIONS = [
   { value: 'original', label: '原创' },
@@ -55,6 +56,7 @@ const CreateModelScreen = ({ navigation }) => {
       }
 
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, MODEL_EXTENSIONS)) {
         Alert.alert('文件格式不支持', '请选择 STL、OBJ、3MF、STEP、STP 或 ZIP 模型文件');
         return;
@@ -76,6 +78,7 @@ const CreateModelScreen = ({ navigation }) => {
       }
 
       const asset = result.assets?.[0];
+      await trackPickedAsset(asset);
       if (!validateExtension(asset, IMAGE_EXTENSIONS)) {
         Alert.alert('图片格式不支持', '请选择 JPG、PNG 或 WEBP 图片');
         return;
