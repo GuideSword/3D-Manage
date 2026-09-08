@@ -14,6 +14,7 @@
     "verify:postgres": "node scripts/verify-postgres.js",
     "migrate:file-to-postgres": "node scripts/migrate-file-to-postgres.js",
     "agent:checkpoint": "node scripts/checkpoint-agent-db.js",
+    "agent:verify": "node scripts/verify-agent-db.js",
     "owner:reset-password": "node scripts/reset-owner-password.js"
   },
   "keywords": [],
