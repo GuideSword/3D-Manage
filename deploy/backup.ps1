@@ -36,6 +36,8 @@ try {
   $appContainer = (& docker compose -p $ProjectName ps -q app).Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect Compose app service.' }
   $appWasRunning = [bool]$appContainer
+  if (-not $appContainer) { $appContainer = (& docker compose -p $ProjectName ps -aq app).Trim() }
+  $imageDigest = if ($appContainer) { (& docker inspect --format '{{.Image}}' $appContainer).Trim() } else { '' }
   if ($appWasRunning) { Invoke-Native { docker compose -p $ProjectName stop -t 30 app } }
 
   Invoke-Native { docker compose -p $ProjectName run --rm --no-deps app node scripts/checkpoint-agent-db.js }
@@ -53,6 +55,8 @@ try {
   if ($LASTEXITCODE -ne 0 -or -not $serverId) { throw 'Unable to read backup serverId.' }
   $dbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $resolvedBackup 'database.dump')).Hash.ToLowerInvariant()
   $filesHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $resolvedBackup 'files.tar.gz')).Hash.ToLowerInvariant()
+  $countsRaw = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT jsonb_build_object(''users'',jsonb_array_length(data->''users''),''orders'',jsonb_array_length(data->''orders''),''models'',jsonb_array_length(data->''models''),''materials'',jsonb_array_length(data->''materials''),''stockLots'',jsonb_array_length(data->''stockLots''),''inventoryTxns'',jsonb_array_length(data->''inventoryTxns''),''auditLogs'',jsonb_array_length(data->''auditLogs'')) FROM app_store WHERE id=''default''"').Trim()
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to record collection counts.' }
   $keyLine = Get-Content -LiteralPath (Join-Path $deployment '.env') | Where-Object { $_ -match '^AGENT_KEY_ENC_SECRET=' } | Select-Object -First 1
   if (-not $keyLine) { throw 'AGENT_KEY_ENC_SECRET is missing from the recovery bundle.' }
   $keyValue = $keyLine.Substring('AGENT_KEY_ENC_SECRET='.Length)
@@ -60,7 +64,8 @@ try {
   $manifest = [ordered]@{
     status = 'complete'; serverId = $serverId; apiVersion = '1'; storeSchemaVersion = 2
     utcTimestamp = (Get-Date).ToUniversalTime().ToString('o'); composeProject = $ProjectName
-    postgresMajor = 16; storageMode = 'postgres+sqlite+filesystem'; encryptionKeyId = $keyId
+    postgresMajor = 16; storageMode = 'postgres+sqlite+local-files'; encryptionKeyId = $keyId
+    appImageDigest = $imageDigest; collectionCounts = ($countsRaw | ConvertFrom-Json)
     hashes = @{ databaseDumpSha256 = $dbHash; filesArchiveSha256 = $filesHash }
   }
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resolvedBackup 'manifest.json') -Encoding utf8NoBOM

@@ -7,14 +7,15 @@ const { withData, nextId, appendAudit, now } = require('../utils/store');
 const { toCsv, fromCsv } = require('../utils/csv');
 const { createModelPreview } = require('../utils/modelPreview');
 const { requireRoles } = require('../middleware/auth');
+const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
 
 const MODEL_EXTENSIONS = new Set(['.stl', '.obj', '.3mf', '.step', '.stp', '.zip']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const SOURCE_VALUES = new Set(['original', 'remix', 'imported']);
 const IMAGE_TYPES = new Set(['cover', 'real_print', 'other']);
 
-const createUpload = ({ allowedExtensions, maxFileSizeMb, errorMessage }) => multer({
-  limits: { fileSize: maxFileSizeMb * 1024 * 1024 },
+const createUpload = ({ allowedExtensions, maxFileSizeBytes, errorMessage }) => multer({
+  limits: { fileSize: maxFileSizeBytes },
   storage: multer.memoryStorage(),
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname).toLowerCase();
@@ -30,13 +31,13 @@ const createUpload = ({ allowedExtensions, maxFileSizeMb, errorMessage }) => mul
 
 const modelFileUpload = createUpload({
   allowedExtensions: MODEL_EXTENSIONS,
-  maxFileSizeMb: 500,
+  maxFileSizeBytes: Math.max(1, Number.parseInt(process.env.MAX_UPLOAD_BYTES || String(500 * 1024 * 1024), 10)),
   errorMessage: 'Unsupported model format. Use STL, OBJ, 3MF, STEP, STP, or ZIP.',
 });
 
 const imageUpload = createUpload({
   allowedExtensions: IMAGE_EXTENSIONS,
-  maxFileSizeMb: 25,
+  maxFileSizeBytes: 25 * 1024 * 1024,
   errorMessage: 'Unsupported image format. Use JPG, PNG, or WEBP.',
 });
 
@@ -343,7 +344,7 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
   }
 });
 
-router.post('/:id/files', requireRoles('owner', 'staff'), modelFileUpload.single('file'), async (req, res) => {
+router.post('/:id/files', requireRoles('owner', 'staff'), limitUploadConcurrency, modelFileUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -417,7 +418,7 @@ router.post('/:id/files', requireRoles('owner', 'staff'), modelFileUpload.single
   }
 });
 
-router.post('/:id/images', requireRoles('owner', 'staff'), imageUpload.single('file'), async (req, res) => {
+router.post('/:id/images', requireRoles('owner', 'staff'), limitUploadConcurrency, imageUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });

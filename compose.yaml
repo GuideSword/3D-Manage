@@ -53,7 +53,7 @@ services:
       OSS_ENDPOINT: ${OSS_ENDPOINT:-}
       OSS_SECURE: ${OSS_SECURE:-true}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-524288000}
-      MAX_UPLOAD_CONCURRENCY: ${MAX_UPLOAD_CONCURRENCY:-2}
+      MAX_UPLOAD_CONCURRENCY: ${MAX_UPLOAD_CONCURRENCY:-1}
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/uploads:/app/uploads
@@ -72,7 +72,7 @@ services:
       start_period: 15s
     stop_grace_period: 30s
     restart: unless-stopped
-    mem_limit: ${APP_MEMORY_LIMIT:-768m}
+    mem_limit: ${APP_MEMORY_LIMIT:-2g}
     cpus: ${APP_CPU_LIMIT:-1.5}
     logging:
       driver: json-file

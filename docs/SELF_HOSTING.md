@@ -5,7 +5,7 @@
 ## 前提与网络
 
 - x86_64 Linux 主机，Docker Engine 及 Docker Compose v2；本阶段未验证 ARM64。
-- 推荐先为 `app` 分配 Compose 默认的 1.5 CPU / 768 MB，并按实际 500 MB 上传与并发压力测试结果调整。这是初始限制，不是最低硬件保证。
+- 推荐先为 `app` 分配 Compose 默认的 1.5 CPU / 2 GB；默认只允许一个上传请求。必须按实际 500 MB 上传与并发压力测试结果调整。这是保护性初始限制，不是最低硬件保证。
 - 局域网 HTTP 开放 `APP_PORT`（默认 TCP 5000）；公网必须使用受信任 HTTPS，并开放 TCP 80/443 与 UDP 443。
 - Web 来源必须以精确的 scheme、host、port 写入 `CORS_ORIGINS`。Native 客户端没有 Origin；不要用 `*` 放宽 Web 来源。
 

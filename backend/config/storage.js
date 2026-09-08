@@ -91,7 +91,7 @@ const initStorage = async () => {
   await ensureUploadDir(path.join(UPLOAD_DIR, 'orders'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'stock'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'previews'));
-  console.log(`File storage initialized: ${UPLOAD_DIR}`);
+  console.log('File storage initialized');
 };
 
 module.exports = {

@@ -20,6 +20,8 @@ cleanup() { code=$?; cd "$deployment"; if [ -n "$running" ]; then docker compose
 trap cleanup EXIT INT TERM
 cd "$deployment"
 running=$(docker compose -p "$project" ps -q app)
+app_container=$running; [ -n "$app_container" ] || app_container=$(docker compose -p "$project" ps -aq app)
+image_digest=''; [ -z "$app_container" ] || image_digest=$(docker inspect --format '{{.Image}}' "$app_container")
 [ -z "$running" ] || docker compose -p "$project" stop -t 30 app
 docker compose -p "$project" run --rm --no-deps app node scripts/checkpoint-agent-db.js
 db=$(docker compose -p "$project" ps -q db); [ -n "$db" ]
@@ -30,8 +32,9 @@ docker run --rm -v "$deployment/runtime:/source:ro" -v "$backup:/backup" alpine:
 docker run --rm -v "$backup:/backup:ro" alpine:3.22 tar -tzf /backup/files.tar.gz >/dev/null
 server_id=$(docker compose -p "$project" exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT data->''system''->>''serverId'' FROM app_store WHERE id=''default''"')
 db_hash=$(sha256sum "$backup/database.dump" | awk '{print $1}'); files_hash=$(sha256sum "$backup/files.tar.gz" | awk '{print $1}')
+counts=$(docker compose -p "$project" exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT jsonb_build_object(''users'',jsonb_array_length(data->''users''),''orders'',jsonb_array_length(data->''orders''),''models'',jsonb_array_length(data->''models''),''materials'',jsonb_array_length(data->''materials''),''stockLots'',jsonb_array_length(data->''stockLots''),''inventoryTxns'',jsonb_array_length(data->''inventoryTxns''),''auditLogs'',jsonb_array_length(data->''auditLogs'')) FROM app_store WHERE id=''default''"')
 key_value=$(awk -F= '/^AGENT_KEY_ENC_SECRET=/{sub(/^[^=]*=/,""); print; exit}' "$deployment/.env"); [ -n "$key_value" ] || { echo 'AGENT_KEY_ENC_SECRET missing from recovery bundle' >&2; exit 6; }
 key_id=$(printf %s "$key_value" | sha256sum | cut -c1-16)
-printf '{"status":"complete","serverId":"%s","apiVersion":"1","storeSchemaVersion":2,"utcTimestamp":"%s","postgresMajor":16,"storageMode":"postgres+sqlite+filesystem","encryptionKeyId":"%s","hashes":{"databaseDumpSha256":"%s","filesArchiveSha256":"%s"}}\n' "$server_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$key_id" "$db_hash" "$files_hash" > "$backup/manifest.json"
+printf '{"status":"complete","serverId":"%s","apiVersion":"1","storeSchemaVersion":2,"utcTimestamp":"%s","postgresMajor":16,"storageMode":"postgres+sqlite+local-files","encryptionKeyId":"%s","appImageDigest":"%s","collectionCounts":%s,"hashes":{"databaseDumpSha256":"%s","filesArchiveSha256":"%s"}}\n' "$server_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$key_id" "$image_digest" "$counts" "$db_hash" "$files_hash" > "$backup/manifest.json"
 complete=true
 printf '%s\n' "$backup"

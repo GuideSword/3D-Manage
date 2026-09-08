@@ -7,6 +7,7 @@ const { withData, nextId, appendAudit, now } = require('../utils/store');
 const { toCsv, fromCsv } = require('../utils/csv');
 const { requireRoles } = require('../middleware/auth');
 const { createOrderInData, normalizeOrderPayload } = require('../services/orders');
+const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
 
 const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -191,7 +192,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
   }
 });
 
-router.post('/upload-attachment', requireRoles('owner', 'staff'), upload.single('file'), async (req, res) => {
+router.post('/upload-attachment', requireRoles('owner', 'staff'), limitUploadConcurrency, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
