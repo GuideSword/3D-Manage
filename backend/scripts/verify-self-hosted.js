@@ -135,12 +135,27 @@ const main = async () => {
     const staff = await readJson(staffResponse);
     assert.equal(staff.passwordHash, undefined);
 
+    const createdViewerResponse = await fetch(`${baseUrl}/api/users`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${bootstrap.token}`,
+      },
+      body: JSON.stringify({
+        name: 'Read Only Viewer',
+        email: 'viewer@example.com',
+        password: 'ViewerPassword123!',
+        role: 'viewer',
+      }),
+    });
+    assert.equal(createdViewerResponse.status, 201);
+
     const ownerList = await fetch(`${baseUrl}/api/users`, {
       headers: { Authorization: `Bearer ${bootstrap.token}` },
     });
     assert.equal(ownerList.status, 200);
     const ownerListBody = await readJson(ownerList);
-    assert.equal(ownerListBody.items.length, 2);
+    assert.equal(ownerListBody.items.length, 3);
 
     const staffLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
       method: 'POST',
@@ -288,6 +303,18 @@ const main = async () => {
     });
     assert.equal(viewerReloginResponse.status, 200);
     const viewerRelogin = await readJson(viewerReloginResponse);
+    const viewerNormalCreate = await fetch(`${baseUrl}/api/orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${viewerRelogin.token}`,
+      },
+      body: JSON.stringify({
+        customer: { name: 'Forbidden Normal Customer' },
+        items: [{ materialType: 'PLA', quantity: 1, unitPrice: 10 }],
+      }),
+    });
+    assert.equal(viewerNormalCreate.status, 403);
     const viewerConfirm = await fetch(`${baseUrl}/api/agent/drafts/confirm`, {
       method: 'POST',
       headers: {
@@ -496,6 +523,11 @@ const main = async () => {
       }),
     });
     assert.equal(changedOwnerLogin.status, 200);
+    const finalInfoResponse = await fetch(`${baseUrl}/api/system/info`);
+    assert.equal(finalInfoResponse.status, 200);
+    const finalInfo = await readJson(finalInfoResponse);
+    assert.equal(finalInfo.serverId, info.serverId);
+    assert.equal(finalInfo.initialized, true);
     console.log('Self-hosted verification passed');
   } finally {
     await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));

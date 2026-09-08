@@ -28,8 +28,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.x3DManage",
-      "usesCleartextTraffic": true
+      "package": "com.anonymous.x3DManage"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -41,7 +40,16 @@
     },
     "owner": "guidesword",
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
+      ]
     ]
   }
 }
