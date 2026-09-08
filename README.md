@@ -1,148 +1,39 @@
-# 3D打印管理系统 (React Native)
+# 3D Manage
 
-基于需求文档 v0.2 创建的3D打印管理系统MVP版本。
+3D Manage 是两部分交付的 3D 打印运营系统：客户安装 Expo/React Native 客户端，并在自己的基础设施运行 Express 后端。服务器地址在客户端运行时输入；正式安装包不绑定某个客户域名。
 
-## 项目结构
+功能包括订单与状态流转、模型/附件、耗材库存、Owner 管理的 Staff/Viewer 权限、审计记录和可选 AI 助手。
 
-```
-3D-Manage/
-├── App.js                    # 主应用入口
-├── app.json                  # Expo配置
-├── package.json              # 项目依赖
-├── constants/                # 常量定义
-│   └── index.js             # 颜色、状态、权限等常量
-├── components/              # 可复用组件
-│   ├── Card.js              # 卡片组件
-│   ├── Button.js            # 按钮组件
-│   ├── Input.js             # 输入框组件
-│   ├── Badge.js             # 标签组件
-│   └── index.js             # 组件导出
-├── navigation/              # 导航配置
-│   ├── AppNavigator.js      # 主导航器
-│   └── TabNavigator.js      # 标签导航器
-├── screens/                 # 屏幕组件
-│   ├── HomeScreen.js        # 首页
-│   ├── OrdersScreen.js      # 订单管理
-│   ├── ModelsScreen.js      # 模型管理
-│   └── MaterialsScreen.js   # 耗材管理
-└── utils/                   # 工具函数
-    └── formatters.js        # 格式化工具
+## 开发
+
+```powershell
+npm install
+npm --prefix backend install
+npm run start:all
 ```
 
-## 功能特性
+也可分别运行 `npm start` 与 `npm --prefix backend run dev`。开发启动脚本会生成仅用于本次本机开发的随机初始化密钥，不创建默认账号。
 
-### ✅ 已实现功能
+验证：
 
-1. **基础架构**
-   - React Native + Expo 项目结构
-   - 标签导航（首页、订单、模型、耗材）
-   - 响应式设计
+```powershell
+npm run verify:client
+npm run verify:backend
+npm --prefix backend run verify:self-hosted
+```
 
-2. **首页**
-   - 概览卡片：待审核订单数、执行中订单、库存预警
-   - 快捷操作入口
-   - 最近活动显示
+## 客户部署与运维
 
-3. **订单管理**
-   - 订单列表显示
-   - 状态筛选（全部/草稿/待审核/执行中/已完成/已取消）
-   - 订单卡片展示（客户、状态、总价、交期、项目明细）
-   - 搜索和筛选功能入口
+- [自托管部署](docs/SELF_HOSTING.md)
+- [升级手册](docs/UPGRADE.md)
+- [备份与恢复](docs/BACKUP_RESTORE.md)
+- [发布检查清单](docs/RELEASE_CHECKLIST.md)
 
-4. **模型管理**
-   - 模型库网格/列表切换显示
-   - 模型卡片（名称、格式、大小、版本信息）
-   - 版本管理显示
-   - 可见性标识（私有/团队）
-
-5. **耗材管理**
-   - 物料主数据展示
-   - 库存批次管理
-   - 入出库操作面板
-   - 物料规格信息
-
-6. **通用组件**
-   - Card：统一卡片样式
-   - Button：多变体按钮组件
-   - Input：表单输入组件
-   - Badge：状态标签组件
+客户环境使用 Docker Compose、PostgreSQL 16、持久化 AI SQLite 和上传目录。开发启动方式不等同于客户部署；生产环境必须生成独立密钥、配置精确 CORS，并通过 HTTPS 暴露公网服务。
 
 ## 技术栈
 
-- **框架**: React Native 0.81.5
-- **开发平台**: Expo ~54.0.23
-- **导航**: React Navigation 6
-- **图标**: Expo Vector Icons
-- **状态管理**: React Hooks (内置)
-
-## 运行项目
-
-1. **安装依赖**:
-   ```bash
-   npm install
-   ```
-
-2. **启动开发服务器**:
-   ```bash
-   npm start
-   ```
-
-3. **运行应用**:
-   - iOS: `npm run ios`
-   - Android: `npm run android`
-   - Web: `npm run web`
-
-## 开发说明
-
-### 常量管理
-所有常量定义在 `constants/index.js` 中，包括：
-- 颜色主题
-- 订单状态
-- 库存状态
-- 权限角色
-- API配置
-
-### 组件设计
-遵循以下原则：
-- 可复用性：每个组件都有明确的职责
-- 一致性：统一的样式和交互模式
-- 可扩展性：支持多种变体和配置
-
-### 数据结构
-当前使用模拟数据，未来将对接真实API：
-- 订单数据结构
-- 模型版本管理
-- 耗材库存批次
-- 审计日志
-
-## 下一步开发计划
-
-根据需求文档 v0.2，以下功能待实现：
-
-1. **数据持久化**
-   - 后端API集成
-   - 本地数据缓存
-   - 离线支持
-
-2. **高级功能**
-   - 订单状态流转
-   - 模型文件上传
-   - CSV导入导出
-   - 库存盘点
-
-3. **用户体验**
-   - 详情页面
-   - 表单验证
-   - 错误处理
-   - 加载状态
-
-4. **性能优化**
-   - 列表虚拟化
-   - 图片懒加载
-   - 缓存策略
-
-## 许可证
-
-本项目仅用于学习和演示目的。
-
-
+- Expo 54 / React Native 0.81
+- Express 5 / Node.js 22
+- PostgreSQL 16（业务存储）与 SQLite（AI 会话）
+- Docker Compose / 可选 Caddy HTTPS

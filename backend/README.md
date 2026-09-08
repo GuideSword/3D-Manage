@@ -1,94 +1,33 @@
 # 3D Manage Backend
 
-Express API for the 3D printing management app. It supports authenticated CRUD flows for orders, models, materials, stock lots, inventory transactions, CSV import/export, local file uploads, and Aliyun OSS signed URLs.
+Express API 提供 Owner 一次性初始化、JWT 认证、Owner/Staff/Viewer 权限、订单、模型、耗材、库存、审计、受保护文件与可选 AI/OSS 能力。
 
-## Quick Start
+## 本地开发
 
-```bash
+```powershell
 npm install
 npm run store:init
 npm run dev
 ```
 
-The API listens on `http://localhost:3001` by default. Override with `PORT`.
+开发默认使用 `STORE_DRIVER=file`，数据位于 `DATA_DIR/store.json`，上传位于 `UPLOAD_DIR`。首次账号通过 `POST /api/system/bootstrap` 与主机生成的初始化令牌创建；没有公开注册接口。
 
-## Environment
+## 生产
 
-```bash
-PORT=3001
-JWT_SECRET=replace-with-a-long-random-secret
+生产基线是 Node.js 22 Bookworm Slim、PostgreSQL 16 和单个 app 副本。完整配置、端口、HTTPS 与持久化目录见 [自托管部署](../docs/SELF_HOSTING.md)。不要将 JWT、初始化、AI 加密或 OSS 密钥传给客户端。
 
-# file store, default
-STORE_DRIVER=file
-DATA_DIR=./data
-UPLOAD_DIR=./uploads
+主要检查：
 
-# PostgreSQL JSONB store, optional
-# STORE_DRIVER=postgres
-# DATABASE_URL=postgres://user:password@localhost:5432/3d_manage
-# DATABASE_SSL=false
-# STORE_TABLE=app_store
-# STORE_ID=default
-
-# Aliyun OSS, optional when callers do not pass credentials per request
-# OSS_ACCESS_KEY_ID=
-# OSS_ACCESS_KEY_SECRET=
-# OSS_BUCKET=
-# OSS_REGION=oss-cn-hangzhou
-```
-
-`STORE_DRIVER=file` writes one JSON file at `DATA_DIR/store.json`. `STORE_DRIVER=postgres` writes the same application document into one JSONB row, so existing routes keep the same behavior while deployment can use PostgreSQL-backed persistence.
-
-Run `npm run store:init` before deployment to create the local file or PostgreSQL table with clean business collections. `npm run db:sync` is kept as a compatibility alias for the same command.
-
-## Authentication
-
-The first login or registration bootstraps an owner account when no users exist:
-
-```text
-admin@example.com / Admin123456
-```
-
-Business APIs require `Authorization: Bearer <token>`. Public registration creates non-owner users only; owner-level actions require an owner token.
-
-## Verification
-
-```bash
+```powershell
+npm run verify:runtime
 npm run verify
+npm run verify:self-hosted
 ```
 
-The verification script starts the API on a random local port, uses an isolated temp data/upload directory, and checks auth, permissions, orders, models, materials, stock, CSV export, file uploads, OSS URL signing, and store persistence.
+设置 `DATABASE_URL` 后可运行 `npm run verify:postgres`。旧文件业务存储先执行只读分析：
 
-## Main API Groups
+```powershell
+node scripts/migrate-file-to-postgres.js --source C:\absolute\path\store.json --dry-run
+```
 
-- `GET /health`
-- `POST /api/auth/login`
-- `POST /api/auth/register`
-- `GET /api/auth/me`
-- `/api/orders`
-- `/api/models`
-- `/api/materials`
-- `/api/stock`
-- `/api/files/:filePath`
-- `/api/oss/*`
-
-Each business group includes list/detail, create/update/delete where applicable, CSV import/export, and audit logging.
-
-## Files
-
-Local uploads are stored under `UPLOAD_DIR`:
-
-- `models/` for STL/OBJ/3MF model files
-- `orders/attachments/` for order images/PDFs
-- `stock/` for stock-related files
-- `previews/` for generated previews
-
-Use `/api/files/:filePath` with an authenticated token to download local files.
-
-## Production Notes
-
-- Set a strong `JWT_SECRET`.
-- Put the API behind HTTPS.
-- Back up `DATA_DIR` or the PostgreSQL database.
-- Back up `UPLOAD_DIR` unless all durable files are stored in OSS.
-- Configure reverse proxy upload limits for model files.
+正式迁移要求暂停写入、空 PostgreSQL 目标和源文件备份。AI SQLite 与上传文件必须和业务数据库作为同一冷备份恢复点迁移并校验 hash。
