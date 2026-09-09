@@ -16,6 +16,8 @@ Linux：
 sh deploy/backup.sh --deployment-dir . --project-name manage3d --output-dir .backups
 ```
 
+Windows 主机应使用 PowerShell 脚本。不要从 Git Bash/MSYS 直接运行 Linux 脚本；MSYS 会改写 `/tmp`、`/backup` 等容器内路径。Linux 脚本应在安装了 Docker CLI 与 Compose 插件的真实 Linux shell 中运行。
+
 脚本取得与恢复/升级共享的锁，记录 app 原运行状态，停止 app，checkpoint AI SQLite，使用 `pg_dump -Fc` 生成 `database.dump`，归档 `runtime/data` 与 `runtime/uploads` 为 `files.tar.gz`，最后写入含 serverId、版本、hash 和加密密钥标识的 `manifest.json`。任一步失败会保留带 `manifest.incomplete.json` 的诊断目录，并只在原先运行时重启 app。
 
 推荐每日备份、至少保留 7 个每日和 4 个每周已验证副本；确认最新已验证副本已离机后再修剪旧副本。Windows 任务计划程序或 Linux systemd timer/cron 应执行上述命令并监控非零退出码。

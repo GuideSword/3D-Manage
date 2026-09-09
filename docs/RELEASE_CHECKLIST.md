@@ -14,14 +14,17 @@
 
 ## Compose 与恢复证据
 
-- [ ] Linux x86_64 干净环境 Compose 构建并记录 app 镜像 digest。
-- [ ] 全新 runtime 初始化 Owner，记录 serverId；初始化接口第二次调用失败。
-- [ ] 创建订单和上传文件后重启，登录、serverId、订单和文件 hash 保持。
-- [ ] PostgreSQL 事务/并发验证在专用测试数据库通过。
-- [ ] PowerShell 与 Linux 冷备份均生成有效 dump、文件归档和 manifest。
-- [ ] 删除测试数据后完整恢复订单、文件、AI 会话和加密凭据。
-- [ ] 错误密钥、损坏 dump、错误 hash、路径穿越在目标变更前失败。
+- [x] 从发布归档在全新隔离目录构建 Linux/amd64 Compose，并记录 app 镜像 digest。
+- [x] 全新 runtime 初始化 Owner，记录 serverId；初始化接口第二次调用返回 409。
+- [x] 创建订单和上传文件后重启，登录、serverId、订单和文件 hash 保持。
+- [x] PostgreSQL 事务/并发验证在专用测试表通过并自动清理。
+- [x] PowerShell 冷备份生成有效 dump、文件归档和 manifest。
+- [ ] 独立 Linux 主机上的 `backup.sh` / `restore.sh` 实机演练通过。
+- [x] 删除测试数据后完整恢复订单、文件、AI 会话和加密凭据。
+- [x] 错误密钥、损坏 dump、错误 hash、路径穿越在目标变更前失败。
 - [ ] HTTPS 域名证书、SSE、500 MB 上传限制和精确 CORS 验证通过。
+
+完整证据见 [2026-09-09 Compose 备份恢复演练](rehearsals/2026-09-09-compose-backup-restore.md)。
 
 ## 角色与客户端真机
 
@@ -43,10 +46,11 @@
 - APK SHA-256：`B6FAB0F4A0A9150A5CAF1CF0325C891304146C58EC2B48C9D4D6589B5173CC3C`
 - APK 本地校验路径：`.tmp/eas/3d-manage-1.0.0-preview-build-1.apk`（97,707,515 bytes，不纳入 Git）
 - 后端镜像 tag：`3d-manage-backend:1.0.0`（源码构建标识，尚未发布）
-- 后端镜像 digest：尚未生成
+- 本地演练镜像 digest：`sha256:ecf673eb4543541c8d5841ed705817105ae3f857a2f4ef9d3897f22439332b7f`
+- 后端发布镜像 digest：尚未生成
 - API / store schema / PostgreSQL：`1 / 2 / 16`
 - 测试 serverVersion：`1.0.0`
 - Git 提交：发布时以 `git rev-parse HEAD` 和 `release-manifest.json` 为准
 - 检查日期：2026-09-09
 
-当前发布状态：未完成。阻断项是 Docker/Linux 恢复演练、受信任 HTTPS 与物理设备验收。
+当前发布状态：未完成。阻断项是独立 Linux 主机 shell 脚本演练、受信任 HTTPS 与物理设备验收。
