@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { cp, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -15,11 +15,26 @@ const stage = join(outputRoot, `3d-manage-${packageJson.version}`);
 await rm(outputRoot, { recursive: true, force: true });
 await mkdir(stage, { recursive: true });
 
-const excluded = new Set(['node_modules', '.env', 'data', 'uploads', 'runtime', '.backups', '.tmp', '.git']);
-const filter = (source) => !relative(root, source).split(/[\\/]/).some((segment) => excluded.has(segment));
+const excludedDirectories = new Set(['node_modules', 'data', 'uploads', 'runtime', '.backups', '.tmp', '.git']);
+const excludedExtensions = new Set(['.log', '.pem', '.key', '.jks', '.p8', '.p12', '.mobileprovision']);
+const isExcludedName = (name) =>
+  excludedDirectories.has(name) ||
+  (name.startsWith('.env') && name !== '.env.example') ||
+  [...excludedExtensions].some((extension) => name.endsWith(extension));
+const filter = (source) => !relative(root, source).split(/[\\/]/).some(isExcludedName);
 for (const item of ['backend', 'deploy', 'docs', 'compose.yaml', 'compose.https.yaml', '.env.example', 'README.md']) {
   await cp(join(root, item), join(stage, item), { recursive: true, filter });
 }
+
+const assertSafeStage = async (directory) => {
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    if (isExcludedName(entry.name)) {
+      throw new Error(`Unsafe release entry: ${relative(stage, join(directory, entry.name))}`);
+    }
+    if (entry.isDirectory()) await assertSafeStage(join(directory, entry.name));
+  }
+};
+await assertSafeStage(stage);
 
 const sha256 = async (file) => createHash('sha256').update(await readFile(file)).digest('hex');
 const manifest = {
