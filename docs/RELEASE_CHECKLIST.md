@@ -10,6 +10,7 @@
 - [x] Web 独立导出通过。
 - [x] 生产默认凭据与客户端对象存储密钥扫描已人工检查匹配项。
 - [x] 发布归档生成器排除 `.env`、客户 runtime、签名私钥、依赖目录和日志。
+- [x] EAS preview 签名 APK 构建成功，并完成本地下载与 SHA-256 校验（2026-09-09）。
 
 ## Compose 与恢复证据
 
@@ -35,15 +36,17 @@
 
 - 客户端版本：`1.0.0`
 - Android package ID：`com.anonymous.x3DManage`（沿用现有 ID，首次外发前由发布方确认所有权）
-- Android build number：由 EAS production profile 自动递增，尚未生成
+- Android preview build number：`1`
 - EAS project owner：`guidesword`；签名密钥由发布方 EAS 账户托管
-- APK 构建 URL：尚未生成（外部 EAS 凭据前提）
-- APK SHA-256：尚未生成
+- EAS build ID：`b160c8b9-d4b1-4930-b3e8-19b3184fa0cb`
+- APK 构建 URL：<https://expo.dev/accounts/guidesword/projects/3D-Manage/builds/b160c8b9-d4b1-4930-b3e8-19b3184fa0cb>
+- APK SHA-256：`B6FAB0F4A0A9150A5CAF1CF0325C891304146C58EC2B48C9D4D6589B5173CC3C`
+- APK 本地校验路径：`.tmp/eas/3d-manage-1.0.0-preview-build-1.apk`（97,707,515 bytes，不纳入 Git）
 - 后端镜像 tag：`3d-manage-backend:1.0.0`（源码构建标识，尚未发布）
 - 后端镜像 digest：尚未生成
 - API / store schema / PostgreSQL：`1 / 2 / 16`
 - 测试 serverVersion：`1.0.0`
 - Git 提交：发布时以 `git rev-parse HEAD` 和 `release-manifest.json` 为准
-- 检查日期：2026-09-08
+- 检查日期：2026-09-09
 
-当前发布状态：未完成。阻断项是 Docker/Linux 恢复演练、受信任 HTTPS、EAS 签名 APK 与物理设备验收。
+当前发布状态：未完成。阻断项是 Docker/Linux 恢复演练、受信任 HTTPS 与物理设备验收。
