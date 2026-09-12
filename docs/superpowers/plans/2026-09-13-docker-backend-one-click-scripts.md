@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 提供两个 Windows 双击入口，分别完成 Docker Desktop 稳定版安装、后端部署与开机自启动，以及已有 Docker 后端的一键恢复启动。
+**Goal:** 提供两个 Windows 双击入口，完成 Docker Desktop 稳定版安装、后端部署与开机自启动、已有后端恢复，以及经用户确认的端口冲突处理。
 
 **Architecture:** 两个 BAT 文件只负责选择运行模式和保留终端结果，共享的 `deploy/docker-backend.ps1` 负责全部 Docker Desktop、Compose、健康检查和计划任务逻辑。脚本通过项目绝对路径执行 Compose，以 `docker compose up -d` 收敛容器状态，并用真实 API 探测作为成功条件。
 
@@ -16,6 +16,7 @@
 - Create: `一键安装并启动后端.bat` — 安装模式双击入口。
 - Create: `一键启动后端.bat` — 启动模式双击入口。
 - Create: `tests/ops/docker-backend-scripts.verify.ps1` — PowerShell/BAT 静态契约验证。
+- Modify: `.env.example` — 新部署的默认宿主机端口改为 5800，容器内部端口保持 5000。
 - Modify: `docs/SELF_HOSTING.md` — 记录新入口、自动启动行为和诊断方式。
 
 ### Task 1: 添加脚本契约验证
@@ -53,6 +54,10 @@ $required = @(
   'compose',
   'up',
   '/api/system/info',
+  'Get-PortConflict',
+  'Read-Host',
+  'Stop-Process',
+  'backend-startup.log',
   'Register-ScheduledTask',
   'restart: unless-stopped'
 )
@@ -256,7 +261,131 @@ git add -- '一键安装并启动后端.bat' '一键启动后端.bat'
 git commit -m "feat(ops): add one-click backend launchers"
 ```
 
-### Task 4: 执行真实恢复验证并注册开机任务
+### Task 4: 添加交互式端口冲突处理和 5800 默认端口
+
+**Files:**
+- Modify: `deploy/docker-backend.ps1`
+- Modify: `.env.example`
+- Modify: `tests/ops/docker-backend-scripts.verify.ps1`
+
+- [ ] **Step 1: 扩充失败的脚本契约测试**
+
+在 `$required` 中加入以下契约，并先运行测试确认现有实现失败：
+
+```powershell
+'Get-PortConflict'
+'Read-Host'
+'Stop-Process'
+'docker stop'
+'backend-startup.log'
+'APP_PORT=5800'
+```
+
+Run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/ops/docker-backend-scripts.verify.ps1
+```
+
+Expected: FAIL，至少提示缺少 `Get-PortConflict`。
+
+- [ ] **Step 2: 将新部署默认宿主机端口改为 5800**
+
+把 `.env.example` 首行改为：
+
+```dotenv
+APP_PORT=5800
+```
+
+`compose.yaml` 的容器目标端口保持 `${APP_PORT:-5000}:5000`，因此新配置映射为 `5800:5000`，不修改后端进程监听端口。
+
+- [ ] **Step 3: 实现冲突分类**
+
+`Get-PortConflict -Port <n>` 按顺序识别：当前 Compose `app`、其他 Docker 容器、普通监听进程、Windows 保留范围。返回统一对象：
+
+```powershell
+[pscustomobject]@{
+  Kind = 'None' # None | Docker | Process | Excluded
+  Port = $Port
+  Id = $null
+  Name = $null
+  Path = $null
+  Details = $null
+}
+```
+
+当前项目正在运行的 `app` 容器不视为冲突。Docker 冲突通过 `docker ps --filter publish=$Port` 获取容器 ID、名称和映射；进程冲突通过 `Get-NetTCPConnection` 与 `Get-Process` 获取 PID、名称和路径；保留范围复用 `Get-ExcludedTcpPortRanges`。
+
+- [ ] **Step 4: 实现 B 选项的输入验证和 `.env` 更新**
+
+`Read-AlternativePort` 循环调用 `Read-Host`。以下任一情况均打印原因并继续询问：非整数、范围不在 1–65535、与当前端口相同，或 `Get-PortConflict` 返回非 `None`。
+
+`Set-AppPort` 只替换第一条 `APP_PORT=`；缺少时追加。写入同目录临时文件后用 `System.IO.File.Replace` 原子替换现有 `.env`，编码为 UTF-8 且不打印文件内容：
+
+```powershell
+$lines = [System.IO.File]::ReadAllLines($script:EnvFile)
+$replacement = "APP_PORT=$Port"
+$updated = $false
+for ($index = 0; $index -lt $lines.Length; $index++) {
+  if (-not $updated -and $lines[$index] -match '^\s*APP_PORT\s*=') {
+    $lines[$index] = $replacement
+    $updated = $true
+  }
+}
+if (-not $updated) { $lines += $replacement }
+$temporary = "$($script:EnvFile).port-$PID.tmp"
+[System.IO.File]::WriteAllLines($temporary, $lines, (New-Object System.Text.UTF8Encoding($false)))
+[System.IO.File]::Replace($temporary, $script:EnvFile, $null)
+```
+
+- [ ] **Step 5: 实现 A/B 交互和确认后的清理**
+
+`Resolve-HostPortConflict` 在冲突时显示占用详情和以下菜单：
+
+```text
+A：自动清理占用方并继续
+B：自行填写其他端口
+```
+
+选择 A 即确认本次清理。`Docker` 类型运行 `docker stop <container-id>`；`Process` 类型先拒绝 PID 0、PID 4、当前 `$PID` 及关键进程名，再运行 `Stop-Process -Id <pid> -Force`；`Excluded` 类型说明没有进程可清理并返回菜单。每次动作后重新检测，不相信命令退出码即代表端口已经释放。
+
+选择 B 后调用 `Read-AlternativePort` 和 `Set-AppPort`，返回新端口。非法菜单输入继续询问。
+
+- [ ] **Step 6: 实现计划任务的非交互安全退出日志**
+
+`-NonInteractive` 遇到冲突时不得显示菜单、杀进程或改端口。创建 `runtime` 后向 `runtime/backend-startup.log` 追加一行 UTF-8 日志，只包含 ISO 时间、端口、冲突类型和公开详情，然后抛出错误：
+
+```powershell
+$message = '{0} port={1} kind={2} details={3}' -f `
+  (Get-Date).ToString('o'), $Conflict.Port, $Conflict.Kind, $Conflict.Details
+Add-Content -LiteralPath $script:StartupLog -Value $message -Encoding UTF8
+```
+
+- [ ] **Step 7: 把交互接入两种模式并运行契约验证**
+
+在 `Initialize-DeploymentConfig` 和 `Assert-RestartPolicies` 后执行：
+
+```powershell
+$port = Get-AppPort
+$port = Resolve-HostPortConflict -Port $port
+```
+
+两个 BAT 已分别传入 Install/Start，但共享这段逻辑，因此都获得相同交互。运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests/ops/docker-backend-scripts.verify.ps1
+```
+
+Expected: PASS。
+
+- [ ] **Step 8: 提交端口处理**
+
+```powershell
+git add -- .env.example deploy/docker-backend.ps1 tests/ops/docker-backend-scripts.verify.ps1
+git commit -m "feat(ops): handle backend port conflicts interactively"
+```
+
+### Task 5: 执行真实恢复验证并注册开机任务
 
 **Files:**
 - Verify: `deploy/docker-backend.ps1`
@@ -270,7 +399,7 @@ Run:
 powershell -NoProfile -ExecutionPolicy Bypass -File deploy/docker-backend.ps1 -Mode Start
 ```
 
-Expected: `manage3d-app-1` 从 `Created` 变为 `running/healthy`，API 身份验证成功。
+Expected: 检测到 5000 位于 Windows 保留范围后显示 A/B 菜单；输入 B 和 5800 后更新 `.env`，`manage3d-app-1` 从 `Created` 变为 `running/healthy`，API 身份验证成功。
 
 - [ ] **Step 2: 验证 Compose 和 API**
 
@@ -278,7 +407,7 @@ Run:
 
 ```powershell
 docker compose ps -a
-curl.exe --fail http://127.0.0.1:5000/api/system/info
+curl.exe --fail http://127.0.0.1:5800/api/system/info
 ```
 
 Expected: `db`、`app` 为 healthy，API JSON 的 `product` 为 `3D Manage`。
@@ -304,7 +433,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File deploy/docker-backend.ps1 -M
 
 Expected: 已健康服务保持健康，命令成功退出。
 
-### Task 5: 更新运维文档并完成回归
+### Task 6: 更新运维文档并完成回归
 
 **Files:**
 - Modify: `docs/SELF_HOSTING.md`
@@ -312,7 +441,7 @@ Expected: 已健康服务保持健康，命令成功退出。
 
 - [ ] **Step 1: 在快速启动前增加 Windows 双击入口说明**
 
-文档明确：安装入口会通过 winget 安装当前稳定版 Docker Desktop、保留已有 `.env`、构建后端并注册当前用户登录任务；启动入口只恢复既有 Docker 后端；两者均不管理前端。
+文档明确：安装入口会通过 winget 安装当前稳定版 Docker Desktop、保留已有 `.env`、构建后端并注册当前用户登录任务；启动入口只恢复既有 Docker 后端；新部署默认映射 `5800:5000`；端口冲突时 A 经确认清理占用方、B 保存用户输入的新端口；两者均不管理前端。
 
 - [ ] **Step 2: 运行全部相关验证**
 
