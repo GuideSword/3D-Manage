@@ -10,7 +10,7 @@ docker compose stop app
 docker compose build --pull app
 docker compose up -d
 docker compose ps
-curl.exe http://localhost:5000/api/system/info
+curl.exe http://localhost:5800/api/system/info
 ```
 
 5. 等待 app 健康，核对 serverId 与升级前一致，再验证 Owner 登录、Staff 新建订单、Viewer 只读、附件下载和 AI 设置解密。

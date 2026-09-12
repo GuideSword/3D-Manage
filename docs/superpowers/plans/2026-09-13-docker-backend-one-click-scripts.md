@@ -163,7 +163,7 @@ try {
 
 分别通过 `docker compose ps -q db/app` 获取容器 ID，再用 `docker inspect` 读取 `.State.Status` 和 `.State.Health.Status`。只有 `db`、`app` 均为 `running/healthy` 才进入 API 验证。
 
-从 `.env` 安全读取 `APP_PORT`，缺失时使用 5000；只允许 1–65535。API 验证使用：
+从 `.env` 安全读取 `APP_PORT`，缺失时使用 5800；只允许 1–65535。API 验证使用：
 
 ```powershell
 $response = Invoke-WebRequest -Uri "http://127.0.0.1:$port/api/system/info" `
@@ -297,7 +297,7 @@ Expected: FAIL，至少提示缺少 `Get-PortConflict`。
 APP_PORT=5800
 ```
 
-`compose.yaml` 的容器目标端口保持 `${APP_PORT:-5000}:5000`，因此新配置映射为 `5800:5000`，不修改后端进程监听端口。
+`compose.yaml` 的容器目标端口保持 `${APP_PORT:-5800}:5000`，因此新配置映射为 `5800:5000`，不修改后端进程监听端口。
 
 - [ ] **Step 3: 实现冲突分类**
 
