@@ -1,4 +1,4 @@
-param(
+﻿param(
   [ValidateSet('Install', 'Start')]
   [string]$Mode = 'Start',
   [switch]$NonInteractive,
