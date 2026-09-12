@@ -13,6 +13,7 @@ $script:ComposeFile = Join-Path $script:ProjectRoot 'compose.yaml'
 $script:EnvFile = Join-Path $script:ProjectRoot '.env'
 $script:InitConfigScript = Join-Path $PSScriptRoot 'init-config.mjs'
 $script:TaskName = '3D Manage Docker Backend'
+$script:StartupLog = Join-Path $script:ProjectRoot 'runtime\backend-startup.log'
 $script:DockerCli = $null
 
 function Write-Step {
@@ -90,6 +91,23 @@ function Resolve-DockerDesktopExecutable {
   }
 
   return $null
+}
+
+function Test-DockerDesktopInstalled {
+  param(
+    [string]$DockerCli,
+    [string]$DesktopExecutable
+  )
+
+  if ($DesktopExecutable) {
+    return $true
+  }
+  if (-not $DockerCli) {
+    return $false
+  }
+
+  & $DockerCli desktop version *> $null
+  return $LASTEXITCODE -eq 0
 }
 
 function Test-DockerEngine {
@@ -299,7 +317,7 @@ function Wait-BackendServices {
 }
 
 function Get-AppPort {
-  $port = 5000
+  $port = 5800
   $line = Get-Content -LiteralPath $script:EnvFile |
     Where-Object { $_ -match '^\s*APP_PORT\s*=' } |
     Select-Object -First 1
@@ -312,6 +330,306 @@ function Get-AppPort {
     $port = $parsedPort
   }
   return $port
+}
+
+function Get-ExcludedTcpPortRanges {
+  $netsh = Get-Command netsh.exe -ErrorAction SilentlyContinue
+  if (-not $netsh) {
+    return @()
+  }
+
+  $output = & $netsh.Source interface ipv4 show excludedportrange protocol=tcp 2>$null
+  if ($LASTEXITCODE -ne 0) {
+    return @()
+  }
+
+  $ranges = @()
+  foreach ($line in $output) {
+    if ($line -match '^\s*(\d+)\s+(\d+)') {
+      $ranges += [pscustomobject]@{
+        Start = [int]$matches[1]
+        End = [int]$matches[2]
+      }
+    }
+  }
+  return $ranges
+}
+
+function New-PortConflict {
+  param(
+    [Parameter(Mandatory = $true)][string]$Kind,
+    [Parameter(Mandatory = $true)][int]$Port,
+    [string]$Id,
+    [string]$Name,
+    [string]$Path,
+    [string]$Details
+  )
+
+  return [pscustomobject]@{
+    Kind = $Kind
+    Port = $Port
+    Id = $Id
+    Name = $Name
+    Path = $Path
+    Details = $Details
+  }
+}
+
+function Get-PortConflict {
+  param([Parameter(Mandatory = $true)][int]$Port)
+
+  $currentAppId = Get-ComposeContainerId -ServiceName 'app'
+  $publishedContainers = @(
+    Invoke-Docker -Arguments @(
+      'ps',
+      '--filter', "publish=$Port",
+      '--format', '{{json .}}'
+    )
+  )
+  foreach ($containerJson in $publishedContainers) {
+    if (-not $containerJson) {
+      continue
+    }
+    $container = $containerJson | ConvertFrom-Json
+    $containerId = [string]$container.ID
+    if ($currentAppId -and (
+      $currentAppId.StartsWith($containerId, [System.StringComparison]::OrdinalIgnoreCase) -or
+      $containerId.StartsWith($currentAppId, [System.StringComparison]::OrdinalIgnoreCase)
+    )) {
+      return New-PortConflict -Kind 'None' -Port $Port
+    }
+    return New-PortConflict `
+      -Kind 'Docker' `
+      -Port $Port `
+      -Id $containerId `
+      -Name ([string]$container.Names) `
+      -Details ([string]$container.Ports)
+  }
+
+  $listener = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+    Select-Object -First 1
+  if ($listener) {
+    $processId = [int]$listener.OwningProcess
+    $process = Get-Process -Id $processId -ErrorAction SilentlyContinue
+    $processName = if ($process) { [string]$process.ProcessName } else { 'unknown' }
+    $processPath = $null
+    if ($process) {
+      try {
+        $processPath = [string]$process.Path
+      } catch {
+        $processPath = $null
+      }
+    }
+    return New-PortConflict `
+      -Kind 'Process' `
+      -Port $Port `
+      -Id ([string]$processId) `
+      -Name $processName `
+      -Path $processPath `
+      -Details "PID=$processId, process=$processName"
+  }
+
+  $blockedRange = @(Get-ExcludedTcpPortRanges) | Where-Object {
+    $Port -ge $_.Start -and $Port -le $_.End
+  } | Select-Object -First 1
+  if ($blockedRange) {
+    return New-PortConflict `
+      -Kind 'Excluded' `
+      -Port $Port `
+      -Details "Windows reserved range $($blockedRange.Start)-$($blockedRange.End)"
+  }
+
+  return New-PortConflict -Kind 'None' -Port $Port
+}
+
+function Test-ProtectedProcess {
+  param([Parameter(Mandatory = $true)]$Conflict)
+
+  $protectedNames = @(
+    'Idle',
+    'System',
+    'Registry',
+    'smss',
+    'csrss',
+    'wininit',
+    'services',
+    'lsass',
+    'winlogon'
+  )
+  $processId = 0
+  [void][int]::TryParse([string]$Conflict.Id, [ref]$processId)
+  return $processId -in @(0, 4, $PID) -or $Conflict.Name -in $protectedNames
+}
+
+function Show-PortConflict {
+  param([Parameter(Mandatory = $true)]$Conflict)
+
+  Write-Host ''
+  Write-Host "宿主机端口 $($Conflict.Port) 当前不可用。" -ForegroundColor Yellow
+  switch ($Conflict.Kind) {
+    'Docker' {
+      Write-Host "占用容器：$($Conflict.Name)"
+      Write-Host "容器 ID：$($Conflict.Id)"
+      Write-Host "端口映射：$($Conflict.Details)"
+    }
+    'Process' {
+      Write-Host "占用进程：$($Conflict.Name)"
+      Write-Host "PID：$($Conflict.Id)"
+      if ($Conflict.Path) {
+        Write-Host "程序路径：$($Conflict.Path)"
+      }
+    }
+    'Excluded' {
+      Write-Host "原因：$($Conflict.Details)"
+      Write-Host '这是 Windows/Hyper-V 保留端口，没有可以终止的占用进程。'
+    }
+  }
+}
+
+function Write-StartupConflictLog {
+  param([Parameter(Mandatory = $true)]$Conflict)
+
+  $runtimeDirectory = Split-Path -Parent $script:StartupLog
+  New-Item -ItemType Directory -Path $runtimeDirectory -Force | Out-Null
+  $safeDetails = ([string]$Conflict.Details) -replace '[\r\n]+', ' '
+  $message = '{0} port={1} kind={2} details={3}' -f `
+    (Get-Date).ToString('o'), $Conflict.Port, $Conflict.Kind, $safeDetails
+  Add-Content -LiteralPath $script:StartupLog -Value $message -Encoding UTF8
+}
+
+function Set-AppPort {
+  param([Parameter(Mandatory = $true)][int]$Port)
+
+  $lines = [System.IO.File]::ReadAllLines($script:EnvFile)
+  $replacement = "APP_PORT=$Port"
+  $updated = $false
+  for ($index = 0; $index -lt $lines.Length; $index++) {
+    if (-not $updated -and $lines[$index] -match '^\s*APP_PORT\s*=') {
+      $lines[$index] = $replacement
+      $updated = $true
+    }
+  }
+  if (-not $updated) {
+    $lines += $replacement
+  }
+
+  $temporary = "$($script:EnvFile).port-$PID.tmp"
+  $backup = "$($script:EnvFile).port-$PID.backup"
+  try {
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllLines($temporary, [string[]]$lines, $encoding)
+    [System.IO.File]::Replace($temporary, $script:EnvFile, $backup)
+  } finally {
+    if (Test-Path -LiteralPath $temporary) {
+      Remove-Item -LiteralPath $temporary -Force
+    }
+    if (Test-Path -LiteralPath $backup) {
+      Remove-Item -LiteralPath $backup -Force
+    }
+  }
+
+  Write-Host "已将宿主机端口更新为 $Port。" -ForegroundColor Green
+}
+
+function Read-AlternativePort {
+  param([Parameter(Mandatory = $true)][int]$CurrentPort)
+
+  while ($true) {
+    $inputValue = (Read-Host '请输入其他宿主机端口（建议 5800 或 5600）').Trim()
+    $candidate = 0
+    if (-not [int]::TryParse($inputValue, [ref]$candidate)) {
+      Write-Host '端口必须是整数，请重新输入。' -ForegroundColor Yellow
+      continue
+    }
+    if ($candidate -lt 1 -or $candidate -gt 65535) {
+      Write-Host '端口必须在 1–65535 之间，请重新输入。' -ForegroundColor Yellow
+      continue
+    }
+    if ($candidate -eq $CurrentPort) {
+      Write-Host '新端口不能与当前端口相同，请重新输入。' -ForegroundColor Yellow
+      continue
+    }
+
+    $candidateConflict = Get-PortConflict -Port $candidate
+    if ($candidateConflict.Kind -ne 'None') {
+      Show-PortConflict -Conflict $candidateConflict
+      Write-Host '该端口仍不可用，请重新输入。' -ForegroundColor Yellow
+      continue
+    }
+    return $candidate
+  }
+}
+
+function Stop-PortConflict {
+  param([Parameter(Mandatory = $true)]$Conflict)
+
+  switch ($Conflict.Kind) {
+    'Docker' {
+      Write-Host "正在停止容器 $($Conflict.Name)……"
+      Invoke-Docker -Arguments @('stop', [string]$Conflict.Id)
+      return $true
+    }
+    'Process' {
+      if (Test-ProtectedProcess -Conflict $Conflict) {
+        Write-Host '该进程属于系统关键进程或当前脚本，禁止自动终止。' -ForegroundColor Red
+        return $false
+      }
+      Write-Host "正在终止进程 $($Conflict.Name)（PID $($Conflict.Id)）……"
+      Stop-Process -Id ([int]$Conflict.Id) -Force
+      return $true
+    }
+    'Excluded' {
+      Write-Host '系统保留端口无法通过清理进程解决，请选择 B 更换端口。' -ForegroundColor Yellow
+      return $false
+    }
+  }
+
+  return $false
+}
+
+function Resolve-HostPortConflict {
+  param([Parameter(Mandatory = $true)][int]$Port)
+
+  while ($true) {
+    $conflict = Get-PortConflict -Port $Port
+    if ($conflict.Kind -eq 'None') {
+      return $Port
+    }
+
+    Show-PortConflict -Conflict $conflict
+    if ($NonInteractive) {
+      Write-StartupConflictLog -Conflict $conflict
+      throw ('非交互启动无法处理端口 {0} 冲突。请双击“一键启动后端.bat”进行处理。' -f $Port)
+    }
+
+    Write-Host ''
+    Write-Host 'A：自动清理占用方并继续'
+    Write-Host 'B：自行填写其他端口'
+    $choice = (Read-Host '请选择 A 或 B').Trim().ToUpperInvariant()
+
+    switch ($choice) {
+      'A' {
+        $attempted = Stop-PortConflict -Conflict $conflict
+        if ($attempted) {
+          Start-Sleep -Seconds 1
+          $remaining = Get-PortConflict -Port $Port
+          if ($remaining.Kind -eq 'None') {
+            Write-Host "端口 $Port 已释放。" -ForegroundColor Green
+            return $Port
+          }
+          Write-Host '清理后端口仍不可用，将重新显示选项。' -ForegroundColor Yellow
+        }
+      }
+      'B' {
+        $newPort = Read-AlternativePort -CurrentPort $Port
+        Set-AppPort -Port $newPort
+        return $newPort
+      }
+      default {
+        Write-Host '无效选项，请输入 A 或 B。' -ForegroundColor Yellow
+      }
+    }
+  }
 }
 
 function Test-BackendApi {
@@ -412,7 +730,10 @@ function Invoke-Main {
 
   $script:DockerCli = Resolve-DockerCli
   $desktopExecutable = Resolve-DockerDesktopExecutable
-  if (-not $script:DockerCli -and -not $desktopExecutable) {
+  $desktopInstalled = Test-DockerDesktopInstalled `
+    -DockerCli $script:DockerCli `
+    -DesktopExecutable $desktopExecutable
+  if (-not $desktopInstalled) {
     if ($Mode -ne 'Install') {
       throw '未安装 Docker Desktop。请运行“一键安装并启动后端”。'
     }
@@ -430,6 +751,8 @@ function Invoke-Main {
   Wait-DockerEngine
   Initialize-DeploymentConfig
   Assert-RestartPolicies
+  $port = Get-AppPort
+  $port = Resolve-HostPortConflict -Port $port
 
   Write-Step '启动 Docker 后端'
   if ($Mode -eq 'Install') {
@@ -439,7 +762,6 @@ function Invoke-Main {
   }
 
   Wait-BackendServices
-  $port = Get-AppPort
   $serverInfo = Test-BackendApi -Port $port
 
   if ($Mode -eq 'Install') {
