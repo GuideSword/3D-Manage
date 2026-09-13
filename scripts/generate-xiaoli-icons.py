@@ -43,7 +43,8 @@ def generate_icons(source_path, legacy_path, adaptive_path):
     place_centered(legacy, portrait, 960)
 
     adaptive = Image.new("RGBA", (SIZE, SIZE), (0, 0, 0, 0))
-    place_centered(adaptive, portrait, 700)
+    # Keep the foreground inside Android's approximately 66% central safe zone.
+    place_centered(adaptive, portrait, 620)
 
     legacy_path.parent.mkdir(parents=True, exist_ok=True)
     adaptive_path.parent.mkdir(parents=True, exist_ok=True)
