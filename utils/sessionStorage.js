@@ -54,6 +54,12 @@ export const getToken = async (serverKey) => {
   return credentials.getItem(tokenKey(serverKey));
 };
 
+export const getTokenForSnapshot = async (captured) => {
+  if (!isCurrentRuntime(captured)) return null;
+  const token = await getToken(captured.serverKey);
+  return isCurrentRuntime(captured) ? token : null;
+};
+
 export const setToken = async (serverKey, token) => {
   requireServerKey(serverKey);
   return credentials.setItem(tokenKey(serverKey), token);

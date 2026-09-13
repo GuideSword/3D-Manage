@@ -2,13 +2,45 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
+const babel = require('@babel/core');
 const { createSessionLifecycleCore } = require('../../utils/sessionLifecycleCore.cjs');
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const keyFor = (url, id) => crypto.createHash('sha256').update(`${url}\n${id}`).digest('hex');
 
 const server = (url, id) => ({ apiBaseUrl: url, serverId: id, serverKey: keyFor(url, id) });
+
+const evaluateEsModule = (relativePath, mocks) => {
+  const filename = path.resolve(__dirname, '..', '..', relativePath);
+  const source = fs.readFileSync(filename, 'utf8');
+  const code = babel.transformSync(source, {
+    plugins: ['@babel/plugin-transform-modules-commonjs'],
+  }).code;
+  const module = { exports: {} };
+  const context = {
+    module,
+    exports: module.exports,
+    require: (id) => {
+      if (Object.prototype.hasOwnProperty.call(mocks, id)) return mocks[id];
+      throw new Error(`Unexpected import from ${relativePath}: ${id}`);
+    },
+    AbortController,
+    FormData,
+    URLSearchParams,
+    Map,
+    Set,
+    Error,
+    JSON,
+    String,
+    console,
+  };
+  vm.runInNewContext(code, context, { filename });
+  return module.exports;
+};
 
 test('delayed login from A cannot persist a token after switching to B', async () => {
   const lifecycle = createSessionLifecycleCore();
@@ -94,4 +126,86 @@ test('cleanup marker survives interruption and is removed only after cleanup', a
 test('failure to persist the cleanup marker prevents cleanup success reporting', async () => {
   const writeMarker = async () => { throw new Error('storage unavailable'); };
   await assert.rejects(writeMarker(), /storage unavailable/);
+});
+
+test('streamChat reads the token bound to its server snapshot', async () => {
+  const snapshot = {
+    apiBaseUrl: 'https://example.test/api',
+    serverKey: 'a'.repeat(64),
+    sessionEpoch: 4,
+  };
+  let released = false;
+  let streamRequest = null;
+  const runtime = {
+    getServerRuntime: () => snapshot,
+    isCurrentRuntime: (captured) => captured === snapshot,
+    registerOperation: () => ({
+      controller: new AbortController(),
+      release: () => { released = true; },
+    }),
+    StaleSessionError: class StaleSessionError extends Error {},
+  };
+  const sessionStorage = evaluateEsModule('utils/sessionStorage.js', {
+    'react-native': { Platform: { OS: 'web' } },
+    'expo-secure-store': {},
+    './storage': {
+      __esModule: true,
+      default: { getItem: async () => null, setItem: async () => {}, deleteItem: async () => {} },
+    },
+    './serverRuntime': runtime,
+    './sessionFiles': {
+      clearTrackedFiles: async () => {},
+      trackPickedAsset: async () => {},
+      trackSessionFile: async () => {},
+    },
+  });
+  await sessionStorage.setToken(snapshot.serverKey, 'token-a');
+  const agentApi = evaluateEsModule('utils/agentApi.js', {
+    '../components/agent/sseClient': {
+      streamSSE: async (url, options) => { streamRequest = { url, options }; },
+    },
+    './api': { apiRequest: async () => ({}) },
+    './sessionStorage': sessionStorage,
+    './serverRuntime': runtime,
+  });
+
+  await agentApi.streamChat({ message: '你好', images: [], onEvent: () => {} });
+
+  assert.equal(streamRequest.url, 'https://example.test/api/agent/chat');
+  assert.equal(streamRequest.options.headers.Authorization, 'Bearer token-a');
+  assert.equal(released, true);
+});
+
+test('snapshot token lookup discards a token if the server changes during the read', async () => {
+  const snapshot = {
+    apiBaseUrl: 'https://example.test/api',
+    serverKey: 'b'.repeat(64),
+    sessionEpoch: 7,
+  };
+  let currentChecks = 0;
+  const sessionStorage = evaluateEsModule('utils/sessionStorage.js', {
+    'react-native': { Platform: { OS: 'web' } },
+    'expo-secure-store': {},
+    './storage': {
+      __esModule: true,
+      default: { getItem: async () => null, setItem: async () => {}, deleteItem: async () => {} },
+    },
+    './serverRuntime': {
+      isCurrentRuntime: () => {
+        currentChecks += 1;
+        return currentChecks === 1;
+      },
+    },
+    './sessionFiles': {
+      clearTrackedFiles: async () => {},
+      trackPickedAsset: async () => {},
+      trackSessionFile: async () => {},
+    },
+  });
+  await sessionStorage.setToken(snapshot.serverKey, 'token-b');
+
+  const token = await sessionStorage.getTokenForSnapshot(snapshot);
+
+  assert.equal(token, null);
+  assert.equal(currentChecks, 2);
 });
