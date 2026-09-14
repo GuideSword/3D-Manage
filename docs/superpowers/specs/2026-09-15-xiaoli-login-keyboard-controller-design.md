@@ -27,8 +27,9 @@
 
 - `react-native-keyboard-controller`，项目本地 Expo 兼容清单为 `1.18.5`。
 - `react-native-reanimated`，项目本地 Expo 兼容清单为 `~4.1.1`。
+- `react-native-worklets`，项目本地 Expo 兼容清单为 `0.5.1`，是 Reanimated 4 的必需依赖。
 
-这两个原生模块已包含在 Expo SDK 54 对应的 Expo Go 客户端中，因此安装匹配版本后可以直接连接 Metro 验证。若以后升级依赖到 Expo Go 未内置的版本，或改变原生配置，则需要重新构建 Development Build 或 APK。
+这些原生模块已包含在 Expo SDK 54 对应的 Expo Go 客户端中，因此安装匹配版本后可以直接连接 Metro 验证。若以后升级依赖到 Expo Go 未内置的版本，或改变原生配置，则需要重新构建 Development Build 或 APK。
 
 ## 架构
 
