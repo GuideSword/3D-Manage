@@ -9,11 +9,14 @@ const protectedFileAccess = requireRoles('owner', 'staff', 'viewer');
 const sendStoredFile = async (req, res) => {
   try {
     const filePath = req.path.replace(/^\/+/, '');
+    if (/^agent(?:[\\/]|$)/i.test(filePath)) {
+      return res.status(404).json({ error: '文件不存在' });
+    }
     const resolvedPath = path.resolve(path.join(UPLOAD_DIR, filePath));
     const resolvedDir = path.resolve(UPLOAD_DIR);
     const relative = path.relative(resolvedDir, resolvedPath);
     if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      return res.status(403).json({ error: 'Access denied' });
+      return res.status(403).json({ error: '无权访问该文件' });
     }
 
     const fileInfo = await getFileInfo(filePath);
@@ -56,9 +59,9 @@ const sendStoredFile = async (req, res) => {
   } catch (error) {
     console.error('File download failed:', error);
     if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: 'File not found' });
+      return res.status(404).json({ error: '文件不存在' });
     }
-    return res.status(500).json({ error: 'File download failed' });
+    return res.status(500).json({ error: '文件下载失败' });
   }
 };
 

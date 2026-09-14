@@ -7,20 +7,32 @@
 //   GET    /conversations/:id    — fetch one conversation + its messages
 //   DELETE /conversations/:id    — delete one conversation
 //   POST   /drafts/confirm       — write an order from an Agent-generated draft
-//   GET    /keys/test            — verify LLM API key by listing models
-//   PUT    /keys                 — save the user's API key + model config
+//   GET    /keys                 — return public configuration status only
+//   POST   /keys/test            — verify independent LLM/Embedding candidates
+//   PUT    /keys                 — save independent LLM/Embedding configuration
 
 const express = require('express');
 const crypto = require('../utils/crypto');
 const sqliteDb = require('../db/agent');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { runConversation } = require('../agent/orchestrator');
-const { createLLMClient, listModels } = require('../agent/providers/llm');
-const embedProvider = require('../agent/providers/embed');
-const { withData, appendAudit } = require('../utils/store');
+const { normalizeChatRequest } = require('../agent/chatRequest');
+const { parseAgentImages } = require('../agent/imagePayload');
+const { ensureStoredVisionCapability } = require('../agent/visionCapabilityService');
+const {
+  buildCandidate,
+  persistedRow,
+  testEmbeddingCandidate,
+  testLlmCandidate,
+  toPublicSettings,
+} = require('../agent/settingsService');
+const { queueUserModelReconcile } = require('../agent/modelIndex');
+const { deleteConversationAttachments, readOwnedAttachment } = require('../agent/attachmentStore');
+const { withData } = require('../utils/store');
 const { createOrderInData } = require('../services/orders');
 const { z } = require('zod');
 const { parseRequest } = require('../utils/validation');
+const { publicErrorMessage } = require('../utils/publicError');
 
 const router = express.Router();
 router.use(requireAuth);
@@ -45,6 +57,35 @@ const orderDraftSchema = z.object({
 
 // 1) POST /chat — main entry, SSE
 router.post('/chat', async (req, res) => {
+  let chatRequest;
+  try {
+    chatRequest = normalizeChatRequest(req.body);
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      code: error.code || 'CHAT_REQUEST_INVALID',
+      error: publicErrorMessage(error, '对话初始化失败'),
+    });
+  }
+  const { conversationId, suppliedMessage, images, modelMessage } = chatRequest;
+
+  const settings = sqliteDb.getUserSettings(req.user.id);
+  if (!settings?.llm_api_key_enc) {
+    return res.status(422).json({ code: 'LLM_NOT_CONFIGURED', error: '尚未配置大模型服务' });
+  }
+
+  let parsedImages;
+  try {
+    const vision = images.length > 0
+      ? await ensureStoredVisionCapability({ userId: req.user.id, settings })
+      : { status: settings.llm_vision_status || 'untested' };
+    parsedImages = parseAgentImages(images, vision.status);
+  } catch (error) {
+    return res.status(error.status || 400).json({
+      code: error.code || 'IMAGE_PAYLOAD_INVALID',
+      error: publicErrorMessage(error, '对话初始化失败'),
+    });
+  }
+
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -81,35 +122,20 @@ router.post('/chat', async (req, res) => {
     ac.abort();
   });
 
-  const { conversationId, message, images } = req.body || {};
-  if (!message) {
-    safeWrite('error', { message: 'message is required' });
-    res.end();
-    return;
-  }
-
-  // Convert images to multimodal parts
-  const imageParts = [];
-  if (Array.isArray(images)) {
-    for (const img of images) {
-      if (img?.dataUrl) {
-        imageParts.push({ type: 'image_url', image_url: { url: img.dataUrl } });
-      }
-    }
-  }
-
   try {
     await runConversation({
       userId: req.user.id,
       role: req.user.role,
       conversationId,
-      userMessage: message,
-      imageParts,
+      userMessage: modelMessage,
+      displayUserMessage: suppliedMessage,
+      imageParts: parsedImages.parts,
+      decodedImages: parsedImages.decoded,
       signal: ac.signal,
       onEvent: safeWrite,
     });
   } catch (err) {
-    safeWrite('error', { message: err.message });
+    safeWrite('error', { message: publicErrorMessage(err, '流式响应中断') });
   }
   // 客户端已断就别再 end（可能抛错）
   if (!clientGone) {
@@ -123,7 +149,7 @@ router.get('/conversations', (req, res) => {
     const list = sqliteDb.listConversations(req.user.id, { limit: 100 });
     res.json({ items: list });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: publicErrorMessage(err, '读取对话失败') });
   }
 });
 
@@ -131,22 +157,24 @@ router.get('/conversations', (req, res) => {
 router.get('/conversations/:id', (req, res) => {
   try {
     const conv = sqliteDb.getConversation(req.params.id, req.user.id);
-    if (!conv) return res.status(404).json({ error: 'Not found' });
+    if (!conv) return res.status(404).json({ error: '记录不存在' });
     const messages = sqliteDb.getMessages(conv.id);
     res.json({ conversation: conv, messages });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: publicErrorMessage(err, '读取对话失败') });
   }
 });
 
 // 4) DELETE /conversations/:id
-router.delete('/conversations/:id', (req, res) => {
+router.delete('/conversations/:id', async (req, res) => {
   try {
+    const attachments = sqliteDb.listConversationAttachments(req.params.id, req.user.id);
     const ok = sqliteDb.deleteConversation(req.params.id, req.user.id);
-    if (!ok) return res.status(404).json({ error: 'Not found' });
-    res.json({ deleted: true });
+    if (!ok) return res.status(404).json({ error: '记录不存在' });
+    const cleanup = await deleteConversationAttachments(attachments);
+    res.json({ deleted: true, cleanupPending: cleanup.cleanupPending });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: publicErrorMessage(err, '删除对话失败') });
   }
 });
 
@@ -177,91 +205,109 @@ router.post('/drafts/confirm', requireRoles('owner', 'staff'), async (req, res) 
     }));
     res.json({ order: newOrder });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: publicErrorMessage(err, '读取草稿失败') });
   }
 });
 
-// 6) GET /keys/test
-// Tests BOTH the chat LLM and the embedding endpoint, returning detailed
-// per-section results. We deliberately do NOT use `client.models.list()` here
-// because MiniMax's OpenAI-compat layer does not always expose that endpoint
-// reliably. A 1-token chat completion is the canonical "does my key work" test.
-router.get('/keys/test', async (req, res) => {
-  const settings = sqliteDb.getUserSettings(req.user.id);
-  if (!settings) {
-    return res.status(404).json({ ok: false, error: 'No settings configured' });
-  }
+// 6) GET /keys — public projection only. Stored keys and ciphertext never leave
+// the backend, including masked suffixes.
+function publicSettingsForUser(userId, row = sqliteDb.getUserSettings(userId)) {
+  const settings = toPublicSettings(row);
+  const state = row?.embed_enabled
+    ? sqliteDb.getModelIndexState(userId, row.embed_config_fingerprint)
+    : null;
+  settings.embedding.index = state ? {
+    status: state.status,
+    totalCount: state.total_count,
+    readyCount: state.ready_count,
+    failedCount: state.failed_count,
+    updatedAt: state.updated_at,
+  } : null;
+  return settings;
+}
 
-  const result = {
-    llm: { ok: false, error: null, model: null, reply: null },
-    embed: { ok: false, error: null, dim: null },
-    base_url: settings.llm_base_url,
-  };
-
-  // --- Test LLM: minimal chat completion (5 token budget) ---
-  try {
-    const llmKey = crypto.decrypt(settings.llm_api_key_enc);
-    const llm = createLLMClient({ baseUrl: settings.llm_base_url, apiKey: llmKey });
-    const response = await llm.chat.completions.create({
-      model: settings.llm_model,
-      messages: [{ role: 'user', content: 'hi' }],
-      max_completion_tokens: 5,
-      // M3 默认开启 thinking 会吃掉 5 token 预算，关掉拿干净回复
-      extra_body: { thinking: { type: 'disabled' } },
-    });
-    result.llm.ok = true;
-    result.llm.model = response.model || settings.llm_model;
-    // 兼容剥离残留的 <think>...</think> 块（个别请求可能漏掉参数）
-    let reply = response.choices?.[0]?.message?.content || '';
-    reply = reply.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
-    result.llm.reply = reply;
-  } catch (err) {
-    result.llm.error = err?.message || String(err);
-    if (err?.status) result.llm.status = err.status;
-  }
-
-  // --- Test embedding: 1 short text, return vector dimension ---
-  try {
-    const embedKey = crypto.decrypt(settings.embed_api_key_enc);
-    const vectors = await embedProvider.embed({
-      baseUrl: settings.embed_base_url,
-      apiKey: embedKey,
-      groupId: settings.embed_group_id,
-      model: settings.embed_model,
-      texts: ['test'],
-      type: 'query',
-    });
-    result.embed.ok = true;
-    result.embed.dim = vectors?.[0]?.length || 0;
-  } catch (err) {
-    result.embed.error = err?.message || String(err);
-    if (err?.status) result.embed.status = err.status;
-  }
-
-  result.ok = result.llm.ok;  // LLM is the hard requirement
-  res.json(result);
+router.get('/keys', (req, res) => {
+  const row = sqliteDb.getUserSettings(req.user.id);
+  if (row?.embed_enabled) queueUserModelReconcile(req.user.id);
+  res.json({ settings: publicSettingsForUser(req.user.id, row) });
 });
 
-// 7) PUT /keys
-router.put('/keys', (req, res) => {
-  const { llm_provider, llm_base_url, llm_api_key, llm_model, embed_base_url, embed_api_key, embed_model, embed_group_id } = req.body || {};
-  if (!llm_api_key || !embed_api_key) {
-    return res.status(400).json({ error: 'llm_api_key and embed_api_key are required' });
-  }
+router.get('/conversations/:conversationId/attachments/:attachmentId', async (req, res) => {
   try {
-    sqliteDb.upsertUserSettings(req.user.id, {
-      llm_provider: llm_provider || 'openai_compat',
-      llm_base_url: llm_base_url || 'https://api.minimaxi.com/v1',
-      llm_api_key_enc: crypto.encrypt(llm_api_key),
-      llm_model: llm_model || 'MiniMax-M3',
-      embed_base_url: embed_base_url || 'https://api.minimaxi.com/v1',
-      embed_api_key_enc: crypto.encrypt(embed_api_key),
-      embed_model: embed_model || 'embo-01',
-      embed_group_id: embed_group_id || null,
+    const attachment = await readOwnedAttachment({
+      attachmentId: req.params.attachmentId,
+      conversationId: req.params.conversationId,
+      userId: req.user.id,
     });
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.setHeader('Content-Type', attachment.metadata.mime_type);
+    res.setHeader('Content-Length', attachment.buffer.length);
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Disposition', 'inline');
+    return res.send(attachment.buffer);
+  } catch (_) {
+    return res.status(404).json({ error: '记录不存在' });
+  }
+});
+
+async function evaluateCandidate(candidate) {
+  const llmResult = await testLlmCandidate(candidate);
+  const embeddingResult = await testEmbeddingCandidate(candidate);
+  return { ...llmResult, embedding: embeddingResult };
+}
+
+// 7) POST /keys/test — tests an unsaved candidate without mutating settings.
+router.post('/keys/test', async (req, res) => {
+  try {
+    const existing = sqliteDb.getUserSettings(req.user.id);
+    const candidate = buildCandidate({ existing, input: req.body, secrets: crypto });
+    const tests = await evaluateCandidate(candidate);
+    res.json({ ok: tests.llm.ok && tests.embedding.ok, tests });
+  } catch (error) {
+    res.status(error.status || 500).json({
+      code: error.code || 'SETTINGS_TEST_FAILED',
+      error: publicErrorMessage(error, '测试 AI 服务配置失败'),
+    });
+  }
+});
+
+// 8) PUT /keys — validates and tests candidates before persistence. A failed
+// Embedding replacement never overwrites the last working Embedding settings.
+router.put('/keys', async (req, res) => {
+  const existing = sqliteDb.getUserSettings(req.user.id);
+  try {
+    const candidate = buildCandidate({ existing, input: req.body, secrets: crypto });
+    const tests = await evaluateCandidate(candidate);
+    if (!tests.llm.ok) {
+      return res.status(422).json({ code: 'LLM_CONNECTION_FAILED', error: tests.llm.error, tests });
+    }
+
+    const embeddingFailed = candidate.embedding.enabled && !tests.embedding.ok;
+    const row = persistedRow({
+      candidate,
+      existing,
+      vision: tests.vision,
+      preserveEmbedding: embeddingFailed,
+      secrets: crypto,
+    });
+    sqliteDb.saveUserSettings(req.user.id, row);
+    const savedRow = sqliteDb.getUserSettings(req.user.id);
+    const settings = publicSettingsForUser(req.user.id, savedRow);
+
+    if (embeddingFailed) {
+      return res.status(422).json({
+        code: 'EMBEDDING_CONNECTION_FAILED',
+        error: tests.embedding.error,
+        settings,
+        tests,
+      });
+    }
+    if (savedRow.embed_enabled) queueUserModelReconcile(req.user.id);
+    return res.json({ ok: true, settings, tests });
+  } catch (error) {
+    return res.status(error.status || 500).json({
+      code: error.code || 'SETTINGS_SAVE_FAILED',
+      error: publicErrorMessage(error, '保存 AI 服务配置失败'),
+    });
   }
 });
 

@@ -48,6 +48,7 @@ __pycache__/
 
 # deployment artifacts (build these on demand, don't commit)
 /backend-deploy.tar.gz
+/output/
 
 # scratch / temporary working files (do not commit)
 .superpowers/

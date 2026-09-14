@@ -38,12 +38,12 @@ const requireAuth = async (req, res, next) => {
   try {
     const user = await authenticate(req);
     if (!user) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return res.status(401).json({ error: '需要登录后才能继续' });
     }
     req.user = user;
     return next();
   } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: '登录凭证无效，请重新登录' });
   }
 };
 
@@ -51,15 +51,15 @@ const requireRoles = (...roles) => async (req, res, next) => {
   try {
     const user = await authenticate(req);
     if (!user) {
-      return res.status(401).json({ error: 'Authentication required' });
+      return res.status(401).json({ error: '需要登录后才能继续' });
     }
     if (!roles.includes(user.role)) {
-      return res.status(403).json({ error: 'Insufficient permissions' });
+      return res.status(403).json({ error: '当前账号权限不足' });
     }
     req.user = user;
     return next();
   } catch (error) {
-    return res.status(401).json({ error: 'Invalid token' });
+    return res.status(401).json({ error: '登录凭证无效，请重新登录' });
   }
 };
 

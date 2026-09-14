@@ -65,8 +65,9 @@ const main = async () => {
     }
 
     const anonymousRead = await fetch(`${baseUrl}/api/models`);
-    if (anonymousRead.status !== 401) {
-      throw new Error(`Anonymous business read should require auth, got ${anonymousRead.status}`);
+    const anonymousReadBody = await readJson(anonymousRead);
+    if (anonymousRead.status !== 401 || anonymousReadBody.error !== '需要登录后才能继续') {
+      throw new Error(`Anonymous business read should return the expected auth error, got ${anonymousRead.status}: ${JSON.stringify(anonymousReadBody)}`);
     }
 
     const bootstrap = await request('/api/system/bootstrap', {
@@ -83,6 +84,24 @@ const main = async () => {
       throw new Error('Bootstrap did not return the Owner token');
     }
     authToken = bootstrap.token;
+
+    const invalidLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'owner@example.com', password: 'WrongPassword123!' }),
+    });
+    const invalidLoginBody = await readJson(invalidLoginResponse);
+    if (invalidLoginResponse.status !== 401 || invalidLoginBody.error !== '账号或密码错误') {
+      throw new Error(`Invalid login should return the expected credential error, got ${invalidLoginResponse.status}: ${JSON.stringify(invalidLoginBody)}`);
+    }
+
+    const invalidTokenResponse = await fetch(`${baseUrl}/api/models`, {
+      headers: { Authorization: 'Bearer invalid-token' },
+    });
+    const invalidTokenBody = await readJson(invalidTokenResponse);
+    if (invalidTokenResponse.status !== 401 || invalidTokenBody.error !== '登录凭证无效，请重新登录') {
+      throw new Error(`Invalid token should return the expected auth error, got ${invalidTokenResponse.status}: ${JSON.stringify(invalidTokenBody)}`);
+    }
 
     const viewer = await request('/api/users', {
       method: 'POST',

@@ -7,11 +7,16 @@
 
 const crypto = require('../utils/crypto');
 const sqliteDb = require('../db/agent');
-const { tools, dispatchTool } = require('./tools');
+const { dispatchTool, getToolsForContext } = require('./tools');
 const { createLLMClient, streamChatCompletion } = require('./providers/llm');
 const embedProvider = require('./providers/embed');
 const dbBridge = require('./dbBridge');
+const { isImageInputRejection } = require('./visionProbe');
+const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
+const { assembleBudgetedContext } = require('./contextBudget');
+const { prepareMemoryLayers } = require('./memoryService');
 const { withData, appendAudit } = require('../utils/store');
+const { publicErrorMessage } = require('../utils/publicError');
 
 const MAX_TURNS = 8;
 const SYSTEM_PROMPT = `你是 3D 打印管理系统的 AI 助手（代号 Mavis）。你能查询订单、模型、耗材数据，并能从用户文本中抽取订单草稿。
@@ -29,6 +34,7 @@ const SYSTEM_PROMPT = `你是 3D 打印管理系统的 AI 助手（代号 Mavis�
 5. 模糊查询（外观/用途）用 search_models_semantic；精确查询用 search_models_by_keyword
 6. 如果工具返回空，诚实告知用户并建议下一步
 7. 你看到的是该用户的数据，绝不假设其他用户/租户的存在
+8. 只有当用户在当前消息中明确说出长期偏好、业务约束或持续目标时，才调用 remember_explicit_user_fact；禁止根据语气或行为推测
 `;
 
 function newId() {
@@ -38,14 +44,14 @@ function newId() {
 async function ensureConversation({ userId, conversationId, firstUserMessage }) {
   if (conversationId) {
     const existing = sqliteDb.getConversation(conversationId, userId);
-    if (existing) return existing;
+    if (existing) return { ...existing, justCreated: false };
   }
   // Create new
   const id = newId();
   const title = (firstUserMessage || '').slice(0, 30).replace(/\s+/g, ' ').trim() || '新对话';
   const intent = 'chat';
   sqliteDb.createConversation({ id, user_id: userId, title, intent });
-  return sqliteDb.getConversation(id, userId);
+  return { ...sqliteDb.getConversation(id, userId), justCreated: true };
 }
 
 /**
@@ -58,7 +64,30 @@ async function ensureConversation({ userId, conversationId, firstUserMessage }) 
  * @param {function} args.onEvent    (eventName, data) => void
  * @param {AbortSignal} [args.signal]  forwarded to LLM stream; abort kills the request
  */
-async function runConversation({ userId, role, conversationId, userMessage, imageParts = [], onEvent, signal }) {
+function messageForProvider(stored) {
+  if (!Array.isArray(stored?.content)) return stored;
+  const placeholders = stored.content.filter((part) => ['image_placeholder', 'image_attachment'].includes(part?.type));
+  const content = stored.content.filter((part) => !['image_placeholder', 'image_attachment'].includes(part?.type));
+  if (placeholders.length) {
+    content.push({
+      type: 'text',
+      text: `（此前消息包含 ${placeholders.length} 张图片，图片内容不会在后续轮次自动重复上传）`,
+    });
+  }
+  return { ...stored, content };
+}
+
+async function runConversation({
+  userId,
+  role,
+  conversationId,
+  userMessage,
+  displayUserMessage = userMessage,
+  imageParts = [],
+  decodedImages = [],
+  onEvent,
+  signal,
+}) {
   // 1. Load settings + decrypt API keys
   const settings = sqliteDb.getUserSettings(userId);
   if (!settings) {
@@ -66,54 +95,133 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
     return;
   }
 
-  let llmKey, embedKey;
+  let llmKey;
+  let embedKey = null;
   try {
     llmKey = crypto.decrypt(settings.llm_api_key_enc);
-    embedKey = crypto.decrypt(settings.embed_api_key_enc);
+    if (settings.embed_enabled && settings.embed_api_key_enc) {
+      embedKey = crypto.decrypt(settings.embed_api_key_enc);
+    }
   } catch (err) {
-    onEvent('error', { message: 'API Key 解密失败：' + err.message });
+    onEvent('error', { message: publicErrorMessage(err, 'API Key 解密失败，请重新保存 AI 服务配置') });
     return;
   }
 
   // 2. Ensure conversation exists
-  const conv = await ensureConversation({ userId, conversationId, firstUserMessage: userMessage });
+  const conv = await ensureConversation({
+    userId,
+    conversationId,
+    firstUserMessage: displayUserMessage || (decodedImages.length ? '图片消息' : userMessage),
+  });
   sqliteDb.touchConversation(conv.id);
 
   // 3. Load history
   const history = sqliteDb.getMessages(conv.id);
-  const messages = history.map((m) => m.content);
+  const memoryLayers = await prepareMemoryLayers({
+    userId,
+    conversationId: conv.id,
+    history,
+    query: displayUserMessage || userMessage,
+  });
 
   // 4. Append new user message (with optional images)
   const userContent = imageParts.length > 0
     ? [{ type: 'text', text: userMessage }, ...imageParts]
     : userMessage;
   const userMsg = { role: 'user', content: userContent };
-  messages.push(userMsg);
-  sqliteDb.addMessage({
-    id: newId(),
-    conversation_id: conv.id,
-    role: 'user',
-    content: userMsg,
+  const budgetedContext = assembleBudgetedContext({
+    systemMessages: [{ role: 'system', content: SYSTEM_PROMPT }],
+    coreMemory: memoryLayers.coreMemory,
+    summary: memoryLayers.summary,
+    archiveMatches: memoryLayers.archiveMatches,
+    recentRounds: memoryLayers.recentRounds.map((round) => round.map(messageForProvider)),
+    currentMessage: userMsg,
+    maxInputTokens: 12000,
   });
-
-  // 5. Build ctx
-  const ctx = {
+  const messages = budgetedContext.messages;
+  const userMessageId = newId();
+  const preparedAttachments = await prepareMessageImages({
+    images: decodedImages,
     userId,
-    role,
-    db: dbBridge,
-    embed: {
-      embedQuery: async (text) => embedProvider.embedQuery({
-        baseUrl: settings.embed_base_url,
-        apiKey: embedKey,
-        groupId: settings.embed_group_id,
-        model: settings.embed_model,
-        text,
-      }),
-    },
+    conversationId: conv.id,
+    messageId: userMessageId,
+  });
+  const persistentUserMsg = {
+    role: 'user',
+    content: preparedAttachments.length > 0
+      ? [
+          { type: 'text', text: displayUserMessage },
+          ...preparedAttachments.map((attachment) => ({
+            type: 'image_attachment',
+            attachment_id: attachment.id,
+            name: attachment.display_name,
+            mime_type: attachment.mime_type,
+            byte_size: attachment.byte_size,
+          })),
+        ]
+      : displayUserMessage,
+  };
+  let currentSequence;
+  try {
+    currentSequence = sqliteDb.addMessageWithAttachments({
+      id: userMessageId,
+      conversation_id: conv.id,
+      role: 'user',
+      content: persistentUserMsg,
+    }, preparedAttachments);
+  } catch (error) {
+    await discardPreparedImages(preparedAttachments);
+    throw error;
+  }
+  let failedTurnCleaned = false;
+  const cleanupFailedTurn = async () => {
+    if (failedTurnCleaned) return;
+    failedTurnCleaned = true;
+    sqliteDb.deleteConversationMessagesFromSequence(conv.id, userId, currentSequence);
+    await deleteConversationAttachments(preparedAttachments);
+    if (conv.justCreated) sqliteDb.deleteConversation(conv.id, userId);
   };
 
-  // 6. Build LLM client
-  const llm = createLLMClient({ baseUrl: settings.llm_base_url, apiKey: llmKey });
+  // 5. Build the per-turn runtime. Any local setup failure after persistence must
+  // roll the turn back just like a provider failure, otherwise retrying would
+  // leave an invisible duplicate user message in the conversation history.
+  let ctx;
+  let activeTools;
+  let llm;
+  try {
+    ctx = {
+      userId,
+      role,
+      currentUserMessageId: userMessageId,
+      conversationId: conv.id,
+      db: dbBridge,
+      ...(embedKey ? {
+        embeddingFingerprint: settings.embed_config_fingerprint,
+        embed: {
+          embedQuery: async (text) => embedProvider.embedQuery({
+            baseUrl: settings.embed_base_url,
+            apiKey: embedKey,
+            groupId: settings.embed_group_id,
+            model: settings.embed_model,
+            text,
+          }),
+        },
+      } : {}),
+    };
+    const indexState = embedKey
+      ? sqliteDb.getModelIndexState(userId, settings.embed_config_fingerprint)
+      : null;
+    activeTools = getToolsForContext({
+      embeddingReady: Number(indexState?.ready_count || 0) > 0,
+      hasAttachments: settings.llm_vision_status === 'vision'
+        && sqliteDb.listConversationAttachments(conv.id, userId).length > 0,
+    });
+    llm = createLLMClient({ baseUrl: settings.llm_base_url, apiKey: llmKey });
+  } catch (error) {
+    await cleanupFailedTurn();
+    onEvent('error', { code: 'AGENT_SETUP_FAILED', message: publicErrorMessage(error, '对话初始化失败') });
+    return;
+  }
 
   // 7. Main loop
   let turn = 0;
@@ -125,6 +233,7 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
 
   while (turn < MAX_TURNS) {
     if (signal?.aborted) {
+      await cleanupFailedTurn();
       onEvent('error', { message: '客户端已断开' });
       return;
     }
@@ -133,8 +242,8 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
     try {
       stream = await streamChatCompletion(llm, {
         model: settings.llm_model,
-        messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-        tools: tools.map((t) => ({
+        messages,
+        tools: activeTools.map((t) => ({
           type: 'function',
           function: { name: t.name, description: t.description, parameters: t.parameters },
         })),
@@ -147,9 +256,20 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
     } catch (err) {
       // 客户端主动 abort（AbortError）不当作错误抛给用户
       if (err?.name === 'AbortError' || signal?.aborted) {
+        await cleanupFailedTurn();
         return;
       }
-      onEvent('error', { message: 'LLM 调用失败：' + err.message });
+      if (imageParts.length && isImageInputRejection(err)) {
+        await cleanupFailedTurn();
+        sqliteDb.updateUserVisionStatus(userId, 'untested', null);
+        onEvent('error', {
+          code: 'IMAGE_CAPABILITY_UNSUPPORTED',
+          message: '当前模型拒绝了图片输入，系统已将图片能力标记为待重新验证',
+        });
+        return;
+      }
+      await cleanupFailedTurn();
+      onEvent('error', { code: 'LLM_CALL_FAILED', message: publicErrorMessage(err, '大模型调用失败') });
       return;
     }
 
@@ -180,7 +300,10 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
 
     try {
       for await (const chunk of stream) {
-        if (signal?.aborted) return;  // 客户端断开，立即退出
+        if (signal?.aborted) {
+          await cleanupFailedTurn();
+          return;
+        }
         const delta = chunk.choices?.[0]?.delta;
         if (!delta) continue;
         if (delta.content) {
@@ -211,9 +334,20 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
       }
     } catch (err) {
       if (err?.name === 'AbortError' || signal?.aborted) {
+        await cleanupFailedTurn();
         return;  // 客户端断开是预期路径
       }
-      onEvent('error', { message: '流式响应中断：' + err.message });
+      if (imageParts.length && isImageInputRejection(err)) {
+        await cleanupFailedTurn();
+        sqliteDb.updateUserVisionStatus(userId, 'untested', null);
+        onEvent('error', {
+          code: 'IMAGE_CAPABILITY_UNSUPPORTED',
+          message: '当前模型拒绝了图片输入，系统已将图片能力标记为待重新验证',
+        });
+        return;
+      }
+      await cleanupFailedTurn();
+      onEvent('error', { message: publicErrorMessage(err, '流式响应中断') });
       return;
     }
 
@@ -250,7 +384,8 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
       try {
         args = JSON.parse(tc.arguments || '{}');
       } catch (err) {
-        onEvent('error', { message: `工具 ${tc.name} 参数解析失败：${err.message}` });
+        await cleanupFailedTurn();
+        onEvent('error', { message: publicErrorMessage(err, '工具参数解析失败') });
         return;
       }
 
@@ -258,7 +393,12 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
       try {
         result = await dispatchTool(tc.name, args, ctx);
       } catch (err) {
-        result = { error: err.message };
+        result = { error: publicErrorMessage(err, '工具执行失败') };
+      }
+
+      let storedResult = result;
+      if (result?.__imageRecall) {
+        storedResult = { attachment_id: result.attachmentId, recalled: true };
       }
 
       // If this is the extract_order_draft tool, emit a draft event
@@ -270,9 +410,18 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
       const toolMsg = {
         role: 'tool',
         tool_call_id: tc.id,
-        content: JSON.stringify(result),
+        content: JSON.stringify(storedResult),
       };
       messages.push(toolMsg);
+      if (result?.__imageRecall) {
+        messages.push({
+          role: 'user',
+          content: [
+            { type: 'text', text: '这是刚才请求回看的历史图片，请结合当前问题继续分析。' },
+            { type: 'image_url', image_url: { url: result.dataUrl } },
+          ],
+        });
+      }
       sqliteDb.addMessage({
         id: newId(),
         conversation_id: conv.id,
@@ -292,6 +441,13 @@ async function runConversation({ userId, role, conversationId, userMessage, imag
         return null;
       });
     }
+  }
+
+  if (preparedAttachments.length && finalText) {
+    sqliteDb.updateAttachmentDescriptions(
+      preparedAttachments.map((attachment) => attachment.id),
+      finalText.slice(0, 500),
+    );
   }
 
   onEvent('done', { conversationId: conv.id, text: finalText, turns: turn });

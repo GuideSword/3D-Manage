@@ -66,9 +66,9 @@ const createStyles = (colors) => StyleSheet.create({
     borderRadius: 14,
   },
   selectedOption: {
-    backgroundColor: colors.surfaceElevated,
+    backgroundColor: colors.primarySoft,
     borderWidth: 1,
-    borderColor: colors.borderStrong,
+    borderColor: colors.primary,
   },
   pressedOption: {
     opacity: 0.78,

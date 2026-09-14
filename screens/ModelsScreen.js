@@ -2,26 +2,35 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Image,
   RefreshControl,
-  SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  RADIUS,
   ROUTES,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
+import {
+  Card,
+  CyberChip,
+  CyberEmptyState,
+  CyberIconButton,
+  CyberPageHeader,
+  ProtectedImage,
+  CyberSearchField,
+  CyberSectionHeading,
+  cyberTheme,
+} from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { authAPI, buildProtectedFileSource, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { canWrite } from '../utils/permissions';
 
 const SOURCE_LABELS = {
@@ -39,22 +48,15 @@ const getPreferredImage = (model) => {
   );
 };
 
-const buildImageSource = (image, token) => {
-  if (!image?.fileUrl) {
-    return null;
-  }
-  return buildProtectedFileSource(image.fileUrl, token);
-};
-
 const ModelsScreen = ({ navigation }) => {
   const { user } = useAuth();
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
   const [models, setModels] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState('list');
-  const [showSearch, setShowSearch] = useState(false);
+  const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [authToken, setAuthToken] = useState(null);
@@ -101,79 +103,61 @@ const ModelsScreen = ({ navigation }) => {
     }, [searchQuery, sourceFilter])
   );
 
-  const cycleSourceFilter = () => {
-    setSourceFilter((current) => {
-      if (current === 'all') return 'original';
-      if (current === 'original') return 'remix';
-      if (current === 'remix') return 'imported';
-      return 'all';
-    });
-  };
-
   return (
-    <SafeAreaView style={styles.container}>
-      <ScreenHeader
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <View style={styles.page}>
+      <CyberPageHeader
         eyebrow="MODEL LIBRARY"
         title="模型图鉴"
         subtitle="把灵感和打印资产都收藏在这里。"
-        actions={(
-          <View style={styles.headerActions}>
-          <IconButton
-            icon={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
-            active
-            onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
-          />
-          <IconButton
-            icon="search"
-            active={showSearch}
-            onPress={() => setShowSearch((value) => !value)}
-          />
-          <IconButton
-            icon="filter"
-            active={sourceFilter !== 'all'}
-            onPress={cycleSourceFilter}
-          />
-          {canWrite(user) ? <IconButton
+        onAssistant={() => navigation.navigate(ROUTES.AGENT)}
+        actions={canWrite(user) ? (
+          <CyberIconButton
             icon="add"
+            label="新建模型"
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
-          /> : null}
-          </View>
-        )}
+          />
+        ) : null}
       />
-
-      {showSearch ? (
-        <SearchBar
-            placeholder="搜索模型名称、描述或文件名"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onClear={() => setSearchQuery('')}
-            autoFocus
-            style={styles.searchContainer}
+      <CyberSearchField
+        placeholder="搜索模型名称、描述或文件名"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
+      <View style={styles.modelTools}>
+        <ScrollView
+          horizontal
+          style={styles.sourceScroll}
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.sourceChips}
+        >
+          {[['all', '全部'], ...Object.entries(SOURCE_LABELS)].map(([source, label]) => (
+            <CyberChip
+              key={source}
+              label={label}
+              active={sourceFilter === source}
+              onPress={() => setSourceFilter(source)}
+            />
+          ))}
+        </ScrollView>
+        <CyberIconButton
+          icon={viewMode === 'list' ? 'grid-outline' : 'list-outline'}
+          label={viewMode === 'list' ? '切换为网格视图' : '切换为列表视图'}
+          active
+          onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
         />
-      ) : null}
-
-      {sourceFilter !== 'all' ? (
-        <View style={styles.filterHint}>
-          <View style={styles.filterHintLeft}>
-            <Ionicons name="funnel-outline" size={16} color={colors.primary} />
-            <Text style={styles.filterHintText}>
-              当前筛选：{SOURCE_LABELS[sourceFilter] || sourceFilter}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => setSourceFilter('all')}>
-            <Text style={styles.filterClearText}>清除</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
+      </View>
+      <CyberSectionHeading title="模型资产" hint={`共 ${models.length} 个模型`} />
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.primary} />
           <Text style={styles.loadingText}>加载模型中...</Text>
         </View>
       ) : (
         <FlatList
+          style={styles.list}
           data={models}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
@@ -190,8 +174,8 @@ const ModelsScreen = ({ navigation }) => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              colors={[t.primary]}
+              tintColor={t.primary}
             />
           )}
           contentContainerStyle={[
@@ -199,48 +183,26 @@ const ModelsScreen = ({ navigation }) => {
             models.length === 0 && styles.emptyListContainer,
           ]}
           ListEmptyComponent={(
-            <EmptyState
-              icon="cube-outline"
+            <CyberEmptyState
               title={searchQuery ? '图鉴里没有这一款' : '模型图鉴还是空的'}
-              description="上传 STL、OBJ 或 3MF 文件后，小麦会替你整齐收好。"
+              description="上传 STL、OBJ 或 3MF 文件后，小鲤会替你整齐收好。"
               actionLabel={canWrite(user) ? '创建第一个模型' : undefined}
               onAction={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_MODEL) : undefined}
-              style={styles.emptyContainer}
             />
           )}
         />
       )}
 
-      {canWrite(user) ? <TouchableOpacity
-        activeOpacity={0.84}
-        style={styles.fab}
-        onPress={() => navigation.navigate(ROUTES.CREATE_MODEL)}
-      >
-        <Ionicons name="add" size={24} color={colors.onPrimary || colors.surfaceElevated} />
-      </TouchableOpacity> : null}
+      </View>
     </SafeAreaView>
   );
 };
 
-const IconButton = ({ icon, active = false, onPress }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  return (
-    <TouchableOpacity
-      activeOpacity={0.82}
-      style={[styles.headerButton, active && styles.headerButtonActive]}
-      onPress={onPress}
-    >
-      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
-    </TouchableOpacity>
-  );
-};
-
 const ModelCard = ({ model, isGrid, token, onPress }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
   const preferredImage = getPreferredImage(model);
-  const imageSource = buildImageSource(preferredImage, token);
   const sourceLabel = SOURCE_LABELS[model.source] || model.source || '未知';
   const updatedLabel = model.updatedAt
     ? `更新：${new Date(model.updatedAt).toLocaleDateString('zh-CN')}`
@@ -256,13 +218,20 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
     >
       <Card padding="none" style={isGrid ? styles.gridCard : styles.listCard} interactive>
         <View style={isGrid ? styles.gridPreviewBox : styles.listPreviewBox}>
-          {imageSource ? (
-            <Image source={imageSource} style={styles.previewImage} resizeMode="cover" />
-          ) : (
+          <ProtectedImage
+            fileUrl={preferredImage?.fileUrl}
+            token={token}
+            style={styles.previewImage}
+            resizeMode="cover"
+            fallback={(
             <View style={styles.previewFallback}>
-              <Ionicons name="cube-outline" size={isGrid ? 42 : 34} color={colors.textTertiary} />
+              <Ionicons name="cube-outline" size={isGrid ? 42 : 34} color={t.primary} />
             </View>
-          )}
+            )}
+          />
+          <View style={styles.sourceBadge}>
+            <Text style={styles.sourceBadgeText}>{sourceLabel}</Text>
+          </View>
         </View>
 
         <View style={isGrid ? styles.gridModelInfo : styles.listModelInfo}>
@@ -270,7 +239,6 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
             <Text style={styles.modelName} numberOfLines={1}>
               {model.name || '未命名模型'}
             </Text>
-            <Badge text={sourceLabel} color={colors.accent} size="small" />
           </View>
 
           {model.description ? (
@@ -291,112 +259,38 @@ const ModelCard = ({ model, isGrid, token, onPress }) => {
 };
 
 const MetaPill = ({ icon, label }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
   return (
     <View style={styles.metaPill}>
-      <Ionicons name={icon} size={13} color={colors.textSecondary} />
+      <Ionicons name={icon} size={13} color={t.muted} />
       <Text style={styles.metaPillText} numberOfLines={1}>{label}</Text>
     </View>
   );
 };
 
-const createStyles = (COLORS) => StyleSheet.create({
+const createStyles = (t) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: t.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  titleGroup: {
+  page: {
     flex: 1,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
-  eyebrow: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-    marginBottom: 2,
-  },
-  title: {
-    ...TYPOGRAPHY.screenTitle,
-    color: COLORS.text,
-  },
-  headerActions: {
+  modelTools: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 8,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
   },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surfaceElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  headerButtonActive: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primarySoft,
-  },
-  searchContainer: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceElevated,
-  },
-  searchInput: {
-    flex: 1,
-    minHeight: 44,
-    fontSize: 15,
-    color: COLORS.text,
-  },
-  searchClear: {
-    width: 28,
-    height: 28,
-    borderRadius: RADIUS.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surfaceMuted,
-  },
-  filterHint: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.primarySoft,
-  },
-  filterHintLeft: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  filterHintText: {
-    ...TYPOGRAPHY.meta,
-    color: COLORS.primaryDark,
-  },
-  filterClearText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-  },
+  sourceScroll: { flex: 1 },
+  sourceChips: { gap: 7, alignItems: 'center' },
+  list: { flex: 1 },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -405,12 +299,12 @@ const createStyles = (COLORS) => StyleSheet.create({
   },
   loadingText: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.textSecondary,
+    color: t.muted,
   },
   listContainer: {
-    padding: SPACING.lg,
-    paddingTop: 0,
-    paddingBottom: 88,
+    paddingHorizontal: 12,
+    paddingTop: 4,
+    paddingBottom: 22,
   },
   emptyListContainer: {
     flexGrow: 1,
@@ -418,53 +312,58 @@ const createStyles = (COLORS) => StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-  },
-  emptyTitle: {
-    ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
-    marginTop: SPACING.md,
-  },
-  emptyText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-  },
-  uploadButton: {
-    marginTop: SPACING.lg,
+    paddingHorizontal: 20,
   },
   listCardContainer: {
-    marginBottom: SPACING.md,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
   gridCardContainer: {
     flex: 1,
     maxWidth: '50%',
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.xs,
+    marginBottom: 10,
+    paddingHorizontal: 4,
   },
   listCard: {
     minHeight: 132,
     flexDirection: 'row',
     overflow: 'hidden',
     marginHorizontal: 0,
+    marginVertical: 0,
     borderRadius: 20,
+    backgroundColor: t.glass,
+    borderColor: t.border,
+    shadowColor: t.glow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
   },
   gridCard: {
     minHeight: 238,
     overflow: 'hidden',
     marginHorizontal: 0,
+    marginVertical: 0,
     borderRadius: 20,
+    backgroundColor: t.glass,
+    borderColor: t.border,
+    shadowColor: t.glow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
   },
   listPreviewBox: {
     width: 118,
     minHeight: 132,
-    backgroundColor: COLORS.accentSoft || COLORS.surfaceMuted,
+    backgroundColor: t.primarySoft,
+    overflow: 'hidden',
   },
   gridPreviewBox: {
     width: '100%',
     aspectRatio: 1.22,
-    backgroundColor: COLORS.accentSoft || COLORS.surfaceMuted,
+    backgroundColor: t.primarySoft,
+    overflow: 'hidden',
   },
   previewImage: {
     width: '100%',
@@ -475,63 +374,71 @@ const createStyles = (COLORS) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  sourceBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    minHeight: 22,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: t.glass,
+    borderWidth: 1,
+    borderColor: t.border,
+  },
+  sourceBadgeText: {
+    color: t.primary,
+    fontSize: 9,
+    lineHeight: 12,
+    fontWeight: '900',
+  },
   listModelInfo: {
     flex: 1,
-    padding: SPACING.md,
+    padding: 12,
   },
   gridModelInfo: {
-    padding: SPACING.md,
+    padding: 12,
   },
   modelHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: SPACING.sm,
+    gap: 8,
   },
   modelName: {
     flex: 1,
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: t.text,
   },
   description: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.textSecondary,
-    marginTop: SPACING.xs,
+    color: t.muted,
+    marginTop: 4,
   },
   modelMeta: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
+    gap: 6,
+    marginTop: 8,
   },
   metaPill: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
     minHeight: 26,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.pill,
-    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 8,
+    borderRadius: 999,
+    backgroundColor: t.surfaceMuted,
   },
   metaPillText: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: t.muted,
   },
   modelDate: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textTertiary,
-    marginTop: SPACING.md,
-  },
-  fab: {
-    position: 'absolute',
-    right: SPACING.xl,
-    bottom: SPACING.xl,
-    width: 54,
-    height: 54,
-    borderRadius: RADIUS.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.primary,
+    color: t.muted,
+    marginTop: 8,
   },
 });
 

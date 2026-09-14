@@ -45,7 +45,7 @@ const credentials = {
 
 const requireServerKey = (serverKey) => {
   if (!serverKey || !/^[a-f0-9]{64}$/i.test(serverKey)) {
-    throw new Error('A valid serverKey is required for session storage');
+    throw new Error('会话存储缺少有效的服务器标识');
   }
 };
 

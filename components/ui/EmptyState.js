@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SPACING, TYPOGRAPHY } from '../../constants';
 import { useAppTheme } from '../../context/ThemeContext';
 import Button from '../Button';
+import XiaoliBrandMark from '../cyber/XiaoliBrandMark';
 
 const EmptyState = ({
   icon = 'paw-outline',
@@ -18,6 +19,7 @@ const EmptyState = ({
 
   return (
     <View style={[styles.container, style]}>
+      <XiaoliBrandMark size={76} style={styles.mascot} />
       <View style={styles.iconWrap}>
         <Ionicons name={icon} size={34} color={colors.primary} />
       </View>
@@ -38,13 +40,16 @@ const createStyles = (colors) => StyleSheet.create({
     paddingVertical: 36,
   },
   iconWrap: {
-    width: 68,
-    height: 68,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 24,
+    borderRadius: 15,
     backgroundColor: colors.primarySoft,
     marginBottom: SPACING.md,
+  },
+  mascot: {
+    marginBottom: -10,
   },
   title: {
     ...TYPOGRAPHY.sectionTitle,

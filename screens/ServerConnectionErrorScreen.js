@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card } from '../components';
+import { Button, Card, XiaoliBrandMark } from '../components';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { useAppTheme } from '../context/ThemeContext';
@@ -24,6 +24,7 @@ const ServerConnectionErrorScreen = ({ navigation }) => {
   return (
     <View style={styles.container}>
       <Card style={styles.card} padding="large">
+        <XiaoliBrandMark size={72} style={styles.brandMark} />
         <View style={styles.icon}><Ionicons name="cloud-offline-outline" size={28} color={colors.danger} /></View>
         <Text style={styles.title}>无法连接已保存的服务器</Text>
         <Text style={styles.message}>{connectionError?.message || '请检查服务器状态和网络连接。'}</Text>
@@ -39,6 +40,7 @@ const ServerConnectionErrorScreen = ({ navigation }) => {
 const createStyles = (colors) => StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: SPACING.xl, backgroundColor: colors.background },
   card: { width: '100%', maxWidth: 520, alignSelf: 'center', marginHorizontal: 0 },
+  brandMark: { marginBottom: SPACING.md },
   icon: { width: 52, height: 52, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.dangerSoft, marginBottom: SPACING.lg },
   title: { ...TYPOGRAPHY.sectionTitle, color: colors.text },
   message: { ...TYPOGRAPHY.body, color: colors.danger, marginTop: SPACING.sm },

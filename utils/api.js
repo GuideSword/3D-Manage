@@ -11,6 +11,9 @@ import {
   setTokenForSnapshot,
 } from './sessionStorage';
 import { downloadAndShareNative } from './nativeDownload';
+import userErrorCore from './userErrorCore.cjs';
+
+const { localizeTransportError } = userErrorCore;
 
 let unauthorizedHandler = null;
 
@@ -54,7 +57,11 @@ export const apiRequest = async (endpoint, options = {}) => {
   const url = `${captured.apiBaseUrl}${endpoint}`;
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
   const { controller, release } = registerOperation(captured, externalSignal);
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
 
   const defaultOptions = {
     ...requestOptions,
@@ -97,10 +104,11 @@ export const apiRequest = async (endpoint, options = {}) => {
     if (error?.name === 'AbortError' && !isCurrentRuntime(captured)) {
       throw new StaleSessionError();
     }
-    if (!isAuthRequiredError(error) && !error?.staleSession) {
-      console.error('API请求失败:', error);
+    const localizedError = localizeTransportError(error, { timedOut });
+    if (!isAuthRequiredError(localizedError) && !localizedError?.staleSession) {
+      console.error('API请求失败:', localizedError);
     }
-    throw error;
+    throw localizedError;
   } finally {
     clearTimeout(timeout);
     release();
@@ -198,6 +206,11 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
     anchor.remove();
     window.setTimeout(() => window.URL.revokeObjectURL(objectUrl), 1000);
     return true;
+  } catch (error) {
+    if (error?.name === 'AbortError' && !isCurrentRuntime(captured)) {
+      throw new StaleSessionError();
+    }
+    throw localizeTransportError(error);
   } finally {
     release();
   }
@@ -415,7 +428,7 @@ export const modelsAPI = {
 
   uploadFile: async (file, metadata = {}) => {
     if (!metadata.assetId) {
-      throw new Error('assetId is required for model file upload');
+      throw new Error('上传模型文件时缺少 assetId');
     }
     return modelsAPI.uploadModelFile(metadata.assetId, file);
   },

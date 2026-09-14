@@ -8,6 +8,8 @@ const { toCsv, fromCsv } = require('../utils/csv');
 const { createModelPreview } = require('../utils/modelPreview');
 const { requireRoles } = require('../middleware/auth');
 const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
+const { deleteAssetIndexes, queueUserAssetIndex, queueUserModelReconcile } = require('../agent/modelIndex');
+const { publicErrorMessage } = require('../utils/publicError');
 
 const MODEL_EXTENSIONS = new Set(['.stl', '.obj', '.3mf', '.step', '.stp', '.zip']);
 const IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -32,13 +34,13 @@ const createUpload = ({ allowedExtensions, maxFileSizeBytes, errorMessage }) => 
 const modelFileUpload = createUpload({
   allowedExtensions: MODEL_EXTENSIONS,
   maxFileSizeBytes: Math.max(1, Number.parseInt(process.env.MAX_UPLOAD_BYTES || String(500 * 1024 * 1024), 10)),
-  errorMessage: 'Unsupported model format. Use STL, OBJ, 3MF, STEP, STP, or ZIP.',
+  errorMessage: '不支持的模型文件格式，请使用 STL、OBJ、3MF、STEP、STP 或 ZIP',
 });
 
 const imageUpload = createUpload({
   allowedExtensions: IMAGE_EXTENSIONS,
   maxFileSizeBytes: 25 * 1024 * 1024,
-  errorMessage: 'Unsupported image format. Use JPG, PNG, or WEBP.',
+  errorMessage: '不支持的图片格式，请使用 JPG、PNG 或 WEBP',
 });
 
 const asString = (value) => (value == null ? '' : String(value).trim());
@@ -127,13 +129,13 @@ const normalizeModelPayload = (payload = {}, existing = null) => {
 
 const validateModel = (model) => {
   if (!model.name) {
-    return 'Model name is required';
+    return '请输入模型名称';
   }
   if (!model.description) {
-    return 'Model description is required';
+    return '请输入模型描述';
   }
   if (!SOURCE_VALUES.has(model.source)) {
-    return 'Model source must be original, remix, or imported';
+    return '模型来源必须是 original、remix 或 imported';
   }
   return null;
 };
@@ -253,7 +255,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     return res.json({ filename, contentType: 'text/csv', count: models.length, content: csv });
   } catch (error) {
     console.error('Export models failed:', error);
-    return res.status(500).json({ error: 'Export models failed' });
+    return res.status(500).json({ error: '导出模型失败' });
   }
 });
 
@@ -290,10 +292,11 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
       return created;
     });
 
+    queueUserModelReconcile(req.user.id);
     res.status(201).json({ imported: imported.length, items: imported.map(toPublicModel) });
   } catch (error) {
     console.error('Import models failed:', error);
-    res.status(400).json({ error: error.message || 'Import models failed' });
+    res.status(400).json({ error: publicErrorMessage(error, '导入模型失败') });
   }
 });
 
@@ -314,7 +317,7 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
     }, { write: false });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Get models failed' });
+    res.status(500).json({ error: '获取模型列表失败' });
   }
 });
 
@@ -338,22 +341,23 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
       });
       return { status: 201, body: toPublicModel(model) };
     });
+    if (result.status === 201) queueUserAssetIndex({ userId: req.user.id, model: result.body });
     res.status(result.status).json(result.body);
   } catch (error) {
-    res.status(500).json({ error: 'Create model failed' });
+    res.status(500).json({ error: '创建模型失败' });
   }
 });
 
 router.post('/:id/files', requireRoles('owner', 'staff'), limitUploadConcurrency, modelFileUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: '未上传文件' });
     }
 
     const result = await withData(async (data) => {
       const model = findModel(data, req.params.id);
       if (!model) {
-        return { status: 404, body: { error: 'Model not found' } };
+        return { status: 404, body: { error: '模型不存在' } };
       }
 
       model.files = Array.isArray(model.files) ? model.files : [];
@@ -388,7 +392,7 @@ router.post('/:id/files', requireRoles('owner', 'staff'), limitUploadConcurrency
           });
         }
       } catch (error) {
-        previewWarning = error.message || 'Preview generation failed';
+        previewWarning = '模型预览生成失败';
         console.warn('Model preview generation failed:', error);
       }
 
@@ -414,25 +418,25 @@ router.post('/:id/files', requireRoles('owner', 'staff'), limitUploadConcurrency
     return res.status(result.status).json(result.body);
   } catch (error) {
     console.error('Model file upload failed:', error);
-    return res.status(500).json({ error: `Model file upload failed: ${error.message}` });
+    return res.status(500).json({ error: publicErrorMessage(error, '上传模型文件失败') });
   }
 });
 
 router.post('/:id/images', requireRoles('owner', 'staff'), limitUploadConcurrency, imageUpload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: '未上传文件' });
     }
 
     const imageType = asString(req.body.type || 'other');
     if (!IMAGE_TYPES.has(imageType)) {
-      return res.status(400).json({ error: 'Image type must be cover, real_print, or other' });
+      return res.status(400).json({ error: '图片类型必须是 cover、real_print 或 other' });
     }
 
     const result = await withData(async (data) => {
       const model = findModel(data, req.params.id);
       if (!model) {
-        return { status: 404, body: { error: 'Model not found' } };
+        return { status: 404, body: { error: '模型不存在' } };
       }
 
       model.images = Array.isArray(model.images) ? model.images : [];
@@ -461,7 +465,7 @@ router.post('/:id/images', requireRoles('owner', 'staff'), limitUploadConcurrenc
     return res.status(result.status).json(result.body);
   } catch (error) {
     console.error('Model image upload failed:', error);
-    return res.status(500).json({ error: `Model image upload failed: ${error.message}` });
+    return res.status(500).json({ error: publicErrorMessage(error, '上传模型图片失败') });
   }
 });
 
@@ -472,7 +476,7 @@ router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
     )), { write: false });
     res.json({ items: logs, total: logs.length });
   } catch (error) {
-    res.status(500).json({ error: 'Get model audit failed' });
+    res.status(500).json({ error: '获取模型审计记录失败' });
   }
 });
 
@@ -480,11 +484,11 @@ router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) =>
   try {
     const model = await withData((data) => findModel(data, req.params.id), { write: false });
     if (!model) {
-      return res.status(404).json({ error: 'Model not found' });
+      return res.status(404).json({ error: '模型不存在' });
     }
     return res.json(toPublicModel(model));
   } catch (error) {
-    return res.status(500).json({ error: 'Get model failed' });
+    return res.status(500).json({ error: '获取模型失败' });
   }
 });
 
@@ -493,7 +497,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     const result = await withData((data) => {
       const modelIndex = data.models.findIndex((item) => item.id === String(req.params.id));
       if (modelIndex === -1) {
-        return { status: 404, body: { error: 'Model not found' } };
+        return { status: 404, body: { error: '模型不存在' } };
       }
 
       const before = data.models[modelIndex];
@@ -514,9 +518,10 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       return { status: 200, body: toPublicModel(model) };
     });
 
+    if (result.status === 200) queueUserAssetIndex({ userId: req.user.id, model: result.body });
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ error: 'Update model failed' });
+    return res.status(500).json({ error: '更新模型失败' });
   }
 });
 
@@ -542,11 +547,12 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Model not found' });
+      return res.status(404).json({ error: '模型不存在' });
     }
+    deleteAssetIndexes(deleted.id);
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: 'Delete model failed' });
+    return res.status(500).json({ error: '删除模型失败' });
   }
 });
 

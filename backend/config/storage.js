@@ -23,7 +23,7 @@ const safeStoragePath = (relativePath) => {
   const resolvedPath = path.resolve(path.join(UPLOAD_DIR, relativePath));
   const relative = path.relative(resolvedDir, resolvedPath);
   if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-    throw new Error('Access denied: Invalid file path');
+    throw new Error('无权访问：文件路径无效');
   }
   return resolvedPath;
 };
@@ -91,6 +91,7 @@ const initStorage = async () => {
   await ensureUploadDir(path.join(UPLOAD_DIR, 'orders'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'stock'));
   await ensureUploadDir(path.join(UPLOAD_DIR, 'previews'));
+  await ensureUploadDir(path.join(UPLOAD_DIR, 'agent'));
   console.log('File storage initialized');
 };
 

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Image,
   Platform,
   RefreshControl,
   SafeAreaView,
@@ -15,10 +14,10 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
-import { Badge, Button, Card } from '../components';
+import { Badge, Button, Card, ProtectedImage } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { authAPI, buildProtectedFileSource, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
 import { canWrite } from '../utils/permissions';
@@ -44,13 +43,6 @@ const IMAGE_TYPE_OPTIONS = [
 
 const MODEL_EXTENSIONS = ['stl', 'obj', '3mf', 'step', 'stp', 'zip'];
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
-
-const buildAssetSource = (fileUrl, token) => {
-  if (!fileUrl) {
-    return null;
-  }
-  return buildProtectedFileSource(fileUrl, token);
-};
 
 const ModelDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
@@ -276,23 +268,24 @@ const ModelDetailScreen = ({ route, navigation }) => {
           <SectionHeader title="图片" count={images.length} />
           {images.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
-              {images.map((image) => {
-                const source = buildAssetSource(image.fileUrl, authToken);
-                return (
+              {images.map((image) => (
                   <View key={image.id} style={styles.imageCard}>
-                    {source ? (
-                      <Image source={source} style={styles.galleryImage} resizeMode="cover" />
-                    ) : (
+                    <ProtectedImage
+                      fileUrl={image.fileUrl}
+                      token={authToken}
+                      style={styles.galleryImage}
+                      resizeMode="cover"
+                      fallback={(
                       <View style={styles.galleryFallback}>
                         <Ionicons name="image-outline" size={36} color={colors.textTertiary} />
                       </View>
-                    )}
+                      )}
+                    />
                     <Text style={styles.imageLabel} numberOfLines={1}>
                       {IMAGE_TYPE_LABELS[image.type] || image.type || '图片'}
                     </Text>
                   </View>
-                );
-              })}
+              ))}
             </ScrollView>
           ) : (
             <EmptySection text="暂无图片" />
@@ -458,6 +451,9 @@ const createStyles = (COLORS) => StyleSheet.create({
     flex: 1,
   },
   content: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl,
   },

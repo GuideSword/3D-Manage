@@ -55,7 +55,7 @@ export const loadServerConfig = async () => {
 export const saveServerConfig = async (server) => {
   const safe = sanitizeServer(server);
   if (!safe.serverId || !safe.apiBaseUrl) {
-    throw new Error('Verified server metadata is required');
+    throw new Error('缺少已验证的服务器信息');
   }
   safe.apiBaseUrl = normalizeServerUrl(safe.apiBaseUrl);
   await storage.setItem(SERVER_CONFIG_KEY, JSON.stringify(safe));

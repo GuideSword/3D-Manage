@@ -97,7 +97,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     return res.json({ filename, contentType: 'text/csv', count: materials.length, content: csv });
   } catch (error) {
     console.error('Export materials failed:', error);
-    return res.status(500).json({ error: 'Export materials failed' });
+    return res.status(500).json({ error: '导出耗材失败' });
   }
 });
 
@@ -137,7 +137,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
     res.status(201).json({ imported: imported.length, items: imported });
   } catch (error) {
     console.error('Import materials failed:', error);
-    res.status(400).json({ error: 'Import materials failed' });
+    res.status(400).json({ error: '导入耗材失败' });
   }
 });
 
@@ -159,7 +159,7 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Get materials failed' });
+    res.status(500).json({ error: '获取耗材列表失败' });
   }
 });
 
@@ -180,7 +180,7 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
     });
     res.status(201).json(created);
   } catch (error) {
-    res.status(500).json({ error: 'Create material failed' });
+    res.status(500).json({ error: '创建耗材失败' });
   }
 });
 
@@ -191,7 +191,7 @@ router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
     )), { write: false });
     res.json({ items: logs, total: logs.length });
   } catch (error) {
-    res.status(500).json({ error: 'Get material audit failed' });
+    res.status(500).json({ error: '获取耗材审计记录失败' });
   }
 });
 
@@ -199,11 +199,11 @@ router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) =>
   try {
     const material = await withData((data) => data.materials.find((item) => item.id === String(req.params.id)), { write: false });
     if (!material) {
-      return res.status(404).json({ error: 'Material not found' });
+      return res.status(404).json({ error: '耗材不存在' });
     }
     return res.json(material);
   } catch (error) {
-    return res.status(500).json({ error: 'Get material failed' });
+    return res.status(500).json({ error: '获取耗材失败' });
   }
 });
 
@@ -229,11 +229,11 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!updated) {
-      return res.status(404).json({ error: 'Material not found' });
+      return res.status(404).json({ error: '耗材不存在' });
     }
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: 'Update material failed' });
+    return res.status(500).json({ error: '更新耗材失败' });
   }
 });
 
@@ -260,11 +260,11 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Material not found' });
+      return res.status(404).json({ error: '耗材不存在' });
     }
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: 'Delete material failed' });
+    return res.status(500).json({ error: '删除耗材失败' });
   }
 });
 

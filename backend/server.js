@@ -11,13 +11,19 @@ assertRuntimeConfig();
 const { initStorage } = require('./config/storage');
 const { initializeStore, closeStore } = require('./utils/store');
 const { getDb, closeDb } = require('./db/agent');
+const { retryPendingAttachmentCleanup } = require('./agent/attachmentStore');
+const { publicErrorMessage } = require('./utils/publicError');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const readiness = Promise.all([
   initializeStore(),
   initStorage(),
-  Promise.resolve().then(() => getDb().prepare('SELECT 1').get()),
+  Promise.resolve().then(async () => {
+    getDb().prepare('SELECT 1').get();
+    const cleanup = await retryPendingAttachmentCleanup({ limit: 25 });
+    if (cleanup.failed) console.warn(`[agent-attachments] ${cleanup.failed} cleanup item(s) still pending`);
+  }),
 ]);
 
 const DEFAULT_ALLOWED_ORIGINS = [
@@ -48,7 +54,7 @@ app.use(cors({
       return;
     }
 
-    callback(new Error(`CORS origin not allowed: ${origin}`));
+    callback(new Error(`不允许该跨域来源：${origin}`));
   },
   credentials: true,
 }));
@@ -95,12 +101,14 @@ app.get('/health', (req, res) => {
 });
 
 app.use((req, res) => {
-  res.status(404).json({ error: 'Route not found' });
+  res.status(404).json({ error: '请求的接口不存在' });
 });
 
 app.use((err, req, res, next) => {
   console.error(err.stack || err);
-  res.status(err.status || 500).json({ error: err.message || 'Something went wrong' });
+  res.status(err.status || 500).json({
+    error: publicErrorMessage(err, '服务器内部错误'),
+  });
 });
 
 let httpServer;

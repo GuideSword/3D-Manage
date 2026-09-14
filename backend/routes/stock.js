@@ -119,7 +119,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     return res.json({ filename, contentType: 'text/csv', count: items.length, content: csv });
   } catch (error) {
     console.error('Export stock failed:', error);
-    return res.status(500).json({ error: 'Export stock failed' });
+    return res.status(500).json({ error: '导出库存失败' });
   }
 });
 
@@ -168,7 +168,7 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
     res.status(201).json({ imported: imported.length, items: imported });
   } catch (error) {
     console.error('Import stock lots failed:', error);
-    res.status(400).json({ error: 'Import stock lots failed' });
+    res.status(400).json({ error: '导入库存批次失败' });
   }
 });
 
@@ -189,7 +189,7 @@ router.get('/lots', requireRoles('owner', 'staff', 'viewer'), async (req, res) =
     }, { write: false });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Get stock lots failed' });
+    res.status(500).json({ error: '获取库存批次失败' });
   }
 });
 
@@ -198,7 +198,7 @@ router.post('/lots', requireRoles('owner', 'staff'), async (req, res) => {
     const created = await withData((data) => {
       const material = data.materials.find((item) => item.id === String(req.body.materialId || req.body.material_id));
       if (!material) {
-        return { status: 404, body: { error: 'Material not found' } };
+        return { status: 404, body: { error: '耗材不存在' } };
       }
 
       const lot = normalizeLotPayload(req.body);
@@ -215,7 +215,7 @@ router.post('/lots', requireRoles('owner', 'staff'), async (req, res) => {
     });
     res.status(created.status).json(created.body);
   } catch (error) {
-    res.status(500).json({ error: 'Create stock lot failed' });
+    res.status(500).json({ error: '创建库存批次失败' });
   }
 });
 
@@ -236,7 +236,7 @@ router.get('/inventory/txns', requireRoles('owner', 'staff', 'viewer'), async (r
     }, { write: false });
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: 'Get inventory transactions failed' });
+    res.status(500).json({ error: '获取库存流水失败' });
   }
 });
 
@@ -245,16 +245,16 @@ router.post('/inventory/txns', requireRoles('owner', 'staff'), async (req, res) 
     const result = await withData((data) => {
       const lot = data.stockLots.find((item) => item.id === String(req.body.lotId || req.body.lot_id));
       if (!lot) {
-        return { status: 404, body: { error: 'Stock lot not found' } };
+        return { status: 404, body: { error: '库存批次不存在' } };
       }
 
       const type = req.body.type;
       const qty = toNumber(req.body.qty ?? req.body.qty_g, 0);
       if (!['in', 'out', 'adjust', 'scrap'].includes(type)) {
-        return { status: 400, body: { error: 'Invalid inventory transaction type' } };
+        return { status: 400, body: { error: '库存操作类型无效' } };
       }
       if (qty < 0 || (type !== 'adjust' && qty === 0)) {
-        return { status: 400, body: { error: 'Invalid quantity' } };
+        return { status: 400, body: { error: '数量无效' } };
       }
 
       const before = { qty: lot.qty, state: lot.state };
@@ -262,14 +262,14 @@ router.post('/inventory/txns', requireRoles('owner', 'staff'), async (req, res) 
         lot.qty = toNumber(lot.qty, 0) + qty;
       } else if (type === 'out') {
         if (toNumber(lot.qty, 0) < qty) {
-          return { status: 400, body: { error: 'Insufficient stock' } };
+          return { status: 400, body: { error: '库存不足' } };
         }
         lot.qty = toNumber(lot.qty, 0) - qty;
       } else if (type === 'adjust') {
         lot.qty = qty;
       } else if (type === 'scrap') {
         if (toNumber(lot.qty, 0) < qty) {
-          return { status: 400, body: { error: 'Insufficient stock' } };
+          return { status: 400, body: { error: '库存不足' } };
         }
         lot.qty = toNumber(lot.qty, 0) - qty;
         if (lot.qty === 0) {
@@ -302,7 +302,7 @@ router.post('/inventory/txns', requireRoles('owner', 'staff'), async (req, res) 
     });
     res.status(result.status).json(result.body);
   } catch (error) {
-    res.status(500).json({ error: 'Inventory transaction failed' });
+    res.status(500).json({ error: '库存操作失败' });
   }
 });
 
@@ -313,7 +313,7 @@ router.get('/lots/:id/audit', requireRoles('owner'), async (req, res) => {
     )), { write: false });
     res.json({ items: logs, total: logs.length });
   } catch (error) {
-    res.status(500).json({ error: 'Get stock lot audit failed' });
+    res.status(500).json({ error: '获取库存批次审计记录失败' });
   }
 });
 
@@ -321,11 +321,11 @@ router.get('/lots/:id', requireRoles('owner', 'staff', 'viewer'), async (req, re
   try {
     const lot = await withData((data) => data.stockLots.find((item) => item.id === String(req.params.id)), { write: false });
     if (!lot) {
-      return res.status(404).json({ error: 'Stock lot not found' });
+      return res.status(404).json({ error: '库存批次不存在' });
     }
     return res.json(lot);
   } catch (error) {
-    return res.status(500).json({ error: 'Get stock lot failed' });
+    return res.status(500).json({ error: '获取库存批次失败' });
   }
 });
 
@@ -350,11 +350,11 @@ router.patch('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!updated) {
-      return res.status(404).json({ error: 'Stock lot not found' });
+      return res.status(404).json({ error: '库存批次不存在' });
     }
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: 'Update stock lot failed' });
+    return res.status(500).json({ error: '更新库存批次失败' });
   }
 });
 
@@ -378,11 +378,11 @@ router.delete('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Stock lot not found' });
+      return res.status(404).json({ error: '库存批次不存在' });
     }
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: 'Delete stock lot failed' });
+    return res.status(500).json({ error: '删除库存批次失败' });
   }
 });
 

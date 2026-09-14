@@ -291,6 +291,9 @@ const createStyles = (COLORS) => StyleSheet.create({
     flex: 1,
   },
   content: {
+    width: '100%',
+    maxWidth: 720,
+    alignSelf: 'center',
     padding: SPACING.lg,
     paddingBottom: SPACING.xxl,
   },

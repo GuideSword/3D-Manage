@@ -6,8 +6,8 @@ import {
   Dimensions,
   TouchableOpacity,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { useAppTheme } from '../../context/ThemeContext';
+import XiaoliBrandMark from '../cyber/XiaoliBrandMark';
 
 // Draggable FAB.
 //
@@ -94,11 +94,13 @@ export default function DraggableFab({ onPress }) {
     >
       <TouchableOpacity
         onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel="打开小鲤 AI 助手"
         activeOpacity={0.85}
         style={styles.touchable}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       >
-        <Ionicons name="paw" size={24} color={colors.onPrimary} />
+        <XiaoliBrandMark size={50} showBadge />
       </TouchableOpacity>
     </Animated.View>
   );
@@ -110,9 +112,9 @@ const createStyles = (colors, shadows) => StyleSheet.create({
     width: FAB_SIZE,
     height: FAB_SIZE,
     borderRadius: FAB_SIZE / 2,
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.surfaceElevated,
+    backgroundColor: colors.primarySoft,
+    borderWidth: 1,
+    borderColor: colors.borderStrong,
     ...shadows.floating,
   },
   touchable: {

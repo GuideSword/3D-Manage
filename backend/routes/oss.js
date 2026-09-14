@@ -12,6 +12,7 @@ const { z } = require('zod');
 const { parseRequest } = require('../utils/validation');
 const { randomUUID } = require('node:crypto');
 const { withData, appendAudit, now } = require('../utils/store');
+const { publicErrorMessage } = require('../utils/publicError');
 
 const sensitiveFields = ['config', 'accessKeyId', 'accessKeySecret', 'secretAccessKey'];
 
@@ -20,7 +21,7 @@ const rejectSensitiveConfig = (req, res) => {
   if (supplied.length === 0) return false;
   res.status(400).json({
     code: 'SENSITIVE_CONFIG_NOT_ACCEPTED',
-    error: 'Object-storage credentials are configured only on the server',
+    error: '对象存储凭证只能在服务器端配置',
   });
   return true;
 };
@@ -77,7 +78,7 @@ router.post('/test-connection', requireRoles('owner'), async (req, res) => {
     });
     res.json(result);
   } catch (error) {
-    res.status(400).json({ error: error.message });
+    res.status(400).json({ error: publicErrorMessage(error, '对象存储连接测试失败') });
   }
 });
 
@@ -121,12 +122,12 @@ router.post('/upload-url', requireRoles('owner', 'staff'), async (req, res) => {
       return upload;
     });
     if (!pending) {
-      return res.status(404).json({ code: 'UPLOAD_ENTITY_NOT_FOUND', error: 'Upload target not found' });
+      return res.status(404).json({ code: 'UPLOAD_ENTITY_NOT_FOUND', error: '上传目标不存在' });
     }
     const result = await generateUploadUrl(pending.objectKey, input.expire);
     return res.json({ ...result, uploadId: pending.id });
   } catch (error) {
-    return res.status(400).json({ code: error.code || 'OSS_UPLOAD_SIGN_FAILED', error: error.message });
+    return res.status(400).json({ code: error.code || 'OSS_UPLOAD_SIGN_FAILED', error: publicErrorMessage(error, '生成上传地址失败') });
   }
 });
 
@@ -137,12 +138,12 @@ router.post('/download-url', requireRoles('owner', 'staff', 'viewer'), async (re
   try {
     const registered = await withData((data) => isRegisteredObject(data, input.objectKey), { write: false });
     if (!registered) {
-      return res.status(404).json({ code: 'OBJECT_NOT_REGISTERED', error: 'Object is not registered' });
+      return res.status(404).json({ code: 'OBJECT_NOT_REGISTERED', error: '对象尚未登记' });
     }
     const result = await generateDownloadUrl(input.objectKey, input.expire);
     return res.json(result);
   } catch (error) {
-    return res.status(400).json({ code: error.code || 'OSS_DOWNLOAD_SIGN_FAILED', error: error.message });
+    return res.status(400).json({ code: error.code || 'OSS_DOWNLOAD_SIGN_FAILED', error: publicErrorMessage(error, '生成下载地址失败') });
   }
 });
 
@@ -153,10 +154,10 @@ router.post('/complete-upload', requireRoles('owner', 'staff'), async (req, res)
   try {
     const pending = await withData((data) => data.objectUploads.find((item) => item.id === input.uploadId), { write: false });
     if (!pending || pending.status !== 'pending') {
-      return res.status(404).json({ code: 'PENDING_UPLOAD_NOT_FOUND', error: 'Pending upload not found' });
+      return res.status(404).json({ code: 'PENDING_UPLOAD_NOT_FOUND', error: '待完成的上传记录不存在' });
     }
     if (pending.createdBy !== String(req.user.id) && req.user.role !== 'owner') {
-      return res.status(403).json({ code: 'UPLOAD_OWNER_MISMATCH', error: 'Upload belongs to another user' });
+      return res.status(403).json({ code: 'UPLOAD_OWNER_MISMATCH', error: '该上传记录属于其他用户' });
     }
     const result = await completeUpload(pending.objectKey, {
       skipNetwork: process.env.NODE_ENV === 'test' && process.env.OSS_TEST_SKIP_NETWORK === 'true',
@@ -164,7 +165,7 @@ router.post('/complete-upload', requireRoles('owner', 'staff'), async (req, res)
       contentType: pending.contentType,
     });
     if (result.size !== pending.size || result.contentType !== pending.contentType) {
-      return res.status(409).json({ code: 'UPLOAD_METADATA_MISMATCH', error: 'Uploaded object metadata does not match the pending upload' });
+      return res.status(409).json({ code: 'UPLOAD_METADATA_MISMATCH', error: '已上传对象信息与待上传记录不一致' });
     }
     const completed = await withData((data) => {
       const upload = data.objectUploads.find((item) => item.id === input.uploadId);
@@ -182,11 +183,11 @@ router.post('/complete-upload', requireRoles('owner', 'staff'), async (req, res)
       return upload;
     });
     if (!completed) {
-      return res.status(409).json({ code: 'UPLOAD_ALREADY_COMPLETED', error: 'Upload was already completed' });
+      return res.status(409).json({ code: 'UPLOAD_ALREADY_COMPLETED', error: '该上传已完成' });
     }
     return res.json({ ...result, uploadId: completed.id });
   } catch (error) {
-    return res.status(400).json({ code: error.code || 'OSS_UPLOAD_COMPLETE_FAILED', error: error.message });
+    return res.status(400).json({ code: error.code || 'OSS_UPLOAD_COMPLETE_FAILED', error: publicErrorMessage(error, '确认上传失败') });
   }
 });
 
@@ -197,7 +198,7 @@ router.delete('/object', requireRoles('owner'), async (req, res) => {
   try {
     const registered = await withData((data) => isRegisteredObject(data, input.objectKey), { write: false });
     if (!registered) {
-      return res.status(404).json({ code: 'OBJECT_NOT_REGISTERED', error: 'Object is not registered' });
+      return res.status(404).json({ code: 'OBJECT_NOT_REGISTERED', error: '对象尚未登记' });
     }
     const result = await deleteObject(input.objectKey);
     await withData((data) => {
@@ -212,7 +213,7 @@ router.delete('/object', requireRoles('owner'), async (req, res) => {
     });
     return res.json(result);
   } catch (error) {
-    return res.status(400).json({ code: error.code || 'OSS_DELETE_FAILED', error: error.message });
+    return res.status(400).json({ code: error.code || 'OSS_DELETE_FAILED', error: publicErrorMessage(error, '删除对象失败') });
   }
 });
 

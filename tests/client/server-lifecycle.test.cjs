@@ -209,3 +209,56 @@ test('snapshot token lookup discards a token if the server changes during the re
   assert.equal(token, null);
   assert.equal(currentChecks, 2);
 });
+
+test('sign in invalidates old work and clears cached files before authenticating', () => {
+  const authContext = fs.readFileSync(path.resolve(__dirname, '..', '..', 'context/AuthContext.js'), 'utf8');
+  const match = authContext.match(/const signIn = useCallback\(async \(credentials\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/);
+  assert.ok(match, 'AuthContext signIn callback should be identifiable');
+  const body = match[1];
+  const invalidateIndex = body.indexOf('beginSessionInvalidation()');
+  const clearIndex = body.indexOf('clearTrackedFiles(serverKey)');
+  const loginIndex = body.indexOf('authAPI.login(credentials)');
+
+  assert.ok(invalidateIndex >= 0, 'signIn should invalidate outstanding session work');
+  assert.ok(clearIndex > invalidateIndex, 'signIn should clear tracked files after invalidation');
+  assert.ok(loginIndex > clearIndex, 'signIn should authenticate only after cache cleanup');
+});
+
+test('server replacement and removal clear the associated session cache', () => {
+  const context = fs.readFileSync(path.resolve(__dirname, '..', '..', 'context/ServerConfigContext.js'), 'utf8');
+  const replaceBody = context.match(/const replaceServer = useCallback\(async \(input\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/)?.[1];
+  const clearBody = context.match(/const clearServer = useCallback\(async \(\) => \{([\s\S]*?)\n  \}, \[[^\]]*\]\);/)?.[1];
+
+  assert.ok(replaceBody, 'replaceServer callback should be identifiable');
+  assert.match(replaceBody, /clearSessionSafely\(current\.serverKey\)/);
+  assert.ok(clearBody, 'clearServer callback should be identifiable');
+  assert.match(clearBody, /clearSessionSafely\(current\.serverKey\)/);
+});
+
+test('safe session cleanup deletes tracked app-cache files', async () => {
+  const serverKey = 'd'.repeat(64);
+  const events = [];
+  const storage = {
+    getItem: async () => null,
+    setItem: async (key) => { events.push(`set:${key}`); },
+    deleteItem: async (key) => { events.push(`delete:${key}`); },
+  };
+  const sessionStorage = evaluateEsModule('utils/sessionStorage.js', {
+    'react-native': { Platform: { OS: 'android' } },
+    'expo-secure-store': {
+      deleteItemAsync: async (key) => { events.push(`credential:${key}`); },
+    },
+    './storage': storage,
+    './serverRuntime': { isCurrentRuntime: () => true },
+    './sessionFiles': {
+      clearTrackedFiles: async (key) => { events.push(`cache:${key}`); },
+      trackPickedAsset: async () => {},
+      trackSessionFile: async () => {},
+    },
+  });
+
+  await sessionStorage.clearSessionSafely(serverKey);
+
+  assert.ok(events.includes(`cache:${serverKey}`));
+  assert.ok(events.indexOf(`cache:${serverKey}`) < events.indexOf('delete:sessionCleanupPending.v1'));
+});

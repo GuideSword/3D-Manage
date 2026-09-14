@@ -13,15 +13,24 @@ const ordersTools = require('./orders');
 const modelsTools = require('./models');
 const inventoryTools = require('./inventory');
 const extractTools = require('./extract');
+const memoryTools = require('./memory');
 
 const tools = [
   ...modelsTools, // search_models_by_keyword, search_models_semantic
   ...ordersTools, // list_orders, get_order_detail
   ...inventoryTools, // get_inventory_summary
   ...extractTools, // extract_order_draft
+  ...memoryTools,
 ];
 
 const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
+
+function getToolsForContext({ embeddingReady = false, hasAttachments = false } = {}) {
+  return tools.filter((tool) => (
+    (embeddingReady || tool.name !== 'search_models_semantic')
+    && (hasAttachments || tool.name !== 'recall_conversation_image')
+  ));
+}
 
 /**
  * Dispatch a tool call by name.
@@ -34,10 +43,10 @@ const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
 async function dispatchTool(name, args, ctx) {
   const tool = toolsByName[name];
   if (!tool) {
-    throw new Error(`Unknown tool: ${name}`);
+    throw new Error(`未知工具：${name}`);
   }
   if (!Array.isArray(tool.allowedRoles) || !tool.allowedRoles.includes(ctx.role)) {
-    const error = new Error(`Tool ${name} is not allowed for this role`);
+    const error = new Error(`工具 ${name} 不允许当前角色使用`);
     error.code = 'TOOL_ROLE_FORBIDDEN';
     throw error;
   }
@@ -45,4 +54,4 @@ async function dispatchTool(name, args, ctx) {
   return tool.handler(validated, ctx);
 }
 
-module.exports = { tools, toolsByName, dispatchTool };
+module.exports = { tools, toolsByName, dispatchTool, getToolsForContext };

@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -10,7 +11,7 @@ import {
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Button, Card, ThemeModePicker } from '../components';
+import { Button, Card, CyberPageHeader, ThemeModePicker } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
@@ -53,15 +54,19 @@ const SettingsScreen = () => {
   );
 
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>SETTINGS</Text>
-        <Text style={styles.title}>设置</Text>
-      </View>
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <View style={styles.page}>
+      <CyberPageHeader
+        eyebrow="SETTINGS"
+        title="设置中心"
+        subtitle="把工作台调成最顺手的样子。"
+        onAssistant={() => navigation.navigate(ROUTES.AGENT)}
+      />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+      >
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>账号与权限</Text>
@@ -103,7 +108,7 @@ const SettingsScreen = () => {
             </View>
             <View style={styles.rowTextGroup}>
               <Text style={styles.rowValue}>界面主题</Text>
-              <Text style={styles.rowHint}>日间奶油暖光，夜间可可月光</Text>
+              <Text style={styles.rowHint}>日间薰衣草云光，夜间深靛星光</Text>
             </View>
           </View>
           <ThemeModePicker value={themeMode} onChange={setThemeMode} />
@@ -154,7 +159,9 @@ const SettingsScreen = () => {
           <Button title="重试清理" onPress={() => retrySessionCleanup().catch(() => undefined)} fullWidth />
         </View>
       ) : null}
-    </ScrollView>
+      </ScrollView>
+      </View>
+    </SafeAreaView>
   );
 };
 
@@ -189,8 +196,18 @@ const createStyles = (colors) => StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
+  },
+  scroll: {
+    flex: 1,
+  },
   content: {
     padding: SPACING.lg,
+    paddingTop: SPACING.xs,
     paddingBottom: SPACING.xxl,
   },
   header: {

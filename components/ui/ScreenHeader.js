@@ -25,7 +25,7 @@ const createStyles = (colors) => StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     gap: SPACING.md,
-    marginBottom: SPACING.xl,
+    marginBottom: SPACING.lg,
   },
   copy: {
     flex: 1,
@@ -33,14 +33,16 @@ const createStyles = (colors) => StyleSheet.create({
   },
   eyebrow: {
     ...TYPOGRAPHY.caption,
-    color: colors.primaryDark,
+    color: colors.primary,
     fontWeight: '800',
-    letterSpacing: 0.7,
+    letterSpacing: 1.05,
     marginBottom: 3,
   },
   title: {
     ...TYPOGRAPHY.screenTitle,
     color: colors.text,
+    fontWeight: '900',
+    letterSpacing: -0.45,
   },
   subtitle: {
     ...TYPOGRAPHY.meta,

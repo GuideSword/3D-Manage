@@ -16,8 +16,8 @@ const {
 const router = express.Router();
 
 const passwordSchema = z.string()
-  .min(12, 'Password must be at least 12 characters')
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes');
+  .min(12, '密码至少需要 12 个字符')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, '密码不能超过 72 个 UTF-8 字节');
 
 const bootstrapSchema = z.object({
   organizationName: z.string().trim().min(1).max(120),
@@ -63,7 +63,7 @@ router.get('/info', async (req, res) => {
   } catch (error) {
     return res.status(503).json({
       code: 'STORAGE_UNAVAILABLE',
-      error: 'Server storage is unavailable',
+      error: '服务器存储暂不可用',
     });
   }
 });
@@ -78,7 +78,7 @@ router.post('/bootstrap', async (req, res) => {
     bootstrapLimiter.recordFailure(limiterKey);
     return res.status(403).json({
       code: 'BOOTSTRAP_TOKEN_INVALID',
-      error: 'Bootstrap token is invalid',
+      error: '初始化令牌无效',
     });
   }
 
@@ -92,7 +92,7 @@ router.post('/bootstrap', async (req, res) => {
           status: 409,
           body: {
             code: 'SYSTEM_ALREADY_INITIALIZED',
-            error: 'System is already initialized',
+            error: '系统已完成初始化',
           },
         };
       }
@@ -137,7 +137,7 @@ router.post('/bootstrap', async (req, res) => {
     console.error('System bootstrap failed:', error.message);
     return res.status(500).json({
       code: 'BOOTSTRAP_FAILED',
-      error: 'System bootstrap failed',
+      error: '系统初始化失败',
     });
   }
 });
@@ -161,7 +161,7 @@ router.patch('/organization', requireRoles('owner'), async (req, res) => {
     });
     return res.json(organization);
   } catch (error) {
-    return res.status(500).json({ code: 'ORGANIZATION_UPDATE_FAILED', error: 'Update organization failed' });
+    return res.status(500).json({ code: 'ORGANIZATION_UPDATE_FAILED', error: '更新组织信息失败' });
   }
 });
 

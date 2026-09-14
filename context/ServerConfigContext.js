@@ -22,6 +22,9 @@ import {
   beginSessionInvalidation,
   setServerRuntime,
 } from '../utils/serverRuntime';
+import userErrorCore from '../utils/userErrorCore.cjs';
+
+const { localizeTransportError } = userErrorCore;
 
 const ServerConfigContext = createContext(null);
 
@@ -45,7 +48,8 @@ export const ServerConfigProvider = ({ children }) => {
     try {
       await clearSessionSafely(saved.serverKey);
     } catch (error) {
-      setConnectionError({ code: 'SESSION_CLEANUP_FAILED', message: error.message, candidate: probed });
+      const localizedError = localizeTransportError(error, { fallback: '本地会话清理失败，请稍后重试' });
+      setConnectionError({ code: 'SESSION_CLEANUP_FAILED', message: localizedError.message, candidate: probed });
       return true;
     }
     setConnectionError({
@@ -76,10 +80,12 @@ export const ServerConfigProvider = ({ children }) => {
           const persisted = await saveServerConfig(refreshed);
           if (active) publishServer(persisted);
         } catch (error) {
-          if (active) setConnectionError({ code: error.code || 'SERVER_UNREACHABLE', message: error.message });
+          const localizedError = localizeTransportError(error, { fallback: '无法连接服务器' });
+          if (active) setConnectionError({ code: error.code || 'SERVER_UNREACHABLE', message: localizedError.message });
         }
       } catch (error) {
-        if (active) setConnectionError({ code: 'CLIENT_STORAGE_FAILED', message: error.message });
+        const localizedError = localizeTransportError(error, { fallback: '本地数据读写失败，请稍后重试' });
+        if (active) setConnectionError({ code: 'CLIENT_STORAGE_FAILED', message: localizedError.message });
       } finally {
         if (active) setInitializing(false);
       }
@@ -107,8 +113,9 @@ export const ServerConfigProvider = ({ children }) => {
       setConnectionError(null);
       return persisted;
     } catch (error) {
-      setConnectionError({ code: error.code || 'SERVER_UNREACHABLE', message: error.message });
-      throw error;
+      const localizedError = localizeTransportError(error, { fallback: '无法连接服务器' });
+      setConnectionError({ code: error.code || 'SERVER_UNREACHABLE', message: localizedError.message });
+      throw localizedError;
     }
   }, [detectIdentityChange, publishServer]);
 
@@ -132,13 +139,14 @@ export const ServerConfigProvider = ({ children }) => {
         setConnectionError(null);
         return persisted;
       } catch (error) {
+        const localizedError = localizeTransportError(error, { fallback: '本地会话清理失败，请稍后重试' });
         publishServer(current);
         setConnectionError({
           code: 'SESSION_CLEANUP_FAILED',
-          message: `服务器更换未完成：${error.message}`,
+          message: `服务器更换未完成：${localizedError.message}`,
           candidate,
         });
-        throw error;
+        throw localizedError;
       }
     } finally {
       replacingRef.current = false;
@@ -162,13 +170,14 @@ export const ServerConfigProvider = ({ children }) => {
       setConnectionError(null);
       return persisted;
     } catch (error) {
+      const localizedError = localizeTransportError(error, { fallback: '本地会话清理失败，请稍后重试' });
       setConnectionError((previous) => ({
         ...previous,
         code: 'SESSION_CLEANUP_FAILED',
-        message: `服务器更换未完成：${error.message}`,
+        message: `服务器更换未完成：${localizedError.message}`,
         candidate,
       }));
-      throw error;
+      throw localizedError;
     } finally {
       replacingRef.current = false;
       setIsReplacing(false);
@@ -176,12 +185,16 @@ export const ServerConfigProvider = ({ children }) => {
   }, [connectionError, publishServer, refreshServer]);
 
   const clearServer = useCallback(async () => {
-    const current = serverRef.current;
-    beginSessionInvalidation();
-    if (current?.serverKey) await clearSessionSafely(current.serverKey);
-    await clearServerConfig();
-    publishServer(null);
-    setConnectionError(null);
+    try {
+      const current = serverRef.current;
+      beginSessionInvalidation();
+      if (current?.serverKey) await clearSessionSafely(current.serverKey);
+      await clearServerConfig();
+      publishServer(null);
+      setConnectionError(null);
+    } catch (error) {
+      throw localizeTransportError(error, { fallback: '清除服务器配置失败，请稍后重试' });
+    }
   }, [publishServer]);
 
   const value = useMemo(() => ({

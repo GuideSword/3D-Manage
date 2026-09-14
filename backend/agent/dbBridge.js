@@ -28,20 +28,23 @@ async function searchModelsByKeyword(keyword, limit = 20) {
   }));
 }
 
-async function semanticSearchModels(queryVector, topK = 5) {
-  const all = sqliteDb.getAllModelEmbeddings();
-  if (all.length === 0) return [];
+async function semanticSearchModels(userId, configFingerprint, queryVector, topK = 5) {
+  const all = sqliteDb.getAllModelEmbeddings(userId, configFingerprint);
+  const indexState = sqliteDb.getModelIndexState(userId, configFingerprint);
+  if (all.length === 0) {
+    return { items: [], indexComplete: indexState?.status === 'ready' };
+  }
   const scored = all.map((row) => ({
     asset_id: row.asset_id,
     source_text: row.source_text,
-    score: cosine(queryVector, row.embedding),
-  }));
+    score: row.vector_dim === queryVector.length ? cosine(queryVector, row.embedding) : -1,
+  })).filter((row) => row.score >= 0);
   scored.sort((a, b) => b.score - a.score);
   const top = scored.slice(0, topK);
   // Hydrate with model data
   const data = await withData((d) => d, { write: false });
   const modelById = new Map((data.models || []).map((m) => [String(m.id), m]));
-  return top.map((row) => {
+  const items = top.map((row) => {
     const m = modelById.get(String(row.asset_id)) || {};
     return {
       id: row.asset_id,
@@ -51,6 +54,7 @@ async function semanticSearchModels(queryVector, topK = 5) {
       score: row.score,
     };
   });
+  return { items, indexComplete: indexState?.status === 'ready' };
 }
 
 async function listOrders({ status, from, to, limit = 50 } = {}) {

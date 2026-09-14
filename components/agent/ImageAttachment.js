@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   TouchableOpacity,
@@ -6,83 +6,40 @@ import {
   StyleSheet,
   Alert,
   ScrollView,
+  Text,
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import { trackPickedAsset } from '../../utils/sessionStorage';
-import * as FileSystem from 'expo-file-system';
 import { Ionicons } from '@expo/vector-icons';
+import { trackPickedAsset } from '../../utils/sessionStorage';
+import { normalizePickedAssets } from '../../utils/agentImage';
 import { useAppTheme } from '../../context/ThemeContext';
 
-// Image attachment row used inside AgentChatScreen's input bar.
-//
-// Uses expo-document-picker (already installed) rather than
-// expo-image-picker, to keep zero new dependencies. The picked file
-// is base64-encoded locally and exposed to the parent as a data URL,
-// matching the Agent MVP plan (M3 multimodal supports data: URIs).
-//
-// Props:
-//   onAttach: (image | null, images) => void
-//     Called whenever the local image list changes. The first arg is
-//     the new image on add, or null on remove. The second arg is the
-//     full updated list. The parent decides what to send with the
-//     current message.
+const ERROR_MESSAGES = {
+  IMAGE_LIMIT_EXCEEDED: '每条消息最多发送 4 张图片',
+  IMAGE_TOO_LARGE: '单张图片不能超过 4 MB',
+  IMAGE_TOTAL_TOO_LARGE: '图片总大小不能超过 6 MB',
+  IMAGE_TYPE_UNSUPPORTED: '仅支持 JPEG、PNG 和 WebP 图片',
+};
 
-export default function ImageAttachment({ onAttach }) {
+export default function ImageAttachment({ images = [], onAdd, onRemove, disabled = false }) {
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const [images, setImages] = useState([]);
 
   const pick = async () => {
+    if (disabled) return;
     try {
-      const res = await DocumentPicker.getDocumentAsync({
-        type: ['image/*'],
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/jpeg', 'image/png', 'image/webp'],
         copyToCacheDirectory: true,
-        multiple: false,
+        multiple: true,
       });
-      if (res.canceled || !res.assets || res.assets.length === 0) return;
-
-      const file = res.assets[0];
-      await trackPickedAsset(file);
-
-      // Guard against huge files — base64-encoding a 20MB image in
-      // memory on a phone will OOM. The backend's /agent/chat
-      // expects a reasonable payload; cap at ~4MB of source.
-      if (file.size && file.size > 4 * 1024 * 1024) {
-        Alert.alert('图片过大', '请选择小于 4MB 的图片');
-        return;
-      }
-
-      const base64 = await FileSystem.readAsStringAsync(file.uri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      const mime = file.mimeType || guessMime(file.name) || 'image/png';
-      const dataUrl = `data:${mime};base64,${base64}`;
-
-      const newImg = {
-        uri: file.uri,
-        dataUrl,
-        name: file.name || 'image',
-        mimeType: mime,
-        size: file.size || 0,
-      };
-
-      setImages((prev) => {
-        const next = [...prev, newImg];
-        onAttach?.(newImg, next);
-        return next;
-      });
-    } catch (err) {
-      Alert.alert('选择图片失败', err?.message || String(err));
+      const picked = normalizePickedAssets(result);
+      if (!picked.length) return;
+      await Promise.all(picked.map((asset) => trackPickedAsset(asset)));
+      onAdd?.(picked);
+    } catch (error) {
+      Alert.alert('选择图片失败', ERROR_MESSAGES[error?.code] || '选择图片失败，请稍后重试');
     }
-  };
-
-  const remove = (idx) => {
-    setImages((prev) => {
-      const next = prev.filter((_, i) => i !== idx);
-      onAttach?.(null, next);
-      return next;
-    });
   };
 
   return (
@@ -92,41 +49,37 @@ export default function ImageAttachment({ onAttach }) {
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.row}
       >
-        <TouchableOpacity style={styles.addBtn} onPress={pick} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={[styles.addBtn, disabled && styles.disabled]}
+          onPress={pick}
+          disabled={disabled}
+          activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel={images.length ? '继续添加图片' : '添加图片'}
+        >
           <Ionicons name="image-outline" size={20} color={colors.primary} />
         </TouchableOpacity>
-        {images.map((img, idx) => (
-          <TouchableOpacity
-            key={`${img.uri}-${idx}`}
-            onLongPress={() =>
-              Alert.alert('移除图片', `删除 ${img.name}?`, [
-                { text: '取消', style: 'cancel' },
-                { text: '删除', style: 'destructive', onPress: () => remove(idx) },
-              ])
-            }
-            activeOpacity={0.8}
-            style={styles.thumbWrap}
-          >
-            <Image source={{ uri: img.uri }} style={styles.thumb} />
-          </TouchableOpacity>
+        {images.map((image) => (
+          <View key={image.id} style={styles.thumbWrap}>
+            <Image source={{ uri: image.uri }} style={styles.thumb} />
+            <TouchableOpacity
+              style={styles.removeBtn}
+              onPress={() => onRemove?.(image.id)}
+              disabled={disabled}
+              accessibilityRole="button"
+              accessibilityLabel={`删除图片 ${image.name}`}
+              hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+            >
+              <Ionicons name="close" size={13} color="#fff" />
+            </TouchableOpacity>
+          </View>
         ))}
+        {images.length > 0 ? (
+          <Text style={styles.countText}>已选择 {images.length} 张</Text>
+        ) : null}
       </ScrollView>
     </View>
   );
-}
-
-function guessMime(name) {
-  if (!name) return null;
-  const ext = String(name).split('.').pop()?.toLowerCase();
-  switch (ext) {
-    case 'png': return 'image/png';
-    case 'jpg':
-    case 'jpeg': return 'image/jpeg';
-    case 'gif': return 'image/gif';
-    case 'webp': return 'image/webp';
-    case 'heic': return 'image/heic';
-    default: return null;
-  }
 }
 
 const createStyles = (colors) => StyleSheet.create({
@@ -138,25 +91,38 @@ const createStyles = (colors) => StyleSheet.create({
     borderTopColor: colors.border,
   },
   row: {
+    minHeight: 44,
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
     paddingRight: 8,
   },
   addBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  addText: { fontSize: 18, lineHeight: 22 },
+  disabled: { opacity: 0.5 },
   thumbWrap: {
-    width: 36,
-    height: 36,
-    borderRadius: 4,
+    width: 52,
+    height: 52,
+    borderRadius: 10,
     overflow: 'hidden',
     backgroundColor: colors.surface,
   },
   thumb: { width: '100%', height: '100%' },
+  removeBtn: {
+    position: 'absolute',
+    top: 3,
+    right: 3,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(20, 16, 38, 0.82)',
+  },
+  countText: { fontSize: 12, color: colors.textSecondary },
 });

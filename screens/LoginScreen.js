@@ -1,23 +1,21 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
-import { Button, Card, Input } from '../components';
+import { Button, Card, Input, XiaoliBrandMark } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 
 const LoginScreen = () => {
-  const { colors, shadows } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
+  const { colors } = useAppTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { signIn, cleanupError, retrySessionCleanup } = useAuth();
   const { server } = useServerConfig();
   const [loading, setLoading] = useState(false);
@@ -59,19 +57,16 @@ const LoginScreen = () => {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardAwareScrollView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      contentContainerStyle={styles.content}
+      bottomOffset={SPACING.lg}
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
     >
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-      >
-        <View style={styles.shell}>
+      <View style={styles.shell}>
           <View style={styles.brandBlock}>
-            <View style={styles.logoMark}>
-              <Ionicons name="paw" size={28} color={colors.onPrimary} />
-            </View>
+            <XiaoliBrandMark size={72} style={styles.logoMark} />
             <Text style={styles.eyebrow}>3D PRINT OPERATIONS</Text>
             <Text style={styles.title}>3D 打印管理系统</Text>
             <Text style={styles.subtitle}>
@@ -123,13 +118,12 @@ const LoginScreen = () => {
               <Text style={styles.hint}>账号由组织 Owner 创建和管理</Text>
             </View>
           </Card>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </View>
+    </KeyboardAwareScrollView>
   );
 };
 
-const createStyles = (colors, shadows) => StyleSheet.create({
+const createStyles = (colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -148,14 +142,7 @@ const createStyles = (colors, shadows) => StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   logoMark: {
-    width: 56,
-    height: 56,
-    borderRadius: RADIUS.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
     marginBottom: SPACING.lg,
-    ...shadows.card,
   },
   eyebrow: {
     ...TYPOGRAPHY.caption,

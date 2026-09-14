@@ -4,13 +4,13 @@ import {
   Alert,
   FlatList,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -21,7 +21,14 @@ import {
   STOCK_STATUSES,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Card, EmptyState, ScreenHeader, SearchBar } from '../components';
+import {
+  Badge,
+  Card,
+  CyberIconButton,
+  CyberPageHeader,
+  CyberSearchField,
+  EmptyState,
+} from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
@@ -37,7 +44,6 @@ const MaterialsScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('materials');
-  const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingId, setDeletingId] = useState(null);
 
@@ -106,7 +112,7 @@ const MaterialsScreen = ({ navigation, route }) => {
     if (route?.params?.activeTab) {
       setActiveTab(route.params.activeTab);
     }
-  }, [route?.params?.activeTab]);
+  }, [route?.params?.activeTab, route?.params?.homeRequest]);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -185,27 +191,27 @@ const MaterialsScreen = ({ navigation, route }) => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScreenHeader
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <View style={styles.page}>
+      <CyberPageHeader
         eyebrow="MATERIAL STOCK"
         title="耗材仓库"
         subtitle="每一卷材料，都安排得明明白白。"
-        actions={(
-          <View style={styles.headerActions}>
-          <IconButton
-            icon="search"
-            active={showSearch}
-            onPress={() => setShowSearch((value) => !value)}
+        onAssistant={() => navigation.navigate(ROUTES.AGENT)}
+        actions={editable && activeTab === 'materials' ? (
+          <CyberIconButton
+            icon="add"
+            label="新建耗材"
+            active
+            onPress={() => navigation.navigate(ROUTES.CREATE_MATERIAL)}
           />
-          {editable && activeTab === 'materials' ? (
-            <IconButton
-              icon="add"
-              active
-              onPress={() => navigation.navigate(ROUTES.CREATE_MATERIAL)}
-            />
-          ) : null}
-          </View>
-        )}
+        ) : null}
+      />
+
+      <CyberSearchField
+        placeholder="搜索材质、品牌或颜色"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
       />
 
       <View style={styles.segmentedControl}>
@@ -224,17 +230,6 @@ const MaterialsScreen = ({ navigation, route }) => {
       </View>
 
       <WarehouseSummary materials={materials} stockLots={stockLots} />
-
-      {showSearch ? (
-        <SearchBar
-            placeholder="搜索材质、品牌或颜色"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onClear={() => setSearchQuery('')}
-            autoFocus
-            style={styles.searchContainer}
-        />
-      ) : null}
 
       {activeTab === 'materials' ? (
         renderMaterialsList({
@@ -267,6 +262,7 @@ const MaterialsScreen = ({ navigation, route }) => {
           editable,
         })
       )}
+      </View>
     </SafeAreaView>
   );
 };
@@ -326,7 +322,7 @@ const renderMaterialsList = ({
         <EmptyState
           icon="layers-outline"
           title={searchQuery ? '没有找到这卷耗材' : '仓库还是空的'}
-          description="新增耗材后，小麦会帮你管理规格、库存和批次。"
+          description="新增耗材后，小鲤会帮你管理规格、库存和批次。"
           style={styles.emptyContainer}
         />
       )}
@@ -379,19 +375,6 @@ const renderInventoryList = ({
     )}
   </ScrollView>
 );
-
-const IconButton = ({ icon, active = false, onPress }) => {
-  const { colors, styles } = useMaterialTheme();
-  return (
-    <TouchableOpacity
-      activeOpacity={0.82}
-      style={[styles.headerButton, active && styles.headerButtonActive]}
-      onPress={onPress}
-    >
-      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
-    </TouchableOpacity>
-  );
-};
 
 const WarehouseSummary = ({ materials, stockLots }) => {
   const { styles } = useMaterialTheme();
@@ -586,6 +569,12 @@ const createStyles = (COLORS) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  page: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',

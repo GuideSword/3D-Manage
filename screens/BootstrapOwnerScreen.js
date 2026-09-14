@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { Button, Card, Input } from '../components';
+import { Button, Card, Input, XiaoliBrandMark } from '../components';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { useAuth } from '../context/AuthContext';
 import { useServerConfig } from '../context/ServerConfigContext';
@@ -66,6 +66,7 @@ const BootstrapOwnerScreen = () => {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.shell}>
+          <XiaoliBrandMark size={72} style={styles.brandMark} />
           <Text style={styles.eyebrow}>FIRST RUN</Text>
           <Text style={styles.title}>初始化组织 Owner</Text>
           <Text style={styles.subtitle}>连接到 {server?.apiBaseUrl}。部署令牌只用于本次初始化，不会保存在设备上。</Text>
@@ -89,6 +90,7 @@ const createStyles = (colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, justifyContent: 'center', padding: SPACING.xl },
   shell: { width: '100%', maxWidth: 560, alignSelf: 'center' },
+  brandMark: { marginBottom: SPACING.lg },
   eyebrow: { ...TYPOGRAPHY.caption, color: colors.primary, marginBottom: SPACING.xs },
   title: { ...TYPOGRAPHY.screenTitle, color: colors.text },
   subtitle: { ...TYPOGRAPHY.body, color: colors.textSecondary, marginTop: SPACING.sm, marginBottom: SPACING.xl },

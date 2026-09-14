@@ -14,7 +14,7 @@ Add a shared protected-image component backed by an authenticated local cache. T
 
 ## Cache identity and lifecycle
 
-Native cache filenames will be deterministic hashes of the server key and resolved image URL. Concurrent requests for the same cache key will share one in-flight download. The server key prevents collisions across servers; image URLs are unique for uploaded revisions.
+Native cache filenames will be deterministic hashes of the server key, session epoch, and resolved image URL. Concurrent requests in the same session for the same cache key will share one in-flight download. The server key prevents collisions across servers, while the session epoch prevents an invalidated user's late download from colliding with the next user's cache; image URLs are unique for uploaded revisions.
 
 Every downloaded native image is registered through the existing `trackSessionFile(serverKey, uri)` mechanism. Existing session cleanup already deletes registered cache files when the user logs out or changes/removes the configured server, including retry-on-next-start behavior after interrupted cleanup.
 

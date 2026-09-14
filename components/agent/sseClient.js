@@ -46,7 +46,7 @@ export function streamSSE(url, opts = {}, onEvent) {
     } = opts;
 
     if (signal?.aborted) {
-      const error = new Error('Request aborted');
+      const error = new Error('请求已取消');
       error.name = 'AbortError';
       reject(error);
       return;
@@ -121,19 +121,33 @@ export function streamSSE(url, opts = {}, onEvent) {
       if (xhr.status >= 200 && xhr.status < 300) {
         settle();
       } else {
-        onEvent('error', { message: `HTTP ${xhr.status}: ${(xhr.responseText || '').slice(0, 200)}` });
-        settle(new Error(`HTTP ${xhr.status}`));
+        let payload;
+        try { payload = JSON.parse(xhr.responseText || '{}'); } catch (_) { payload = {}; }
+        const data = {
+          ...payload,
+          message: payload.error || payload.message || `HTTP ${xhr.status}`,
+        };
+        onEvent('error', data);
+        const error = new Error(data.message);
+        error.status = xhr.status;
+        error.code = payload.code;
+        error.reported = true;
+        settle(error);
       }
     };
 
     xhr.onerror = () => {
-      try { onEvent('error', { message: 'Network error (xhr.onerror)' }); } catch (_) {}
-      settle(new Error('Network error'));
+      try { onEvent('error', { message: '网络连接失败，请检查网络设置' }); } catch (_) {}
+      const error = new Error('网络连接失败，请检查网络设置');
+      error.reported = true;
+      settle(error);
     };
 
     xhr.ontimeout = () => {
-      try { onEvent('error', { message: `Request timeout after ${timeoutMs}ms` }); } catch (_) {}
-      settle(new Error('Request timeout'));
+      try { onEvent('error', { message: `请求超时（${timeoutMs} 毫秒）` }); } catch (_) {}
+      const error = new Error('请求超时，请稍后重试');
+      error.reported = true;
+      settle(error);
     };
 
     xhr.onabort = () => {

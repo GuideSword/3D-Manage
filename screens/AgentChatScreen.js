@@ -6,11 +6,11 @@ import {
   TouchableOpacity,
   FlatList,
   StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
 import AgentBubble from '../components/agent/AgentBubble';
 import ToolCallCard from '../components/agent/ToolCallCard';
 import DraftConfirmCard from '../components/agent/DraftConfirmCard';
@@ -19,6 +19,19 @@ import { streamChat, agentApi } from '../utils/agentApi';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { canWrite } from '../utils/permissions';
+import { XiaoliBrandMark } from '../components';
+import {
+  appendImages,
+  canSendDraft,
+  imageOnlyBubbleText,
+  prepareAgentImages,
+  removeImage,
+} from '../utils/agentImage';
+const {
+  COMPOSER_LINE_HEIGHT,
+  COMPOSER_VERTICAL_PADDING,
+  COMPOSER_MAX_HEIGHT,
+} = require('../utils/agentComposerLayoutCore.cjs');
 
 // Full-screen Agent chat.
 //
@@ -45,10 +58,12 @@ export default function AgentChatScreen({ route, navigation }) {
   const { user } = useAuth();
   const allowWrite = canWrite(user);
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const headerHeight = useHeaderHeight();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [images, setImages] = useState([]);
   const [sending, setSending] = useState(false);
+  const [preparingImages, setPreparingImages] = useState(false);
   const listRef = useRef(null);
   const convIdRef = useRef(route?.params?.conversationId || null);
   const cancelledRef = useRef(false);
@@ -97,38 +112,43 @@ export default function AgentChatScreen({ route, navigation }) {
     });
   }, []);
 
-  const onImageChange = useCallback((img, list) => {
-    if (Array.isArray(list)) {
-      setImages(list);
-    } else if (img) {
-      setImages((prev) => [...prev, img]);
-    }
-  }, []);
-
   const send = async () => {
     const text = input.trim();
-    if (!text || sending) return;
+    if (!canSendDraft(text, images) || sending || preparingImages) return;
+    const messageCountBeforeSend = messages.length;
 
     setSending(true);
+    setPreparingImages(true);
     cancelledRef.current = false;
 
-    const userText = text;
-    const userImgs = images;
-    setInput('');
-    setImages([]);
+    const snapshot = { text, images };
+
+    let preparedImages;
+    try {
+      preparedImages = await prepareAgentImages(snapshot.images);
+    } catch (error) {
+      Alert.alert('读取图片失败', error?.message || String(error));
+      setPreparingImages(false);
+      setSending(false);
+      return;
+    }
+    setPreparingImages(false);
 
     // 1) Optimistic user bubble.
-    appendMessage({ role: 'user', text: userText });
+    appendMessage({
+      role: 'user',
+      text: snapshot.text || imageOnlyBubbleText(snapshot.images.length),
+    });
     // 2) Empty streaming assistant bubble that deltas will fill in.
     appendMessage({ role: 'assistant', text: '', isStreaming: true });
 
     const toolMap = new Map(); // name|args-key → message id
 
     try {
-      await streamChat({
-        message: userText,
+      const result = await streamChat({
+        message: snapshot.text,
         conversationId: convIdRef.current,
-        images: userImgs.map((i) => ({ dataUrl: i.dataUrl, name: i.name, mimeType: i.mimeType })),
+        images: preparedImages,
         onEvent: (event, data) => {
           if (cancelledRef.current) return;
 
@@ -176,17 +196,18 @@ export default function AgentChatScreen({ route, navigation }) {
             updateLastAssistant({ isStreaming: false });
           } else if (event === 'error') {
             const msg = data?.message || '未知错误';
-            updateLastAssistant({
-              text: (existingText(messages) || '') + (existingText(messages) ? '\n' : '') + `[错误] ${msg}`,
-              isStreaming: false,
-            });
+            setMessages((current) => current.slice(0, messageCountBeforeSend));
             Alert.alert('出错', msg);
           }
         },
       });
+      if (result?.terminalEvent === 'done') {
+        setInput('');
+        setImages([]);
+      }
     } catch (err) {
       Alert.alert('发送失败', err?.message || String(err));
-      updateLastAssistant({ isStreaming: false });
+      setMessages((current) => current.slice(0, messageCountBeforeSend));
     } finally {
       setSending(false);
     }
@@ -237,10 +258,10 @@ export default function AgentChatScreen({ route, navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
+    <KeyboardControllerAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      behavior="translate-with-padding"
+      keyboardVerticalOffset={headerHeight}
     >
       <FlatList
         ref={listRef}
@@ -251,21 +272,29 @@ export default function AgentChatScreen({ route, navigation }) {
         ListEmptyComponent={
           <View style={styles.empty}>
             <View style={styles.mascot}>
-              <Text style={styles.catFace}>ฅ^•ﻌ•^ฅ</Text>
-              <View style={styles.mascotBadge}>
-                <Ionicons name="sparkles" size={14} color={colors.onPrimary} />
-              </View>
+              <XiaoliBrandMark size={104} showBadge />
             </View>
-            <Text style={styles.emptyTitle}>小麦已就位</Text>
+            <Text style={styles.emptyTitle}>小鲤已就位</Text>
             <Text style={styles.emptyText}>
-              你好，我是猫爪工坊助手小麦。{'\n'}
+              你好，我是猫爪工坊助手小鲤。{'\n'}
               粘贴客户消息 → 抽取订单草稿{'\n'}
               或直接问我关于订单、模型、库存的问题
             </Text>
           </View>
         }
       />
-      <ImageAttachment onAttach={onImageChange} />
+      <ImageAttachment
+        images={images}
+        disabled={sending || preparingImages}
+        onAdd={(picked) => {
+          try {
+            setImages((current) => appendImages(current, picked));
+          } catch (error) {
+            Alert.alert('无法添加图片', error?.message || String(error));
+          }
+        }}
+        onRemove={(id) => setImages((current) => removeImage(current, id))}
+      />
       <View style={styles.inputBar}>
         <TextInput
           style={styles.input}
@@ -274,33 +303,23 @@ export default function AgentChatScreen({ route, navigation }) {
           placeholder="问我关于订单/模型/库存的问题…"
           placeholderTextColor={colors.textTertiary}
           multiline
-          editable={!sending}
+          scrollEnabled
+          textAlignVertical="top"
+          editable={!sending && !preparingImages}
           onSubmitEditing={send}
           blurOnSubmit={false}
         />
         <TouchableOpacity
-          style={[styles.sendBtn, (sending || !input.trim()) && styles.sendBtnDisabled]}
+          style={[styles.sendBtn, (sending || preparingImages || !canSendDraft(input, images)) && styles.sendBtnDisabled]}
           onPress={send}
-          disabled={sending || !input.trim()}
+          disabled={sending || preparingImages || !canSendDraft(input, images)}
           activeOpacity={0.85}
         >
-          <Text style={styles.sendText}>{sending ? '…' : '发送'}</Text>
+          <Text style={styles.sendText}>{preparingImages ? '读取中…' : sending ? '…' : '发送'}</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardControllerAvoidingView>
   );
-}
-
-// Helper: read the latest assistant text outside of setState
-// (used inside the 'error' branch above where messages is the
-//  stale closure value).
-function existingText(messages) {
-  for (let i = messages.length - 1; i >= 0; i -= 1) {
-    if (messages[i] && messages[i].role === 'assistant') {
-      return messages[i].text || '';
-    }
-  }
-  return '';
 }
 
 const createStyles = (colors) => StyleSheet.create({
@@ -315,28 +334,10 @@ const createStyles = (colors) => StyleSheet.create({
   },
   mascot: {
     width: 116,
-    height: 92,
+    height: 116,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 32,
-    backgroundColor: colors.primarySoft,
-    borderWidth: 1,
-    borderColor: colors.border,
     marginBottom: 14,
-  },
-  catFace: { fontSize: 25, color: colors.primaryDark },
-  mascotBadge: {
-    position: 'absolute',
-    right: -5,
-    bottom: -5,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.primary,
-    borderWidth: 3,
-    borderColor: colors.background,
   },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: colors.text, marginBottom: 6 },
   emptyText: {
@@ -356,12 +357,14 @@ const createStyles = (colors) => StyleSheet.create({
   input: {
     flex: 1,
     minHeight: 40,
-    maxHeight: 120,
+    maxHeight: COMPOSER_MAX_HEIGHT,
     paddingHorizontal: 10,
-    paddingVertical: 8,
+    paddingVertical: COMPOSER_VERTICAL_PADDING / 2,
     backgroundColor: colors.surfaceMuted,
     borderRadius: 16,
     fontSize: 15,
+    lineHeight: COMPOSER_LINE_HEIGHT,
+    includeFontPadding: false,
     color: colors.text,
   },
   sendBtn: {

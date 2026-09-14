@@ -65,7 +65,7 @@ The native branch must:
 const remoteSource = buildProtectedFileSource(fileUrl, token);
 const digest = await Crypto.digestStringAsync(
   Crypto.CryptoDigestAlgorithm.SHA256,
-  `${captured.serverKey}\n${remoteSource.uri}`
+  `${captured.serverKey}\n${captured.sessionEpoch}\n${remoteSource.uri}`
 );
 const destination = `${FileSystem.cacheDirectory}3d-manage-image-${digest}${extension}`;
 await trackSessionFile(captured.serverKey, destination);
@@ -76,7 +76,7 @@ if (result.status < 200 || result.status >= 300) throw new Error(`HTTP ${result.
 await FileSystem.moveAsync({ from: temporary, to: destination });
 ```
 
-Check `isCurrentRuntime(captured)` after hashing, download, move, and tracking. Delete temporary/final output and throw `StaleSessionError` whenever the captured runtime is stale. Use a module-level `Map` keyed by server key plus URL so concurrent native callers share one promise. Cache hits require `getInfoAsync(destination)` to return `exists: true` and `size > 0`.
+Check `isCurrentRuntime(captured)` after hashing, download, move, and tracking. Delete temporary/final output and throw `StaleSessionError` whenever the captured runtime is stale. Use a module-level `Map` keyed by server key, session epoch, and URL so concurrent native callers from the same session share one promise without crossing user boundaries. Cache hits require `getInfoAsync(destination)` to return `exists: true` and `size > 0`.
 
 The web branch must `fetch` with `remoteSource.headers`, reject non-2xx responses, create an object URL from the response blob, re-check the runtime, and return `dispose`/`invalidate` functions that revoke that URL exactly once.
 

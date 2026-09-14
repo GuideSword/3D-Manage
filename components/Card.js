@@ -39,7 +39,7 @@ const Card = ({
 
 const createStyles = (colors, shadows) => StyleSheet.create({
   card: {
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: colors.border,
     marginVertical: SPACING.xs,

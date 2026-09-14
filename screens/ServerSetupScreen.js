@@ -8,8 +8,8 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Button, Card, Input } from '../components';
-import { RADIUS, SERVER_ADDRESS_PREFILL, SPACING, TYPOGRAPHY } from '../constants';
+import { Button, Card, Input, XiaoliBrandMark } from '../components';
+import { SERVER_ADDRESS_PREFILL, SPACING, TYPOGRAPHY } from '../constants';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { useAppTheme } from '../context/ThemeContext';
 
@@ -50,7 +50,7 @@ const ServerSetupScreen = ({ route, navigation }) => {
     <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <View style={styles.shell}>
-          <View style={styles.icon}><Ionicons name="server-outline" size={28} color={colors.onPrimary} /></View>
+          <XiaoliBrandMark size={72} style={styles.icon} />
           <Text style={styles.eyebrow}>SELF-HOSTED</Text>
           <Text style={styles.title}>{replacement ? '更换服务器' : '连接 3D Manage'}</Text>
           <Text style={styles.subtitle}>输入管理员提供的部署地址。验证成功后才会保存在此设备。</Text>
@@ -90,7 +90,7 @@ const createStyles = (colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
   content: { flexGrow: 1, justifyContent: 'center', padding: SPACING.xl },
   shell: { width: '100%', maxWidth: 520, alignSelf: 'center' },
-  icon: { width: 56, height: 56, borderRadius: RADIUS.lg, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.primary, marginBottom: SPACING.lg },
+  icon: { marginBottom: SPACING.lg },
   eyebrow: { ...TYPOGRAPHY.caption, color: colors.primary, marginBottom: SPACING.xs },
   title: { ...TYPOGRAPHY.screenTitle, color: colors.text },
   subtitle: { ...TYPOGRAPHY.body, color: colors.textSecondary, marginTop: SPACING.sm, marginBottom: SPACING.xl },

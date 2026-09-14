@@ -14,7 +14,7 @@ const normalizeConfig = () => ({
 
 const assertConfig = () => {
   if (process.env.OSS_ENABLED !== 'true') {
-    const error = new Error('Object storage is not enabled on this server');
+    const error = new Error('此服务器未启用对象存储');
     error.code = 'OBJECT_STORAGE_DISABLED';
     throw error;
   }
@@ -47,7 +47,7 @@ const createClient = () => {
 const normalizeObjectKey = (objectKey) => {
   const key = String(objectKey || '').replace(/^\/+/, '');
   if (!key || key.includes('..')) {
-    throw new Error('Invalid object key');
+    throw new Error('对象存储键无效');
   }
   return key;
 };

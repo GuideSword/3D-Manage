@@ -8,8 +8,11 @@ import React, {
 } from 'react';
 import { authAPI, isAuthRequiredError, setUnauthorizedHandler } from '../utils/api';
 import { useServerConfig } from './ServerConfigContext';
-import { clearSessionSafely } from '../utils/sessionStorage';
+import { clearSessionSafely, clearTrackedFiles } from '../utils/sessionStorage';
 import { beginSessionInvalidation, subscribeServerRuntime } from '../utils/serverRuntime';
+import userErrorCore from '../utils/userErrorCore.cjs';
+
+const { localizeTransportError } = userErrorCore;
 
 const AuthContext = createContext(null);
 
@@ -96,10 +99,17 @@ export const AuthProvider = ({ children }) => {
   }, [serverInitializing, server?.serverKey, server?.initialized, connectionError?.code]);
 
   const signIn = useCallback(async (credentials) => {
-    const result = await authAPI.login(credentials);
-    setUser(result.user || null);
-    return result;
-  }, []);
+    try {
+      const serverKey = server?.serverKey;
+      beginSessionInvalidation();
+      if (serverKey) await clearTrackedFiles(serverKey);
+      const result = await authAPI.login(credentials);
+      setUser(result.user || null);
+      return result;
+    } catch (error) {
+      throw localizeTransportError(error, { fallback: '登录失败，请稍后重试' });
+    }
+  }, [server?.serverKey]);
 
   const signOut = useCallback(async () => {
     const serverKey = server?.serverKey;
@@ -110,8 +120,9 @@ export const AuthProvider = ({ children }) => {
       if (serverKey) await clearSessionSafely(serverKey);
       return true;
     } catch (error) {
-      setCleanupError(error);
-      throw error;
+      const localizedError = localizeTransportError(error, { fallback: '本地会话清理失败，请稍后重试' });
+      setCleanupError(localizedError);
+      throw localizedError;
     }
   }, [server?.serverKey]);
 
@@ -123,8 +134,9 @@ export const AuthProvider = ({ children }) => {
       setCleanupError(null);
       return true;
     } catch (error) {
-      setCleanupError(error);
-      throw error;
+      const localizedError = localizeTransportError(error, { fallback: '本地会话清理失败，请稍后重试' });
+      setCleanupError(localizedError);
+      throw localizedError;
     }
   }, [server?.serverKey]);
 

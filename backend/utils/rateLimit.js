@@ -39,7 +39,7 @@ const createFailureLimiter = ({
 
   const reject = (res) => res.status(429).json({
     code: 'RATE_LIMITED',
-    error: 'Too many failed attempts. Try again later.',
+    error: '失败次数过多，请稍后重试',
   });
 
   return { getKey, isBlocked, recordFailure, reset, reject };

@@ -16,8 +16,8 @@ const loginLimiter = createFailureLimiter({
 });
 
 const passwordSchema = z.string()
-  .min(12, 'Password must be at least 12 characters')
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes');
+  .min(12, '密码至少需要 12 个字符')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, '密码不能超过 72 个 UTF-8 字节');
 
 const changePasswordSchema = z.object({
   currentPassword: z.string().min(1),
@@ -26,10 +26,10 @@ const changePasswordSchema = z.object({
 
 const validateCredentials = ({ email, password }) => {
   if (!normalizeEmail(email)) {
-    return 'Email is required';
+    return '请输入邮箱';
   }
   if (!password || String(password).length < 8) {
-    return 'Password must be at least 8 characters';
+    return '密码至少需要 8 个字符';
   }
   return null;
 };
@@ -70,12 +70,12 @@ router.post('/login', async (req, res) => {
     if (result?.notInitialized) {
       return res.status(409).json({
         code: 'SYSTEM_NOT_INITIALIZED',
-        error: 'System is not initialized',
+        error: '系统尚未初始化',
       });
     }
     if (!result) {
       loginLimiter.recordFailure(limiterKey);
-      return res.status(401).json({ error: 'Invalid email or password' });
+      return res.status(401).json({ error: '账号或密码错误' });
     }
 
     loginLimiter.reset(limiterKey);
@@ -85,7 +85,7 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.error('Login failed:', error);
-    return res.status(500).json({ error: 'Login failed' });
+    return res.status(500).json({ error: '登录失败，请稍后重试' });
   }
 });
 
@@ -104,7 +104,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
       if (!user || !bcrypt.compareSync(input.currentPassword, user.passwordHash)) {
         return {
           status: 403,
-          body: { code: 'CURRENT_PASSWORD_INVALID', error: 'Current password is invalid' },
+          body: { code: 'CURRENT_PASSWORD_INVALID', error: '当前密码错误' },
         };
       }
 
@@ -122,7 +122,7 @@ router.post('/change-password', requireAuth, async (req, res) => {
     });
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ code: 'PASSWORD_CHANGE_FAILED', error: 'Change password failed' });
+    return res.status(500).json({ code: 'PASSWORD_CHANGE_FAILED', error: '修改密码失败，请稍后重试' });
   }
 });
 

@@ -4,22 +4,32 @@ import {
   Alert,
   FlatList,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   ORDER_STATUS_LABELS,
   ROUTES,
-  RADIUS,
-  SPACING,
   TYPOGRAPHY,
 } from '../constants';
-import { Badge, Card, EmptyState, ScreenHeader, SearchBar, StatusActionSheet } from '../components';
+import {
+  Badge,
+  Card,
+  CyberChip,
+  CyberEmptyState,
+  CyberIconButton,
+  CyberMetricStrip,
+  CyberPageHeader,
+  CyberSearchField,
+  CyberSectionHeading,
+  StatusActionSheet,
+  cyberTheme,
+} from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
@@ -28,15 +38,14 @@ import { canWrite } from '../utils/permissions';
 
 const OrdersScreen = ({ navigation, route }) => {
   const { user } = useAuth();
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
   const [orders, setOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [showSearch, setShowSearch] = useState(false);
-  const [showFilter, setShowFilter] = useState(true);
   const [deletingId, setDeletingId] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
   const [statusSheetOrder, setStatusSheetOrder] = useState(null);
@@ -147,77 +156,79 @@ const OrdersScreen = ({ navigation, route }) => {
     if (route?.params?.status) {
       setFilterStatus(route.params.status);
     }
-  }, [route?.params?.status]);
+  }, [route?.params?.status, route?.params?.homeRequest]);
+
+  const orderMetrics = React.useMemo(() => [
+    { label: '当前列表', value: orders.length, tone: 'primary' },
+    {
+      label: '待审核',
+      value: orders.filter((order) => order.status === 'pending_review').length,
+      tone: 'pink',
+    },
+    {
+      label: '执行中',
+      value: orders.filter((order) => order.status === 'in_progress').length,
+      tone: 'blue',
+    },
+  ], [orders]);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <ScreenHeader
+    <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
+      <View style={styles.page}>
+      <CyberPageHeader
         eyebrow="ORDER QUEUE"
         title="订单中心"
         subtitle="今天的委托，也要稳稳送达。"
-        actions={(
-          <View style={styles.headerActions}>
-          <IconButton
-            icon="search"
-            active={showSearch}
-            onPress={() => setShowSearch((value) => !value)}
-          />
-          <IconButton
-            icon="filter"
-            active={showFilter && filterStatus !== 'all'}
-            onPress={() => setShowFilter((value) => !value)}
-          />
-          {canWrite(user) ? <IconButton
+        onAssistant={() => navigation.navigate(ROUTES.AGENT)}
+        actions={canWrite(user) ? (
+          <CyberIconButton
             icon="add"
+            label="新建订单"
             active
             onPress={() => navigation.navigate(ROUTES.CREATE_ORDER)}
-          /> : null}
-          </View>
-        )}
-      />
-
-      {showSearch ? (
-        <SearchBar
-            placeholder="搜索客户、订单号或备注"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onClear={() => setSearchQuery('')}
-            autoFocus
-            style={styles.searchContainer}
-        />
-      ) : null}
-
-      {showFilter ? (
-        <ScrollView
-          horizontal
-          style={styles.filterScroll}
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.filterBar}
-        >
-          <FilterChip
-            label="全部"
-            active={filterStatus === 'all'}
-            onPress={() => setFilterStatus('all')}
           />
-          {Object.entries(ORDER_STATUS_LABELS).map(([status, label]) => (
-            <FilterChip
-              key={status}
-              label={label}
-              active={filterStatus === status}
-              color={getOrderStatusColor(status, colors)}
-              onPress={() => setFilterStatus(status)}
-            />
-          ))}
-        </ScrollView>
-      ) : null}
+        ) : null}
+      />
+      <CyberSearchField
+        placeholder="搜索客户、订单号或备注"
+        value={searchQuery}
+        onChangeText={setSearchQuery}
+      />
+      <CyberMetricStrip metrics={orderMetrics} />
+      <ScrollView
+        horizontal
+        style={styles.filterScroll}
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.filterBar}
+      >
+        <CyberChip
+          label="全部"
+          active={filterStatus === 'all'}
+          onPress={() => setFilterStatus('all')}
+        />
+        {Object.entries(ORDER_STATUS_LABELS).map(([status, label]) => (
+          <CyberChip
+            key={status}
+            label={label}
+            active={filterStatus === status}
+            color={getOrderStatusColor(status, t)}
+            onPress={() => setFilterStatus(status)}
+          />
+        ))}
+      </ScrollView>
+      <CyberSectionHeading
+        title="订单列表"
+        hint={canWrite(user) ? '长按可更新状态' : `${orders.length} 条结果`}
+      />
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color={colors.primary} />
+          <ActivityIndicator size="large" color={t.primary} />
           <Text style={styles.loadingText}>加载订单中...</Text>
         </View>
       ) : (
         <FlatList
+          style={styles.list}
           data={orders}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
@@ -235,8 +246,8 @@ const OrdersScreen = ({ navigation, route }) => {
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[colors.primary]}
-              tintColor={colors.primary}
+              colors={[t.primary]}
+              tintColor={t.primary}
             />
           )}
           contentContainerStyle={[
@@ -244,13 +255,11 @@ const OrdersScreen = ({ navigation, route }) => {
             orders.length === 0 && styles.emptyListContainer,
           ]}
           ListEmptyComponent={(
-            <EmptyState
-              icon="receipt-outline"
+            <CyberEmptyState
               title={searchQuery ? '没有找到这份委托' : '还没有订单喵'}
               description="新建订单后，客户、交期和生产状态会显示在这里。"
               actionLabel={canWrite(user) ? '新建订单' : undefined}
               onAction={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_ORDER) : undefined}
-              style={styles.emptyContainer}
             />
           )}
         />
@@ -264,50 +273,18 @@ const OrdersScreen = ({ navigation, route }) => {
         onConfirmRestore={(status) => handleStatusChange(statusSheetOrder.id, status)}
         onClose={closeStatusSheet}
       /> : null}
+      </View>
     </SafeAreaView>
   );
 };
 
-const IconButton = ({ icon, active = false, onPress }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  return (
-    <TouchableOpacity
-      activeOpacity={0.82}
-      style={[styles.headerButton, active && styles.headerButtonActive]}
-      onPress={onPress}
-    >
-      <Ionicons name={icon} size={20} color={active ? colors.primary : colors.textSecondary} />
-    </TouchableOpacity>
-  );
-};
-
-const FilterChip = ({ label, active, color, onPress }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  const resolvedColor = color || colors.primary;
-  return (
-  <TouchableOpacity
-    activeOpacity={0.82}
-    onPress={onPress}
-    style={[
-      styles.filterChip,
-      active && { backgroundColor: `${resolvedColor}18`, borderColor: resolvedColor },
-    ]}
-  >
-    <Text style={[styles.filterChipText, active && { color: resolvedColor }]} numberOfLines={1}>
-      {label}
-    </Text>
-  </TouchableOpacity>
-  );
-};
-
 const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress, editable }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
-  const statusColor = getOrderStatusColor(order.status, colors);
+  const statusColor = getOrderStatusColor(order.status, t);
   const statusLabel = ORDER_STATUS_LABELS[order.status] || '未知';
   const isUpdating = updatingId === order.id;
   const isDeleting = deletingId === order.id;
@@ -327,6 +304,7 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
       delayLongPress={420}
     >
       <Card style={styles.orderCard} interactive>
+        <View style={[styles.statusRail, { backgroundColor: statusColor }]} />
         <View style={styles.orderHeader}>
           <View style={styles.customerInfo}>
             <Text style={styles.customerName} numberOfLines={1}>{customerName}</Text>
@@ -352,9 +330,9 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
               disabled={isBusy}
             >
               {isDeleting ? (
-                <ActivityIndicator size="small" color={colors.danger} />
+                <ActivityIndicator size="small" color={t.danger} />
               ) : (
-                <Ionicons name="trash-outline" size={18} color={colors.danger} />
+                <Ionicons name="trash-outline" size={18} color={t.danger} />
               )}
             </TouchableOpacity> : null}
           </View>
@@ -362,10 +340,11 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
 
         <View style={styles.metaGrid}>
           <MetaItem label="总价" value={`¥${order.total || 0}`} />
-          <MetaItem label="交期" value={order.dueDate || order.due_date || '未设置'} />
+          <MetaItem label="交期" value={formatShortDate(order.dueDate || order.due_date)} />
           <MetaItem
             label="创建"
-            value={order.createdAt || order.created_at || new Date().toLocaleDateString()}
+            value={formatShortDate(order.createdAt || order.created_at)}
+            last
           />
         </View>
 
@@ -401,135 +380,69 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
   );
 };
 
-const MetaItem = ({ label, value }) => {
-  const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
-  return <View style={styles.metaItem}>
+const MetaItem = ({ label, value, last = false }) => {
+  const { isDark } = useAppTheme();
+  const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
+  const styles = React.useMemo(() => createStyles(t), [t]);
+  return <View style={[styles.metaItem, last && styles.metaItemLast]}>
     <Text style={styles.metaLabel}>{label}</Text>
     <Text style={styles.metaValue} numberOfLines={1}>{value}</Text>
   </View>;
 };
 
-const getOrderStatusColor = (status, colors) => ({
-  draft: colors.textSecondary,
-  pending_review: colors.warning,
-  in_progress: colors.secondary,
-  completed: colors.success,
-  cancelled: colors.danger,
-}[status] || colors.textSecondary);
+const getOrderStatusColor = (status, t) => ({
+  draft: t.muted,
+  pending_review: t.pink,
+  in_progress: t.blue,
+  completed: t.success,
+  cancelled: t.danger,
+}[status] || t.muted);
 
-const createStyles = (COLORS) => StyleSheet.create({
+const formatShortDate = (value) => {
+  if (!value) return '未记录';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value).slice(0, 10);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}-${day}`;
+};
+
+const createStyles = (t) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: t.background,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
-  },
-  titleGroup: {
+  page: {
     flex: 1,
-  },
-  eyebrow: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-    marginBottom: 2,
-  },
-  title: {
-    ...TYPOGRAPHY.screenTitle,
-    color: COLORS.text,
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  headerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: RADIUS.xl,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surfaceElevated,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  headerButtonActive: {
-    backgroundColor: COLORS.primarySoft,
-    borderColor: COLORS.primarySoft,
-  },
-  searchContainer: {
-    minHeight: 46,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    marginHorizontal: SPACING.lg,
-    marginBottom: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceElevated,
-  },
-  searchInput: {
-    flex: 1,
-    minHeight: 44,
-    fontSize: 15,
-    color: COLORS.text,
-  },
-  searchClear: {
-    width: 28,
-    height: 28,
-    borderRadius: RADIUS.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.surfaceMuted,
+    width: '100%',
+    maxWidth: 620,
+    alignSelf: 'center',
   },
   filterBar: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
-    paddingBottom: SPACING.md,
-    gap: SPACING.sm,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 8,
     alignItems: 'center',
-  },
-  filterChip: {
-    height: 34,
-    maxWidth: 108,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.md,
-    borderRadius: RADIUS.pill,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.surfaceElevated,
-  },
-  filterChipText: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
   },
   filterScroll: {
     flexGrow: 0,
-    maxHeight: 52,
+    maxHeight: 42,
   },
+  list: { flex: 1 },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: SPACING.md,
+    gap: 12,
   },
   loadingText: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.textSecondary,
+    color: t.muted,
   },
   listContainer: {
-    padding: SPACING.lg,
-    paddingTop: 0,
-    paddingBottom: SPACING.xxl,
+    paddingHorizontal: 16,
+    paddingTop: 4,
+    paddingBottom: 22,
   },
   emptyListContainer: {
     flexGrow: 1,
@@ -537,108 +450,118 @@ const createStyles = (COLORS) => StyleSheet.create({
   },
   emptyContainer: {
     alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-  },
-  emptyTitle: {
-    ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
-    marginTop: SPACING.md,
-  },
-  emptyText: {
-    ...TYPOGRAPHY.body,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    marginTop: SPACING.xs,
-  },
-  createButton: {
-    marginTop: SPACING.lg,
+    paddingHorizontal: 20,
   },
   orderCard: {
+    position: 'relative',
+    overflow: 'hidden',
     marginHorizontal: 0,
-    marginBottom: SPACING.md,
+    marginVertical: 0,
+    marginBottom: 10,
     borderRadius: 20,
+    backgroundColor: t.glass,
+    borderColor: t.border,
+    shadowColor: t.glow,
+    shadowOffset: { width: 0, height: 5 },
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    elevation: 2,
+  },
+  statusRail: {
+    position: 'absolute',
+    left: 0,
+    top: 14,
+    bottom: 14,
+    width: 3,
+    borderTopRightRadius: 3,
+    borderBottomRightRadius: 3,
   },
   orderHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
-    gap: SPACING.md,
+    gap: 12,
+    paddingLeft: 6,
   },
   customerInfo: {
     flex: 1,
+    minWidth: 0,
   },
   customerName: {
     ...TYPOGRAPHY.sectionTitle,
-    color: COLORS.text,
+    color: t.text,
   },
   orderId: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: t.muted,
     marginTop: 2,
   },
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.sm,
+    gap: 6,
   },
   deleteButton: {
     width: 44,
     height: 44,
-    borderRadius: RADIUS.md,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.dangerSoft,
+    backgroundColor: t.dangerSoft,
   },
   statusUpdating: {
     minWidth: 60,
     height: 26,
-    paddingHorizontal: SPACING.sm,
-    borderRadius: RADIUS.pill,
+    paddingHorizontal: 8,
+    borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surfaceMuted,
+    backgroundColor: t.surfaceMuted,
   },
   metaGrid: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.lg,
+    marginTop: 11,
+    marginLeft: 6,
   },
   metaItem: {
     flex: 1,
     minWidth: 0,
-    padding: SPACING.sm,
-    borderRadius: RADIUS.md,
-    backgroundColor: COLORS.surfaceMuted,
+    paddingHorizontal: 8,
+    borderRightWidth: 1,
+    borderRightColor: t.border,
   },
+  metaItemLast: { borderRightWidth: 0 },
   metaLabel: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textTertiary,
+    color: t.muted,
   },
   metaValue: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.text,
+    color: t.text,
     marginTop: 2,
   },
   itemsPreview: {
-    marginTop: SPACING.lg,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    marginTop: 9,
+    marginLeft: 6,
+    paddingHorizontal: 9,
+    paddingVertical: 7,
+    borderRadius: 11,
+    backgroundColor: t.surfaceMuted,
   },
   itemsLabel: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
-    marginBottom: SPACING.xs,
+    color: t.muted,
+    marginBottom: 4,
   },
   itemText: {
     ...TYPOGRAPHY.meta,
-    color: COLORS.text,
+    color: t.text,
     marginTop: 2,
   },
   moreItems: {
     ...TYPOGRAPHY.caption,
-    color: COLORS.primary,
-    marginTop: SPACING.xs,
+    color: t.primary,
+    marginTop: 4,
   },
 });
 

@@ -174,7 +174,7 @@ const UsersScreen = () => {
 
 const createStyles = (colors) => StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
+  content: { width: '100%', maxWidth: 720, alignSelf: 'center', padding: SPACING.lg, paddingBottom: SPACING.xxl },
   title: { ...TYPOGRAPHY.screenTitle, color: colors.text },
   subtitle: { ...TYPOGRAPHY.body, color: colors.textSecondary, marginTop: SPACING.xs, marginBottom: SPACING.lg },
   sectionTitle: { ...TYPOGRAPHY.sectionTitle, color: colors.text, marginBottom: SPACING.sm },

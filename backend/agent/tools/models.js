@@ -99,8 +99,11 @@ const searchModelsSemantic = {
   schema: searchModelsSemanticSchema,
   parameters: zodToJsonSchema(searchModelsSemanticSchema),
   handler: async (args, ctx) => {
+    if (!ctx.embed || !ctx.embeddingFingerprint) {
+      throw new Error('尚未配置语义搜索');
+    }
     const vec = await ctx.embed.embedQuery(args.query);
-    return ctx.db.semanticSearchModels(vec, args.top_k);
+    return ctx.db.semanticSearchModels(ctx.userId, ctx.embeddingFingerprint, vec, args.top_k);
   },
 };
 

@@ -8,6 +8,7 @@ const { toCsv, fromCsv } = require('../utils/csv');
 const { requireRoles } = require('../middleware/auth');
 const { createOrderInData, normalizeOrderPayload } = require('../services/orders');
 const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
+const { publicErrorMessage } = require('../utils/publicError');
 
 const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 },
@@ -18,7 +19,7 @@ const upload = multer({
     if (allowedTypes.includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Unsupported attachment format. Use PNG, JPG, JPEG, or PDF.'));
+      cb(new Error('不支持的附件格式，请使用 PNG、JPG、JPEG 或 PDF'));
     }
   },
 });
@@ -136,7 +137,7 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
     });
   } catch (error) {
     console.error('Export orders failed:', error);
-    return res.status(500).json({ error: 'Export orders failed' });
+    return res.status(500).json({ error: '导出订单失败' });
   }
 });
 
@@ -188,14 +189,14 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
     res.status(201).json({ imported: imported.length, items: imported });
   } catch (error) {
     console.error('Import orders failed:', error);
-    res.status(400).json({ error: 'Import orders failed' });
+    res.status(400).json({ error: '导入订单失败' });
   }
 });
 
 router.post('/upload-attachment', requireRoles('owner', 'staff'), limitUploadConcurrency, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json({ error: '未上传文件' });
     }
 
     const result = await saveFile(
@@ -222,7 +223,7 @@ router.post('/upload-attachment', requireRoles('owner', 'staff'), limitUploadCon
     });
   } catch (error) {
     console.error('Attachment upload failed:', error);
-    return res.status(500).json({ error: `Attachment upload failed: ${error.message}` });
+    return res.status(500).json({ error: publicErrorMessage(error, '上传附件失败') });
   }
 });
 
@@ -246,7 +247,7 @@ router.get('/', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Get orders failed:', error);
-    res.status(500).json({ error: 'Get orders failed' });
+    res.status(500).json({ error: '获取订单列表失败' });
   }
 });
 
@@ -259,7 +260,7 @@ router.post('/', requireRoles('owner', 'staff'), async (req, res) => {
     res.status(201).json(created);
   } catch (error) {
     console.error('Create order failed:', error);
-    res.status(500).json({ error: 'Create order failed' });
+    res.status(500).json({ error: '创建订单失败' });
   }
 });
 
@@ -270,7 +271,7 @@ router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
     )), { write: false });
     res.json({ items: logs, total: logs.length });
   } catch (error) {
-    res.status(500).json({ error: 'Get order audit failed' });
+    res.status(500).json({ error: '获取订单审计记录失败' });
   }
 });
 
@@ -278,11 +279,11 @@ router.get('/:id', requireRoles('owner', 'staff', 'viewer'), async (req, res) =>
   try {
     const order = await withData((data) => data.orders.find((item) => item.id === String(req.params.id)), { write: false });
     if (!order) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: '订单不存在' });
     }
     return res.json(order);
   } catch (error) {
-    return res.status(500).json({ error: 'Get order failed' });
+    return res.status(500).json({ error: '获取订单失败' });
   }
 });
 
@@ -290,7 +291,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
   if (Object.prototype.hasOwnProperty.call(req.body || {}, 'status')) {
     return res.status(400).json({
       code: 'STATUS_REQUIRES_TRANSITION_ENDPOINT',
-      error: 'Use the order status endpoint to change status',
+      error: '请通过订单状态接口修改状态',
     });
   }
   try {
@@ -313,11 +314,11 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!updated) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: '订单不存在' });
     }
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: 'Update order failed' });
+    return res.status(500).json({ error: '更新订单失败' });
   }
 });
 
@@ -353,11 +354,11 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     });
 
     if (!deleted) {
-      return res.status(404).json({ error: 'Order not found' });
+      return res.status(404).json({ error: '订单不存在' });
     }
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: 'Delete order failed' });
+    return res.status(500).json({ error: '删除订单失败' });
   }
 });
 
@@ -366,7 +367,7 @@ router.patch('/:id/status', requireRoles('owner', 'staff'), async (req, res) => 
     const result = await withData((data) => {
       const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
       if (orderIndex === -1) {
-        return { status: 404, body: { error: 'Order not found' } };
+        return { status: 404, body: { error: '订单不存在' } };
       }
 
       const order = data.orders[orderIndex];
@@ -376,7 +377,7 @@ router.patch('/:id/status', requireRoles('owner', 'staff'), async (req, res) => 
         return {
           status: 400,
           body: {
-            error: 'Invalid status transition',
+            error: '不允许进行该订单状态转换',
             currentStatus: order.status,
             nextStatus,
             allowed: validNextStatuses,
@@ -400,7 +401,7 @@ router.patch('/:id/status', requireRoles('owner', 'staff'), async (req, res) => 
 
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ error: 'Update order status failed' });
+    return res.status(500).json({ error: '更新订单状态失败' });
   }
 });
 

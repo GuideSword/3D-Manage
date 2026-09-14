@@ -8,8 +8,8 @@ const { parseRequest } = require('../utils/validation');
 const router = express.Router();
 
 const passwordSchema = z.string()
-  .min(12, 'Password must be at least 12 characters')
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, 'Password must be at most 72 UTF-8 bytes');
+  .min(12, '密码至少需要 12 个字符')
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, '密码不能超过 72 个 UTF-8 字节');
 
 const createUserSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -22,7 +22,7 @@ const updateUserSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   role: z.enum(['staff', 'viewer']).optional(),
   active: z.boolean().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, 'At least one field is required');
+}).strict().refine((value) => Object.keys(value).length > 0, '至少需要提供一个可修改字段');
 
 const resetPasswordSchema = z.object({
   password: passwordSchema,
@@ -39,7 +39,7 @@ router.get('/', async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     return res.json({ items: users, total: users.length });
   } catch (error) {
-    return res.status(500).json({ code: 'USER_LIST_FAILED', error: 'Get users failed' });
+    return res.status(500).json({ code: 'USER_LIST_FAILED', error: '获取用户列表失败' });
   }
 });
 
@@ -52,7 +52,7 @@ router.post('/', async (req, res) => {
       if (data.users.some((item) => item.email === input.email)) {
         return {
           status: 409,
-          body: { code: 'EMAIL_ALREADY_EXISTS', error: 'Email already registered' },
+          body: { code: 'EMAIL_ALREADY_EXISTS', error: '该邮箱已注册' },
         };
       }
 
@@ -80,7 +80,7 @@ router.post('/', async (req, res) => {
     });
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ code: 'USER_CREATE_FAILED', error: 'Create user failed' });
+    return res.status(500).json({ code: 'USER_CREATE_FAILED', error: '创建用户失败' });
   }
 });
 
@@ -92,12 +92,12 @@ router.patch('/:id', async (req, res) => {
     const result = await withData((data) => {
       const user = data.users.find((item) => item.id === String(req.params.id));
       if (!user) {
-        return { status: 404, body: { code: 'USER_NOT_FOUND', error: 'User not found' } };
+        return { status: 404, body: { code: 'USER_NOT_FOUND', error: '用户不存在' } };
       }
       if (user.role === 'owner') {
         return {
           status: 409,
-          body: { code: 'OWNER_MANAGED_SEPARATELY', error: 'Owner accounts cannot be changed here' },
+          body: { code: 'OWNER_MANAGED_SEPARATELY', error: '不能在此处修改 Owner 账号' },
         };
       }
 
@@ -125,7 +125,7 @@ router.patch('/:id', async (req, res) => {
     });
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ code: 'USER_UPDATE_FAILED', error: 'Update user failed' });
+    return res.status(500).json({ code: 'USER_UPDATE_FAILED', error: '更新用户失败' });
   }
 });
 
@@ -137,12 +137,12 @@ router.post('/:id/reset-password', async (req, res) => {
     const result = await withData((data) => {
       const user = data.users.find((item) => item.id === String(req.params.id));
       if (!user) {
-        return { status: 404, body: { code: 'USER_NOT_FOUND', error: 'User not found' } };
+        return { status: 404, body: { code: 'USER_NOT_FOUND', error: '用户不存在' } };
       }
       if (user.role === 'owner') {
         return {
           status: 409,
-          body: { code: 'OWNER_MANAGED_SEPARATELY', error: 'Owner password cannot be reset here' },
+          body: { code: 'OWNER_MANAGED_SEPARATELY', error: '不能在此处重置 Owner 密码' },
         };
       }
 
@@ -160,7 +160,7 @@ router.post('/:id/reset-password', async (req, res) => {
     });
     return res.status(result.status).json(result.body);
   } catch (error) {
-    return res.status(500).json({ code: 'PASSWORD_RESET_FAILED', error: 'Reset password failed' });
+    return res.status(500).json({ code: 'PASSWORD_RESET_FAILED', error: '重置密码失败' });
   }
 });
 
