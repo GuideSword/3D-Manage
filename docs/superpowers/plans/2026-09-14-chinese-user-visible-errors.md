@@ -560,3 +560,74 @@ git commit -m "test: align assertions with Chinese errors"
 ```
 
 如果没有测试断言需要调整，则跳过本次提交。
+
+### Task 8: 将登录凭证错误提示改为“账号或密码错误”
+
+**Files:**
+- Modify: `backend/scripts/verify-api.js`
+- Modify: `backend/routes/auth.js:78`
+- Test: `backend/scripts/verify-api.js`
+
+- [ ] **Step 1: 在 API 公共边界增加精确回归验证**
+
+在系统初始化成功、`authToken = bootstrap.token` 之后加入以下验证。它同时锁定登录专用 401 文案，并确认匿名访问与无效 Token 的其他 401 文案不受影响：
+
+```js
+const invalidLoginResponse = await fetch(`${baseUrl}/api/auth/login`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ email: 'owner@example.com', password: 'WrongPassword123!' }),
+});
+const invalidLoginBody = await readJson(invalidLoginResponse);
+if (invalidLoginResponse.status !== 401 || invalidLoginBody.error !== '账号或密码错误') {
+  throw new Error(`Invalid login message mismatch: ${invalidLoginResponse.status} ${JSON.stringify(invalidLoginBody)}`);
+}
+
+const invalidTokenResponse = await fetch(`${baseUrl}/api/models`, {
+  headers: { Authorization: 'Bearer invalid-token' },
+});
+const invalidTokenBody = await readJson(invalidTokenResponse);
+if (invalidTokenResponse.status !== 401 || invalidTokenBody.error !== '登录凭证无效，请重新登录') {
+  throw new Error(`Invalid token message mismatch: ${invalidTokenResponse.status} ${JSON.stringify(invalidTokenBody)}`);
+}
+```
+
+并在现有 `anonymousRead` 401 状态检查之后读取响应体，增加以下断言：
+
+```js
+const anonymousReadBody = await readJson(anonymousRead);
+if (anonymousReadBody.error !== '需要登录后才能继续') {
+  throw new Error(`Anonymous auth message mismatch: ${JSON.stringify(anonymousReadBody)}`);
+}
+```
+
+- [ ] **Step 2: 运行测试并确认登录文案断言失败**
+
+Run: `npm run verify:backend`
+
+Expected: FAIL，错误包含当前响应 `{"error":"邮箱或密码错误"}`，匿名访问和无效 Token 断言通过。
+
+- [ ] **Step 3: 只修改登录失败的专用响应**
+
+在 `backend/routes/auth.js` 中将该分支改为：
+
+```js
+if (!result) {
+  loginLimiter.recordFailure(limiterKey);
+  return res.status(401).json({ error: '账号或密码错误' });
+}
+```
+
+不要修改 `backend/middleware/auth.js`，因此其他 401 文案保持不变。
+
+- [ ] **Step 4: 运行后端验证**
+
+Run: `npm run verify:backend`
+
+Expected: PASS，登录失败、匿名访问和无效 Token 三类 401 均返回各自指定文案。
+
+- [ ] **Step 5: 检查补丁完整性**
+
+Run: `git diff --check -- backend/routes/auth.js backend/scripts/verify-api.js`
+
+Expected: PASS。由于这两个文件所在工作树已有未提交改动，本步骤不创建 Git 提交，避免把用户的既有修改混入提交。
