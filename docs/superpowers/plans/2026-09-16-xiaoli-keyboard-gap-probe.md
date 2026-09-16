@@ -159,9 +159,15 @@ Expected: one pass.
 
 Expected: all agent-client and keyboard contracts pass. This checks source and logic only, not the physical gap.
 
-- [ ] **Step 2: Run a Babel transform of both changed JSX files**
+- [ ] **Step 2: Parse both changed JSX files**
 
-Use `@babel/core` and `babel-preset-expo` directly from the installed dependencies, without launching Metro or building an APK. Expected: both transform without syntax errors.
+Use installed `@babel/parser` directly, without launching Metro or building an APK:
+
+```powershell
+node -e "const fs=require('node:fs'); const parser=require('@babel/parser'); for(const file of ['screens/AgentChatScreen.js','components/agent/KeyboardGapProbe.js']) { parser.parse(fs.readFileSync(file,'utf8'),{sourceType:'module',plugins:['jsx']}); process.stdout.write(file+' parsed\n'); }"
+```
+
+Expected: both files report `parsed`. `babel-preset-expo` is not installed in this workspace, so a preset-based transform is not the check used here.
 
 - [ ] **Step 3: Check the diff and user-owned changes**
 
