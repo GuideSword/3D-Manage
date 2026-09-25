@@ -31,6 +31,7 @@ yarn-error.*
 .env
 .env.local
 .env.*.local
+.env*
 
 # 安装脚本
 install_*.sh
@@ -38,6 +39,16 @@ install_*.sh
 # Git 相关
 .git/
 .gitignore
+
+# 本机构建依赖和产物（EAS 会根据 package-lock.json 重新安装依赖）
+node_modules/
+*.apk
+.tmp/
+output/
+android/.gradle/
+android/build/
+android/app/build/
+android/app/.cxx/
 
 # IDE 配置
 .vscode/
