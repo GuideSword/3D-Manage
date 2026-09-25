@@ -25,20 +25,27 @@ test('the app mounts one shared keyboard provider', () => {
   assert.match(app, /<KeyboardProvider>[\s\S]*<ThemeProvider>[\s\S]*<AppContent \/>[\s\S]*<\/KeyboardProvider>/);
 });
 
-test('Xiaoli uses the controller avoiding view with the measured header height', () => {
+test('Xiaoli derives its keyboard offset from live window and layout geometry', () => {
   const screen = read('screens/AgentChatScreen.js');
 
   assert.match(
     screen,
-    /import \{ KeyboardAvoidingView as KeyboardControllerAvoidingView \} from 'react-native-keyboard-controller';/,
+    /KeyboardAvoidingView as KeyboardControllerAvoidingView/,
   );
-  assert.match(screen, /import \{ useHeaderHeight \} from '@react-navigation\/elements';/);
-  assert.match(screen, /const headerHeight = useHeaderHeight\(\);/);
+  assert.match(screen, /useWindowDimensions as useControllerWindowDimensions/);
+  assert.match(screen, /getKeyboardVerticalOffset\(controllerWindowHeight, avoidingLayout\)/);
   assert.match(
     screen,
-    /<KeyboardControllerAvoidingView[\s\S]*?behavior="translate-with-padding"[\s\S]*?keyboardVerticalOffset=\{headerHeight\}/,
+    /<KeyboardControllerAvoidingView[\s\S]*?behavior="padding"[\s\S]*?keyboardVerticalOffset=\{keyboardVerticalOffset\}[\s\S]*?onLayout=\{recordAvoidingLayout\}/,
   );
+  assert.doesNotMatch(screen, /useHeaderHeight/);
+  assert.doesNotMatch(screen, /behavior="translate-with-padding"/);
   assert.doesNotMatch(screen, /\bKeyboardAvoidingView,?\s*\r?\n/);
+});
+
+test('temporary Xiaoli keyboard diagnostics have been removed', () => {
+  const screen = read('screens/AgentChatScreen.js');
+  assert.equal(/KeyboardGapProbe|recordComposerLayout|composerLayout/.test(screen), false);
 });
 
 test('login automatically scrolls the focused field above the keyboard', () => {

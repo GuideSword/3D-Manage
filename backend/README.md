@@ -31,3 +31,5 @@ node scripts/migrate-file-to-postgres.js --source C:\absolute\path\store.json --
 ```
 
 正式迁移要求暂停写入、空 PostgreSQL 目标和源文件备份。AI SQLite 与上传文件必须和业务数据库作为同一冷备份恢复点迁移并校验 hash。
+
+小鲤同一用户一次只运行一条对话。单条消息最多 1200 字，单次对话最多调用模型 4 轮，每轮最多输出 1536 token，文本输入上下文估算上限 8000 token（图片另按张数和大小限制）。这些限制由服务端校验。

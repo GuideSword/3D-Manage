@@ -17,6 +17,7 @@ const sqliteDb = require('../db/agent');
 const { requireAuth, requireRoles } = require('../middleware/auth');
 const { runConversation } = require('../agent/orchestrator');
 const { normalizeChatRequest } = require('../agent/chatRequest');
+const { createChatGuard } = require('../agent/chatLimits');
 const { parseAgentImages } = require('../agent/imagePayload');
 const { ensureStoredVisionCapability } = require('../agent/visionCapabilityService');
 const {
@@ -36,6 +37,7 @@ const { publicErrorMessage } = require('../utils/publicError');
 
 const router = express.Router();
 router.use(requireAuth);
+const chatGuard = createChatGuard();
 
 const orderDraftSchema = z.object({
   customer_name: z.string().trim().min(1).max(200),
@@ -74,14 +76,20 @@ router.post('/chat', async (req, res) => {
   }
 
   let parsedImages;
+  let releaseChatSlot;
   try {
+    // Validate images before reserving this user's active chat slot.
+    const visionStatus = settings.llm_vision_status || 'untested';
+    parsedImages = parseAgentImages(images, visionStatus === 'untested' ? 'vision' : visionStatus);
+    releaseChatSlot = chatGuard.acquire(req.user.id);
     const vision = images.length > 0
       ? await ensureStoredVisionCapability({ userId: req.user.id, settings })
-      : { status: settings.llm_vision_status || 'untested' };
-    parsedImages = parseAgentImages(images, vision.status);
+      : { status: visionStatus };
+    if (images.length && vision.status !== 'vision') parseAgentImages(images, vision.status);
   } catch (error) {
-    return res.status(error.status || 400).json({
-      code: error.code || 'IMAGE_PAYLOAD_INVALID',
+    releaseChatSlot?.();
+    return res.status(error.status || 500).json({
+      code: error.code || 'CHAT_INIT_FAILED',
       error: publicErrorMessage(error, '对话初始化失败'),
     });
   }
@@ -136,6 +144,8 @@ router.post('/chat', async (req, res) => {
     });
   } catch (err) {
     safeWrite('error', { message: publicErrorMessage(err, '流式响应中断') });
+  } finally {
+    releaseChatSlot();
   }
   // 客户端已断就别再 end（可能抛错）
   if (!clientGone) {

@@ -1,5 +1,7 @@
 'use strict';
 
+const { validateChatLength } = require('./chatLimits');
+
 class ChatRequestError extends Error {
   constructor(code, message, status = 400) {
     super(message);
@@ -17,6 +19,8 @@ function normalizeChatRequest(body) {
   if (!suppliedMessage && images.length === 0) {
     throw new ChatRequestError('MESSAGE_REQUIRED', '请输入消息或选择图片');
   }
+
+  validateChatLength(suppliedMessage);
 
   return {
     conversationId: value.conversationId,

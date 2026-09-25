@@ -78,4 +78,6 @@ Web token 位于标签页 `sessionStorage`，关闭标签页即消失；Native t
 
 不配置 OSS 和外部 AI 时，订单、库存、本地文件与基础管理仍可运行。若启用 OSS，密钥只放在后端 `.env`。单实例是当前支持模式，因为 AI SQLite 位于本地持久卷。
 
+小鲤同一用户一次只运行一条对话，并限制单条消息长度及单次模型调用规模。
+
 备份与恢复见 [BACKUP_RESTORE.md](./BACKUP_RESTORE.md)，升级见 [UPGRADE.md](./UPGRADE.md)。

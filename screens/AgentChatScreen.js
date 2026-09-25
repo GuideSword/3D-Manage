@@ -9,8 +9,10 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useHeaderHeight } from '@react-navigation/elements';
-import { KeyboardAvoidingView as KeyboardControllerAvoidingView } from 'react-native-keyboard-controller';
+import {
+  KeyboardAvoidingView as KeyboardControllerAvoidingView,
+  useWindowDimensions as useControllerWindowDimensions,
+} from 'react-native-keyboard-controller';
 import AgentBubble from '../components/agent/AgentBubble';
 import ToolCallCard from '../components/agent/ToolCallCard';
 import DraftConfirmCard from '../components/agent/DraftConfirmCard';
@@ -32,6 +34,7 @@ const {
   COMPOSER_VERTICAL_PADDING,
   COMPOSER_MAX_HEIGHT,
 } = require('../utils/agentComposerLayoutCore.cjs');
+const { getKeyboardVerticalOffset } = require('../utils/agentKeyboardOffsetCore.cjs');
 
 // Full-screen Agent chat.
 //
@@ -58,7 +61,9 @@ export default function AgentChatScreen({ route, navigation }) {
   const { user } = useAuth();
   const allowWrite = canWrite(user);
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const headerHeight = useHeaderHeight();
+  const { height: controllerWindowHeight } = useControllerWindowDimensions();
+  const [avoidingLayout, setAvoidingLayout] = useState(null);
+  const keyboardVerticalOffset = getKeyboardVerticalOffset(controllerWindowHeight, avoidingLayout);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [images, setImages] = useState([]);
@@ -67,6 +72,11 @@ export default function AgentChatScreen({ route, navigation }) {
   const listRef = useRef(null);
   const convIdRef = useRef(route?.params?.conversationId || null);
   const cancelledRef = useRef(false);
+
+  const recordAvoidingLayout = useCallback(({ nativeEvent: { layout } }) => {
+    const next = { y: layout.y, height: layout.height };
+    setAvoidingLayout((current) => current?.y === next.y && current?.height === next.height ? current : next);
+  }, []);
 
   // Header: settings shortcut (right side).
   useLayoutEffect(() => {
@@ -260,8 +270,9 @@ export default function AgentChatScreen({ route, navigation }) {
   return (
     <KeyboardControllerAvoidingView
       style={styles.container}
-      behavior="translate-with-padding"
-      keyboardVerticalOffset={headerHeight}
+      behavior="padding"
+      keyboardVerticalOffset={keyboardVerticalOffset}
+      onLayout={recordAvoidingLayout}
     >
       <FlatList
         ref={listRef}

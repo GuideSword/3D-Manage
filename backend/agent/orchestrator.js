@@ -13,29 +13,13 @@ const embedProvider = require('./providers/embed');
 const dbBridge = require('./dbBridge');
 const { isImageInputRejection } = require('./visionProbe');
 const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
-const { assembleBudgetedContext } = require('./contextBudget');
+const { assembleBudgetedContext, estimateTokens } = require('./contextBudget');
+const { XIAOLI_SYSTEM_PROMPT } = require('./persona');
+const { MAX_INPUT_TOKENS, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
 const { prepareMemoryLayers } = require('./memoryService');
 const { withData, appendAudit } = require('../utils/store');
 const { publicErrorMessage } = require('../utils/publicError');
 
-const MAX_TURNS = 8;
-const SYSTEM_PROMPT = `你是 3D 打印管理系统的 AI 助手（代号 Mavis）。你能查询订单、模型、耗材数据，并能从用户文本中抽取订单草稿。
-
-**输出格式严格要求**：
-- 你的回复**直接呈现给最终用户**，绝对不要在回复中包含 <think>...</think> 之类的内部思考标签
-- 如果你的模型会自动产生思考过程，请在内部消化，**绝不可暴露给用户**
-- 正常回复必须出现在 </think> 之后（或根本不出现 think 块）
-
-规则：
-1. 回答简洁、实用，避免冗长
-2. 涉及写操作（创建订单/更新数据）必须先让用户确认，绝不直接执行
-3. 收到中文对话就用中文回复
-4. 当用户描述订单/客户需求时，调用 extract_order_draft 工具提取结构化信息
-5. 模糊查询（外观/用途）用 search_models_semantic；精确查询用 search_models_by_keyword
-6. 如果工具返回空，诚实告知用户并建议下一步
-7. 你看到的是该用户的数据，绝不假设其他用户/租户的存在
-8. 只有当用户在当前消息中明确说出长期偏好、业务约束或持续目标时，才调用 remember_explicit_user_fact；禁止根据语气或行为推测
-`;
 
 function newId() {
   return require('crypto').randomUUID();
@@ -130,14 +114,19 @@ async function runConversation({
     : userMessage;
   const userMsg = { role: 'user', content: userContent };
   const budgetedContext = assembleBudgetedContext({
-    systemMessages: [{ role: 'system', content: SYSTEM_PROMPT }],
+    systemMessages: [{ role: 'system', content: XIAOLI_SYSTEM_PROMPT }],
     coreMemory: memoryLayers.coreMemory,
     summary: memoryLayers.summary,
     archiveMatches: memoryLayers.archiveMatches,
     recentRounds: memoryLayers.recentRounds.map((round) => round.map(messageForProvider)),
     currentMessage: userMsg,
-    maxInputTokens: 12000,
+    maxInputTokens: MAX_INPUT_TOKENS,
   });
+  if (budgetedContext.overBudget) {
+    if (conv.justCreated) sqliteDb.deleteConversation(conv.id, userId);
+    onEvent('error', { code: 'CHAT_CONTEXT_TOO_LONG', message: '当前对话内容过长，请开启新对话后重试' });
+    return;
+  }
   const messages = budgetedContext.messages;
   const userMessageId = newId();
   const preparedAttachments = await prepareMessageImages({
@@ -231,10 +220,15 @@ async function runConversation({
   // signal 已从参数解构出来；客户端断开时取消 LLM 请求，节省 token + 避免流到一半挂起
   // （OpenAI SDK >= 4.50 接受 signal 选项，会把流 abort）
 
-  while (turn < MAX_TURNS) {
+  while (turn < MAX_MODEL_TURNS) {
     if (signal?.aborted) {
       await cleanupFailedTurn();
       onEvent('error', { message: '客户端已断开' });
+      return;
+    }
+    if (estimateTokens(messages) > MAX_INPUT_TOKENS) {
+      await cleanupFailedTurn();
+      onEvent('error', { code: 'CHAT_CONTEXT_TOO_LONG', message: '本次查询数据过多，请缩小查询范围后重试' });
       return;
     }
     turn += 1;
@@ -247,8 +241,8 @@ async function runConversation({
           type: 'function',
           function: { name: t.name, description: t.description, parameters: t.parameters },
         })),
-        tool_choice: 'auto',
-        max_completion_tokens: 4096,
+        tool_choice: turn === MAX_MODEL_TURNS ? 'none' : 'auto',
+        max_completion_tokens: MAX_OUTPUT_TOKENS,
         // M3 默认开启 thinking 会拖慢首 token、偶尔挂起流；显式关掉
         extra_body: { thinking: { type: 'disabled' } },
         ...(signal ? { signal } : {}),

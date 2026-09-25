@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "verify:backend": "npm --prefix backend run verify",
     "verify:client": "node utils/serverAddress.verify.js && node --test tests/client/chinese-user-visible-errors.test.cjs tests/client/server-lifecycle.test.cjs tests/client/navigation-route-observer.test.cjs tests/client/protected-image.test.cjs",
-    "verify:agent-client": "node --test tests/client/agent-image-core.test.cjs tests/client/agent-chat-contract.test.cjs tests/client/keyboard-layout-contract.test.cjs",
+    "verify:agent-client": "node --test tests/client/agent-image-core.test.cjs tests/client/agent-chat-contract.test.cjs tests/client/keyboard-layout-contract.test.cjs tests/client/agent-keyboard-offset.test.cjs",
     "verify:release": "node --test tests/client/server-lifecycle.test.cjs && npm --prefix backend run verify:runtime && npm run verify:backend && npm --prefix backend run verify:self-hosted && npx expo export --platform web --output-dir .tmp/release-web",
     "build:android:preview": "eas build --platform android --profile preview",
     "build:android:production": "eas build --platform android --profile production",
