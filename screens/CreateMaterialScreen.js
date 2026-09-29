@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
   SafeAreaView,
@@ -20,6 +20,9 @@ import {
 import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI } from '../utils/api';
+import { useEditRecord } from '../utils/useEditRecord';
+import { isPositiveNumber } from '../utils/editFormCore.cjs';
+import EditLoadState from '../components/EditLoadState';
 
 const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map((type) => ({
   value: type,
@@ -31,10 +34,14 @@ const UNIT_OPTIONS = Object.values(UNITS).map((value) => ({
   label: value,
 }));
 
-const CreateMaterialScreen = ({ navigation }) => {
+const CreateMaterialScreen = ({ navigation, route }) => {
+  const materialId = route.params?.materialId;
+  const isEditing = Boolean(materialId);
+  const submitting = useRef(false);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [customMaterialType, setCustomMaterialType] = useState('');
   const [formData, setFormData] = useState({
     type: '',
@@ -45,29 +52,44 @@ const CreateMaterialScreen = ({ navigation }) => {
     unit: UNITS.KILOGRAM,
     notes: '',
   });
+  const { record, loadingRecord, loadError, reload } = useEditRecord(materialId, materialsAPI, (material) => {
+    const type = material.type || material.materialType || '';
+    const custom = !MATERIAL_TYPE_OPTIONS.some((option) => option.value === type);
+    setCustomMaterialType(custom ? type : '');
+    setFormData({ type: custom ? MATERIAL_TYPES.OTHER : type, brand: material.brand || '',
+      diameter: String(material.diameter ?? '1.75'), color: material.color || '',
+      unitPrice: String(material.unitPrice ?? material.unit_price ?? ''), unit: material.unit || UNITS.KILOGRAM,
+      notes: material.notes || '' });
+  });
 
   const validateForm = () => {
     if (!formData.type) {
+      setSaveError('请选择材质类型');
       Alert.alert('验证失败', '请选择材质类型');
       return false;
     }
     if (formData.type === MATERIAL_TYPES.OTHER && !customMaterialType.trim()) {
+      setSaveError('请输入材质类型');
       Alert.alert('验证失败', '请输入材质类型');
       return false;
     }
     if (!formData.brand.trim()) {
+      setSaveError('请输入品牌');
       Alert.alert('验证失败', '请输入品牌');
       return false;
     }
-    if (formData.diameter && (Number.isNaN(parseFloat(formData.diameter)) || parseFloat(formData.diameter) <= 0)) {
+    if (formData.diameter && !isPositiveNumber(formData.diameter)) {
+      setSaveError('请输入有效的直径（mm）');
       Alert.alert('验证失败', '请输入有效的直径（mm）');
       return false;
     }
     if (!formData.color.trim()) {
+      setSaveError('请输入颜色');
       Alert.alert('验证失败', '请输入颜色');
       return false;
     }
-    if (!formData.unitPrice || parseFloat(formData.unitPrice) <= 0) {
+    if (!isPositiveNumber(formData.unitPrice)) {
+      setSaveError('请输入有效的单价');
       Alert.alert('验证失败', '请输入有效的单价');
       return false;
     }
@@ -75,23 +97,26 @@ const CreateMaterialScreen = ({ navigation }) => {
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (submitting.current || (isEditing && !record) || !validateForm()) {
       return;
     }
 
     try {
+      submitting.current = true;
+      setSaveError('');
       setLoading(true);
       const materialData = {
         type: formData.type === MATERIAL_TYPES.OTHER ? customMaterialType.trim() : formData.type,
         brand: formData.brand.trim(),
-        diameter: parseFloat(formData.diameter) || 1.75,
+        diameter: Number(formData.diameter) || 1.75,
         color: formData.color.trim(),
-        unitPrice: parseFloat(formData.unitPrice),
+        unitPrice: Number(formData.unitPrice),
         unit: formData.unit,
-        notes: formData.notes.trim() || undefined,
+        notes: formData.notes.trim(),
       };
 
-      const newMaterial = await materialsAPI.create(materialData);
+      const newMaterial = isEditing ? await materialsAPI.update(materialId, materialData) : await materialsAPI.create(materialData);
+      if (isEditing) { navigation.goBack(); return; }
 
       if (Platform.OS === 'web') {
         navigation.replace(ROUTES.MATERIAL_DETAIL, { materialId: newMaterial.id });
@@ -115,15 +140,19 @@ const CreateMaterialScreen = ({ navigation }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
-      console.error('创建耗材失败:', error);
+      console.error('保存耗材失败:', error);
       const message = error?.message
-        ? `创建耗材失败：${error.message}`
-        : '创建耗材失败，请检查网络连接或稍后重试';
+        ? `保存耗材失败：${error.message}`
+        : '保存耗材失败，请检查网络连接或稍后重试';
       Alert.alert('错误', message);
+      setSaveError(message);
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
+
+  if (isEditing && !record) return <EditLoadState loading={loadingRecord} error={loadError} onRetry={reload} onCancel={() => navigation.goBack()} />;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -137,8 +166,8 @@ const CreateMaterialScreen = ({ navigation }) => {
             <Ionicons name="layers-outline" size={24} color={colors.accent} />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>NEW MATERIAL</Text>
-            <Text style={styles.title}>新建耗材</Text>
+            <Text style={styles.eyebrow}>{isEditing ? 'EDIT MATERIAL' : 'NEW MATERIAL'}</Text>
+            <Text style={styles.title}>{isEditing ? '编辑耗材' : '新建耗材'}</Text>
             <Text style={styles.subtitle}>录入材质、品牌、颜色和计价单位。</Text>
           </View>
         </View>
@@ -229,8 +258,9 @@ const CreateMaterialScreen = ({ navigation }) => {
         </Card>
 
         <View style={styles.buttonContainer}>
+          {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
           <Button
-            title={loading ? '创建中...' : '创建耗材'}
+            title={loading ? '保存中...' : isEditing ? '保存修改' : '创建耗材'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
             disabled={loading}
@@ -240,6 +270,7 @@ const CreateMaterialScreen = ({ navigation }) => {
           />
           <Button
             title="取消"
+            disabled={loading}
             onPress={() => navigation.goBack()}
             variant="outline"
             fullWidth

@@ -40,6 +40,8 @@ sh deploy/restore.sh --backup-dir .backups/20260908T120000Z --deployment-dir . -
 
 恢复后可轮换 `JWT_SECRET` 使所有复制的旧 token 失效，并要求所有用户重新登录。
 
+2026-09-29 更新：备份清单记录来源的实际 schema 和全部集合计数，schema 2 备份可由 schema 3 后端恢复。旧镜像检查使用部署目录中的只读元数据脚本；请连同 `backend/scripts/store-backup-metadata.js`、`backend/config/runtime.js` 和 `deploy/backup-contract.cjs` 更新备份工具。空目标开关不跳过已有数据保护，恢复前保护备份不得与待恢复备份相同。PowerShell 可用 `-WhatIf` 完成文件/兼容检查而不恢复目标。
+
 ## 演练与证据
 
 只在一次性测试部署演练：创建订单、上传已知 hash 文件、写入使用假 AI 服务的加密设置和会话；备份；删除数据；恢复；验证登录、订单、文件 hash、AI 会话和密钥解密。还需确认错误密钥、损坏 dump、损坏 hash 与路径穿越归档均在目标变更前失败。

@@ -3,10 +3,10 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const { saveFile, deleteFile, getFileUrl } = require('../config/storage');
-const { withData, nextId, appendAudit, now } = require('../utils/store');
+const { withData, appendAudit, now } = require('../utils/store');
 const { toCsv, fromCsv } = require('../utils/csv');
 const { requireRoles } = require('../middleware/auth');
-const { createOrderInData, normalizeOrderPayload } = require('../services/orders');
+const { createOrderInData, normalizeOrderPayload, assertOrderCanDelete } = require('../services/orders');
 const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
 const { publicErrorMessage } = require('../utils/publicError');
 
@@ -168,12 +168,9 @@ router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
           ],
         }));
 
-      const created = incomingOrders.map((orderPayload) => {
-        const order = normalizeOrderPayload(orderPayload);
-        order.id = nextId(data.orders);
-        data.orders.push(order);
-        return order;
-      });
+      const created = incomingOrders.map((orderPayload) => createOrderInData(data, orderPayload, {
+        actorId: req.user.id, action: 'create_from_import',
+      }));
 
       appendAudit(data, {
         actorId: String(req.user.id),
@@ -294,6 +291,18 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
       error: '请通过订单状态接口修改状态',
     });
   }
+  const submittedItems = req.body?.items ?? req.body?.orderItems;
+  const validNumber = (value, allowZero = false) => (
+    (typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+    && Number.isFinite(Number(value)) && (allowZero ? Number(value) >= 0 : Number(value) > 0)
+  );
+  if (submittedItems !== undefined && (!Array.isArray(submittedItems) || submittedItems.length === 0
+    || submittedItems.some((item) => !item || !validNumber(item.quantity ?? item.qty) || !validNumber(item.unitPrice ?? item.unit_price)))) {
+    return res.status(400).json({ error: '订单至少需要一个项目，数量和单价必须是有效正数' });
+  }
+  if (req.body?.total !== undefined && !validNumber(req.body.total, true)) {
+    return res.status(400).json({ error: '订单金额必须是有效的非负数' });
+  }
   try {
     const updated = await withData((data) => {
       const orderIndex = data.orders.findIndex((item) => item.id === String(req.params.id));
@@ -301,7 +310,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
         return null;
       }
       const before = data.orders[orderIndex];
-      const order = normalizeOrderPayload(req.body, before);
+      const order = normalizeOrderPayload({ ...req.body, ...(submittedItems ? { total: undefined } : {}) }, before);
       data.orders[orderIndex] = order;
       appendAudit(data, {
         actorId: String(req.user.id),
@@ -330,6 +339,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
         return null;
       }
 
+      assertOrderCanDelete(data, req.params.id);
       const [order] = data.orders.splice(orderIndex, 1);
       if (order.attachments) {
         for (const attachment of order.attachments) {
@@ -358,7 +368,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     }
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: '删除订单失败' });
+    return res.status(error.status || 500).json({ code: error.code || 'ORDER_DELETE_FAILED', error: error.status ? error.message : '删除订单失败' });
   }
 });
 

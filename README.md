@@ -10,9 +10,9 @@
 
 | 模块 | 能力 |
 | --- | --- |
-| 订单 | 创建订单、查询筛选、状态流转、回收站恢复 |
-| 模型 | 管理模型资料、图片和受保护附件 |
-| 耗材 | 管理耗材、批次、入库、出库与库存调整 |
+| 订单 | 创建与编辑订单、查询筛选、状态流转、回收站恢复 |
+| 模型 | 创建与编辑模型资料，管理图片和受保护附件 |
+| 耗材 | 创建与编辑耗材、修改批次资料、入库、出库与库存调整 |
 | 团队 | Owner、Staff、Viewer 分级权限 |
 | 追溯 | 记录订单、模型、耗材和库存操作的审计信息 |
 | 小鲤助手 | 可选 AI 对话、业务查询、图片理解与草稿确认 |
@@ -212,6 +212,7 @@ npm run android
 
 ```powershell
 npm run verify:client
+npm run verify:edit
 npm run verify:agent-client
 npm run verify:backend
 npm --prefix backend run verify:self-hosted
@@ -329,6 +330,10 @@ Windows 运行 `获取初始化令牌.bat`；Linux 从受限的 `.env` 中读取
 - [发布检查清单](docs/RELEASE_CHECKLIST.md)：发布前自动与真机检查
 - [后端说明](backend/README.md)：后端开发、验证与数据迁移
 - [产品需求](需求文档.md)：MVP 范围、业务流程与数据模型
+- [表单编辑说明](docs/EDIT_FORMS.md)：修改入口、库存更正规则及验证结果
+- [ERP 功能差距复核](docs/ERP_GAP_REVIEW_2026-09-29.md)：当前能力、剩余模块与实施优先级
+- [ERP 改造设计](docs/ERP_TRANSFORMATION.md)：垂直 ERP 目标、业务规则、数据模型与迁移原则（规划草案）
+- [ERP 分阶段路线图](docs/superpowers/plans/2026-09-27-vertical-erp-roadmap.md)：阶段范围、代码入口、验收标准与实施跟踪（尚未实施）
 
 ## 项目结构
 

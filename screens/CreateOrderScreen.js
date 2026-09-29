@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +26,9 @@ import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
+import { useEditRecord } from '../utils/useEditRecord';
+import EditLoadState from '../components/EditLoadState';
+import { orderToForm, formToOrderItems, isPositiveNumber } from '../utils/editFormCore.cjs';
 
 const COLOR_OPTIONS = [
   { value: '金色', label: '金色' },
@@ -42,10 +45,14 @@ const newOrderItem = () => ({
   unitPrice: '',
 });
 
-const CreateOrderScreen = ({ navigation }) => {
+const CreateOrderScreen = ({ navigation, route }) => {
+  const orderId = route.params?.orderId;
+  const isEditing = Boolean(orderId);
+  const submitting = useRef(false);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [loadingData, setLoadingData] = useState(true);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [models, setModels] = useState([]);
@@ -60,10 +67,11 @@ const CreateOrderScreen = ({ navigation }) => {
     notes: '',
   });
   const [items, setItems] = useState([newOrderItem()]);
-
-  useEffect(() => {
-    loadOptions();
-  }, []);
+  const { record, loadingRecord, loadError, reload } = useEditRecord(orderId, ordersAPI, (order) => {
+    const values = orderToForm(order);
+    setFormData(values.form);
+    setItems(values.items.length ? values.items : [newOrderItem()]);
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -154,6 +162,7 @@ const CreateOrderScreen = ({ navigation }) => {
   const updateOrderItem = (index, field, value) => {
     const newItems = [...items];
     newItems[index][field] = value;
+    if (field === 'modelId') newItems[index].modelName = '';
     if (field === 'color' && value !== '其它颜色') {
       newItems[index].customColor = '';
     }
@@ -162,6 +171,7 @@ const CreateOrderScreen = ({ navigation }) => {
 
   const validateForm = () => {
     if (!formData.customerName.trim()) {
+      setSaveError('请输入客户名称');
       Alert.alert('验证失败', '请输入客户名称');
       return false;
     }
@@ -170,26 +180,32 @@ const CreateOrderScreen = ({ navigation }) => {
       const item = items[index];
       const itemNumber = index + 1;
       if (!item.modelId) {
+        setSaveError(`请选择第 ${itemNumber} 项的模型`);
         Alert.alert('验证失败', `请选择第 ${itemNumber} 项的模型`);
         return false;
       }
       if (!item.materialType) {
+        setSaveError(`请选择第 ${itemNumber} 项的材质类型`);
         Alert.alert('验证失败', `请选择第 ${itemNumber} 项的材质类型`);
         return false;
       }
       if (!item.color) {
+        setSaveError(`请选择第 ${itemNumber} 项的颜色`);
         Alert.alert('验证失败', `请选择第 ${itemNumber} 项的颜色`);
         return false;
       }
       if (item.color === '其它颜色' && !item.customColor.trim()) {
+        setSaveError(`请填写第 ${itemNumber} 项的自定义颜色`);
         Alert.alert('验证失败', `请填写第 ${itemNumber} 项的自定义颜色`);
         return false;
       }
-      if (!item.quantity || parseFloat(item.quantity) <= 0) {
+      if (!isPositiveNumber(item.quantity)) {
+        setSaveError(`请填写第 ${itemNumber} 项的有效数量`);
         Alert.alert('验证失败', `请填写第 ${itemNumber} 项的有效数量`);
         return false;
       }
-      if (!item.unitPrice || parseFloat(item.unitPrice) <= 0) {
+      if (!isPositiveNumber(item.unitPrice)) {
+        setSaveError(`请填写第 ${itemNumber} 项的有效单价`);
         Alert.alert('验证失败', `请填写第 ${itemNumber} 项的有效单价`);
         return false;
       }
@@ -200,20 +216,22 @@ const CreateOrderScreen = ({ navigation }) => {
 
   const calculateTotal = () => (
     items.reduce((total, item) => {
-      const quantity = parseFloat(item.quantity) || 0;
-      const unitPrice = parseFloat(item.unitPrice) || 0;
+      const quantity = Number(item.quantity) || 0;
+      const unitPrice = Number(item.unitPrice) || 0;
       return total + quantity * unitPrice;
     }, 0)
   );
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (submitting.current || (isEditing && !record) || !validateForm()) {
       return;
     }
 
     try {
+      submitting.current = true;
+      setSaveError('');
       setLoading(true);
-      const attachments = [];
+      const attachments = [...(record?.attachments || [])];
       if (selectedAttachment) {
         const uploadResult = await ordersAPI.uploadAttachment(pickerAssetToFormFile(selectedAttachment));
         attachments.push({
@@ -225,35 +243,30 @@ const CreateOrderScreen = ({ navigation }) => {
         });
       }
 
-      const orderItems = items.map((item) => {
-        const model = models.find((entry) => entry.id === item.modelId || entry.name === item.modelId);
-        const color = item.color === '其它颜色' ? item.customColor.trim() : item.color;
-        return {
-          modelId: item.modelId,
-          modelName: model?.name || item.modelId || '',
-          materialType: item.materialType,
-          color,
-          quantity: parseFloat(item.quantity),
-          unitPrice: parseFloat(item.unitPrice),
-        };
-      });
+      const orderItems = formToOrderItems(items, models);
 
       const orderData = {
         customer: {
+          ...record?.customer,
           name: formData.customerName.trim(),
-          email: formData.customerEmail.trim() || undefined,
-          phone: formData.customerPhone.trim() || undefined,
+          email: formData.customerEmail.trim(),
+          phone: formData.customerPhone.trim(),
         },
         items: orderItems,
         total: calculateTotal(),
         currency: formData.currency,
-        dueDate: formData.dueDate ? formatDate(formData.dueDate) : undefined,
-        notes: formData.notes.trim() || undefined,
+        dueDate: formData.dueDate ? formatDate(formData.dueDate) : null,
+        notes: formData.notes.trim(),
         attachments,
-        status: ORDER_STATUSES.PENDING_REVIEW,
+        ...(!isEditing ? { status: ORDER_STATUSES.PENDING_REVIEW } : {}),
       };
 
-      const newOrder = await ordersAPI.create(orderData);
+      const newOrder = isEditing ? await ordersAPI.update(orderId, orderData) : await ordersAPI.create(orderData);
+      if (isEditing) { navigation.goBack(); return; }
+      if (Platform.OS === 'web') {
+        navigation.replace(ROUTES.ORDER_DETAIL, { orderId: newOrder.id });
+        return;
+      }
 
       Alert.alert('成功', '订单创建成功', [
         {
@@ -266,9 +279,11 @@ const CreateOrderScreen = ({ navigation }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
-      console.error('创建订单失败:', error);
-      Alert.alert('错误', '创建订单失败，请检查网络连接或稍后重试');
+      console.error('保存订单失败:', error);
+      setSaveError(error.message || '保存订单失败，请重试');
+      Alert.alert('错误', error.message || (isEditing ? '修改订单失败，请重试' : '创建订单失败，请重试'));
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
@@ -281,6 +296,12 @@ const CreateOrderScreen = ({ navigation }) => {
       label: dimensions ? `${name} (${dimensions})` : name,
     };
   });
+  // Keep historical choices selectable even when the corresponding master record is gone.
+  items.forEach((item) => {
+    if (item.modelId && !modelOptions.some((option) => String(option.value) === String(item.modelId))) {
+      modelOptions.push({ value: item.modelId, label: item.modelName || item.modelId });
+    }
+  });
 
   const materialOptions = Array.from(
     new Set(
@@ -289,6 +310,13 @@ const CreateOrderScreen = ({ navigation }) => {
         .filter(Boolean)
     )
   ).map((type) => ({ value: type, label: type }));
+  items.forEach((item) => {
+    if (item.materialType && !materialOptions.some((option) => option.value === item.materialType)) {
+      materialOptions.push({ value: item.materialType, label: item.materialType });
+    }
+  });
+
+  if (isEditing && !record) return <EditLoadState loading={loadingRecord} error={loadError} onRetry={reload} onCancel={() => navigation.goBack()} />;
 
   if (loadingData) {
     return (
@@ -313,8 +341,8 @@ const CreateOrderScreen = ({ navigation }) => {
             <Ionicons name="receipt-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>NEW ORDER</Text>
-            <Text style={styles.title}>新建订单</Text>
+            <Text style={styles.eyebrow}>{isEditing ? 'EDIT ORDER' : 'NEW ORDER'}</Text>
+            <Text style={styles.title}>{isEditing ? '编辑订单' : '新建订单'}</Text>
             <Text style={styles.subtitle}>录入客户信息、交期、附件和打印项目。</Text>
           </View>
         </View>
@@ -345,7 +373,7 @@ const CreateOrderScreen = ({ navigation }) => {
 
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>订单信息</Text>
-          <View style={styles.datePickerContainer}>
+          {Platform.OS !== 'web' ? <View style={styles.datePickerContainer}>
             <Text style={styles.fieldLabel}>截止日期</Text>
             <TouchableOpacity
               activeOpacity={0.82}
@@ -366,15 +394,22 @@ const CreateOrderScreen = ({ navigation }) => {
                 <Ionicons name="close" size={16} color={colors.textSecondary} />
               </TouchableOpacity>
             ) : null}
-          </View>
+          </View> : null}
 
-          {showDatePicker ? (
+          {Platform.OS === 'web' ? (
+            <View>
+            <Text style={styles.fieldLabel}>截止日期</Text>
+            <input aria-label="截止日期" type="date" value={formData.dueDate ? formatDate(formData.dueDate) : ''}
+              style={{ padding: 12, fontSize: 16, minWidth: 0, color: colors.text, backgroundColor: colors.surfaceElevated, border: `1px solid ${colors.border}`, borderRadius: 10 }}
+              onChange={(event) => setFormData({ ...formData, dueDate: event.target.value ? new Date(`${event.target.value}T00:00:00`) : null })} />
+            </View>
+          ) : showDatePicker ? (
             <DateTimePicker
               value={formData.dueDate || new Date()}
               mode="date"
               display={Platform.OS === 'ios' ? 'spinner' : 'default'}
               onChange={handleDateChange}
-              minimumDate={new Date()}
+              minimumDate={isEditing ? undefined : new Date()}
             />
           ) : null}
 
@@ -390,6 +425,7 @@ const CreateOrderScreen = ({ navigation }) => {
           <View style={styles.attachmentBlock}>
             <Text style={styles.fieldLabel}>附件</Text>
             <Text style={styles.helperText}>支持 PNG、JPG、PDF，可上传客户图纸或确认文件。</Text>
+            {record?.attachments?.map((attachment, index) => <Text key={attachment.fileKey || index} style={styles.helperText}>{attachment.originalName || '已有附件'}（保留）</Text>)}
             {selectedAttachment ? <SelectedFile asset={selectedAttachment} /> : null}
             <Button
               title={selectedAttachment ? '重新选择附件' : '选择附件'}
@@ -481,8 +517,9 @@ const CreateOrderScreen = ({ navigation }) => {
         </Card>
 
         <View style={styles.buttonContainer}>
+          {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
           <Button
-            title={loading ? '创建中...' : '创建订单'}
+            title={loading ? '保存中...' : isEditing ? '保存修改' : '创建订单'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
             disabled={loading}
@@ -492,6 +529,7 @@ const CreateOrderScreen = ({ navigation }) => {
           />
           <Button
             title="取消"
+            disabled={loading}
             onPress={() => navigation.goBack()}
             variant="outline"
             fullWidth

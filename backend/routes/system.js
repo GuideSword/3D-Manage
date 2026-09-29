@@ -55,6 +55,7 @@ router.get('/info', async (req, res) => {
         agent: process.env.AGENT_ENABLED !== 'false',
         objectStorage: process.env.OSS_ENABLED === 'true',
         selfHosted: true,
+        inventoryRulesVersion: 1,
       },
     }), { write: false });
 

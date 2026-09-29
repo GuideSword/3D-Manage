@@ -8,8 +8,11 @@ const toNumber = (value, fallback = null) => {
   if (value == null || value === '') {
     return fallback;
   }
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) ? number : fallback;
+  const number = Number(value);
+  if (!['number', 'string'].includes(typeof value) || !Number.isFinite(number) || number < 0) {
+    throw Object.assign(new Error('耗材数值必须是有效的非负数'), { status: 400 });
+  }
+  return number;
 };
 
 const normalizeMaterialPayload = (payload = {}, existing = null) => {
@@ -17,6 +20,7 @@ const normalizeMaterialPayload = (payload = {}, existing = null) => {
   return {
     ...(existing || {}),
     ...payload,
+    ...(existing ? { id: existing.id } : {}),
     type: payload.type || payload.materialType || existing?.type || '',
     materialType: payload.materialType || payload.type || existing?.materialType || existing?.type || '',
     brand: payload.brand || existing?.brand || '',
@@ -25,7 +29,7 @@ const normalizeMaterialPayload = (payload = {}, existing = null) => {
     density: toNumber(payload.density, existing?.density || null),
     unitPrice: toNumber(payload.unitPrice ?? payload.unit_price, existing?.unitPrice || null),
     unit: payload.unit || existing?.unit || 'kg',
-    notes: payload.notes || existing?.notes || '',
+    notes: payload.notes === undefined ? existing?.notes || '' : String(payload.notes ?? ''),
     createdAt: existing?.createdAt || timestamp,
     updatedAt: timestamp,
   };
@@ -233,7 +237,7 @@ router.patch('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     }
     return res.json(updated);
   } catch (error) {
-    return res.status(500).json({ error: '更新耗材失败' });
+    return res.status(error.status || 500).json({ error: error.status ? error.message : '更新耗材失败' });
   }
 });
 
@@ -245,16 +249,19 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
         return null;
       }
 
-      const [material] = data.materials.splice(materialIndex, 1);
-      const relatedLots = data.stockLots.filter((lot) => String(lot.materialId || lot.material_id) === String(material.id));
-      data.stockLots = data.stockLots.filter((lot) => String(lot.materialId || lot.material_id) !== String(material.id));
+      const material = data.materials[materialIndex];
+      if (data.stockLots.some((lot) => String(lot.materialId || lot.material_id) === String(material.id))
+        || data.inventoryTxns.some((txn) => String(txn.materialId || txn.material_id) === String(material.id))) {
+        throw Object.assign(new Error('耗材有关联批次或库存流水，不能删除'), { status: 409, code: 'MATERIAL_REFERENCED' });
+      }
+      data.materials.splice(materialIndex, 1);
 
       appendAudit(data, {
         actorId: String(req.user.id),
         entity: 'materials',
         entityId: material.id,
         action: 'delete',
-        diff: { material, removedStockLots: relatedLots.length },
+        diff: { material, removedStockLots: 0 },
       });
       return material;
     });
@@ -264,7 +271,7 @@ router.delete('/:id', requireRoles('owner', 'staff'), async (req, res) => {
     }
     return res.json({ success: true });
   } catch (error) {
-    return res.status(500).json({ error: '删除耗材失败' });
+    return res.status(error.status || 500).json({ code: error.code || 'MATERIAL_DELETE_FAILED', error: error.status ? error.message : '删除耗材失败' });
   }
 });
 

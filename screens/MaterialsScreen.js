@@ -23,6 +23,7 @@ import {
 } from '../constants';
 import {
   Badge,
+  Button,
   Card,
   CyberIconButton,
   CyberPageHeader,
@@ -32,11 +33,13 @@ import {
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
-import { canWrite } from '../utils/permissions';
+import { useInventoryCommand } from '../utils/useInventoryCommand';
+import { canManage, canWrite } from '../utils/permissions';
 
 const MaterialsScreen = ({ navigation, route }) => {
   const { user } = useAuth();
   const editable = canWrite(user);
+  const submitCommand = useInventoryCommand({ reusable: true });
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [materials, setMaterials] = useState([]);
@@ -46,6 +49,7 @@ const MaterialsScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState('materials');
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingId, setDeletingId] = useState(null);
+  const [pendingLotChange, setPendingLotChange] = useState(null);
 
   const fetchMaterials = async () => {
     try {
@@ -139,7 +143,7 @@ const MaterialsScreen = ({ navigation, route }) => {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '删除耗材失败');
+              Alert.alert('错误', error.message || '删除耗材失败');
             } finally {
               setDeletingId(null);
             }
@@ -150,32 +154,35 @@ const MaterialsScreen = ({ navigation, route }) => {
   };
 
   const handleDeleteLot = async (lotId) => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除这个批次吗？',
-      [
+    const lot = stockLots.find((item) => item.id === lotId);
+    if (!lot || deletingId) return;
+    if (pendingLotChange && pendingLotChange.id !== lotId) {
+      Alert.alert('请先确认上次操作', '上次批次操作结果未知，请点击原批次的重试按钮。');
+      return;
+    }
+    const payload = pendingLotChange || { id: lotId, changes: { active: lot.active === false, version: lot.version } };
+    const activate = payload.changes.active;
+    Alert.alert(pendingLotChange ? '重试原批次操作' : activate ? '恢复批次' : '停用批次',
+      activate ? '恢复后在库批次可继续执行库存操作。' : '停用后不能再过账，余额和历史流水会保留。', [
         { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeletingId(lotId);
-              await stockAPI.deleteLot(lotId);
-              Alert.alert('成功', '批次已删除');
-              await fetchStockLots();
-            } catch (error) {
-              if (isAuthRequiredError(error)) {
-                return;
-              }
-              Alert.alert('错误', '删除批次失败');
-            } finally {
-              setDeletingId(null);
-            }
-          },
-        },
-      ]
-    );
+        { text: activate ? '恢复' : '停用', onPress: async () => {
+          try {
+            setDeletingId(lotId);
+            setPendingLotChange(payload);
+            const result = await submitCommand('lot.update', payload,
+              (body, key) => stockAPI.updateLot(body.id, body.changes, key));
+            if (result === null) return;
+            setPendingLotChange(null);
+            await fetchStockLots();
+            Alert.alert('成功', activate ? '批次已恢复' : '批次已停用');
+          } catch (error) {
+            if (isAuthRequiredError(error)) return;
+            if (error.status >= 400 && error.status < 500) setPendingLotChange(null);
+            Alert.alert('错误', error.message || '批次操作失败，请点击原批次重试');
+            if (error.status === 409) await fetchStockLots();
+          } finally { setDeletingId(null); }
+        } },
+      ]);
   };
 
   const getMaterialLots = (materialId) => (
@@ -256,6 +263,8 @@ const MaterialsScreen = ({ navigation, route }) => {
           navigation,
           deletingId,
           handleDeleteLot,
+          pendingLotChange,
+          countAllowed: canManage(user),
           findMaterial,
           colors,
           styles,
@@ -338,6 +347,8 @@ const renderInventoryList = ({
   navigation,
   deletingId,
   handleDeleteLot,
+  pendingLotChange,
+  countAllowed,
   findMaterial,
   colors,
   styles,
@@ -355,7 +366,7 @@ const renderInventoryList = ({
       />
     )}
   >
-    {editable ? <InventoryActions navigation={navigation} /> : null}
+    {editable ? <InventoryActions navigation={navigation} countAllowed={countAllowed} /> : null}
     {stockLots.length > 0 ? stockLots.map((lot) => (
       <LotCard
         key={lot.id}
@@ -363,6 +374,8 @@ const renderInventoryList = ({
         material={findMaterial(lot.materialId || lot.material_id) || {}}
         deletingId={deletingId}
         onDelete={handleDeleteLot}
+        retryPending={pendingLotChange?.id === lot.id}
+        onEdit={() => navigation.navigate(ROUTES.EDIT_STOCK_LOT, { lotId: lot.id })}
         editable={editable}
       />
     )) : (
@@ -452,7 +465,7 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
   );
 };
 
-const LotCard = ({ lot, material, deletingId, onDelete, editable }) => {
+const LotCard = ({ lot, material, deletingId, onDelete, onEdit, editable, retryPending }) => {
   const { colors, styles } = useMaterialTheme();
   const state = lot.state || lot.status;
   const statusColor = getStockStatusColor(state, colors);
@@ -470,20 +483,27 @@ const LotCard = ({ lot, material, deletingId, onDelete, editable }) => {
           <Text style={styles.lotMaterial} numberOfLines={1}>{materialLabel}</Text>
         </View>
         <View style={styles.lotRight}>
-          <Badge text={STOCK_STATUS_LABELS[state] || '未知'} color={statusColor} size="small" />
+          <Badge text={lot.active === false ? '已停用' : STOCK_STATUS_LABELS[state] || '未知'} color={lot.active === false ? colors.textTertiary : statusColor} size="small" />
           {editable ? <TouchableOpacity
             style={styles.deleteButton}
+            accessibilityLabel={retryPending ? '重试原批次操作' : lot.active === false ? '恢复批次' : '停用批次'}
             onPress={() => onDelete(lot.id)}
             disabled={deletingId === lot.id}
           >
             {deletingId === lot.id ? (
               <ActivityIndicator size="small" color={colors.danger} />
             ) : (
-              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+              <Ionicons name={retryPending || lot.active === false ? "refresh-outline" : "archive-outline"} size={18} color={colors.primary} />
             )}
           </TouchableOpacity> : null}
         </View>
       </View>
+      {retryPending ? <Text style={styles.materialNotes}>上次操作结果未知，请点击重试确认原操作。</Text> : null}
+      {editable ? <Button title="编辑批次" variant="outline" size="small" iconLeft="create-outline"
+        disabled={Boolean(retryPending) || deletingId === lot.id} onPress={onEdit} /> : null}
+      {lot.balanceStatus?.startsWith('legacy_') ? (
+        <Text style={styles.materialNotes}>{lot.balanceStatus === 'legacy_invalid' ? '历史余额无效，需人工核对后迁移' : '历史余额待核对，旧流水不能用于重建余额'}</Text>
+      ) : null}
       <View style={styles.stockSummary}>
         <SummaryItem label="数量" value={`${lot.qty || 0}g`} />
         <SummaryItem label="序列号" value={lot.serialNo || lot.serial_no || '未设置'} />
@@ -493,7 +513,7 @@ const LotCard = ({ lot, material, deletingId, onDelete, editable }) => {
   );
 };
 
-const InventoryActions = ({ navigation }) => {
+const InventoryActions = ({ navigation, countAllowed }) => {
   const { colors, styles } = useMaterialTheme();
   return (
   <Card style={styles.inventoryPanel}>
@@ -511,12 +531,12 @@ const InventoryActions = ({ navigation }) => {
         color={colors.warning}
         onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
       />
-      <InventoryAction
+      {countAllowed ? <InventoryAction
         title="盘点"
         icon="swap-horizontal-outline"
         color={colors.primary}
         onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
-      />
+      /> : null}
     </View>
   </Card>
   );

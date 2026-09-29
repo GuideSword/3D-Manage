@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -22,7 +23,7 @@ import {
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
-import { canWrite } from '../utils/permissions';
+import { canManage, canWrite } from '../utils/permissions';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialDetailScreen = ({ route, navigation }) => {
@@ -125,7 +126,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '删除耗材失败');
+              Alert.alert('错误', error.message || '删除耗材失败');
             } finally {
               setDeleting(false);
             }
@@ -135,9 +136,9 @@ const MaterialDetailScreen = ({ route, navigation }) => {
     );
   };
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     fetchMaterialDetail();
-  }, [materialId]);
+  }, [materialId]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -226,23 +227,32 @@ const MaterialDetailScreen = ({ route, navigation }) => {
               color={colors.warning}
               onPress={() => navigation.navigate(ROUTES.OUTBOUND_TRANSACTION)}
             />
-            <TransactionAction
+            {canManage(user) ? <TransactionAction
               label="盘点"
               icon="swap-horizontal-outline"
               color={colors.primary}
               onPress={() => navigation.navigate(ROUTES.ADJUST_TRANSACTION)}
-            />
+            /> : null}
           </View>
         </Card> : null}
 
         <Card style={styles.section}>
           <SectionHeader title="库存批次" count={stockLots.length} />
           {stockLots.length > 0 ? stockLots.map((lot) => (
-            <LotRow key={lot.id} lot={lot} />
+            <View key={lot.id}>
+              <LotRow lot={lot} />
+              {canWrite(user) ? <Button title="编辑批次" variant="outline" size="small"
+                iconLeft="create-outline" onPress={() => navigation.navigate(ROUTES.EDIT_STOCK_LOT, { lotId: lot.id })} /> : null}
+            </View>
           )) : (
             <EmptySection text="暂无库存批次" />
           )}
         </Card>
+
+        {canWrite(user) ? <Card style={styles.section}>
+          <Button title="编辑耗材" iconLeft="create-outline" fullWidth
+            onPress={() => navigation.navigate(ROUTES.CREATE_MATERIAL, { materialId })} />
+        </Card> : null}
 
         {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />
@@ -343,9 +353,10 @@ const LotRow = ({ lot }) => {
         </Text>
       </View>
       <View style={styles.lotRight}>
-        <Badge text={STOCK_STATUS_LABELS[state] || '未知'} color={color} size="small" />
+        <Badge text={lot.active === false ? '已停用' : STOCK_STATUS_LABELS[state] || '未知'} color={color} size="small" />
         <Text style={styles.lotQty}>{lot.qty || 0}g</Text>
       </View>
+      {lot.balanceStatus?.startsWith('legacy_') ? <Text style={styles.lotNotes}>{lot.balanceStatus === 'legacy_invalid' ? '历史余额无效，需人工核对后迁移' : '历史余额待核对'}</Text> : null}
       {lot.notes ? <Text style={styles.lotNotes}>{lot.notes}</Text> : null}
     </View>
   );

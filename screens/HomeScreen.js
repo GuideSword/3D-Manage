@@ -5,7 +5,7 @@ import { ORDER_STATUSES, ROUTES } from '../constants';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI, stockAPI } from '../utils/api';
-import { canExport, canWrite } from '../utils/permissions';
+import { canExport, canManage, canWrite } from '../utils/permissions';
 import CyberHome from '../components/home/CyberHome';
 
 const itemsOf = response => Array.isArray(response) ? response : response?.items || [];
@@ -43,7 +43,7 @@ export default function HomeScreen() {
     setStats({
       pendingReview: pending.status === 'fulfilled' ? countOf(pending.value) : null,
       inProgress: active.status === 'fulfilled' ? countOf(active.value) : null,
-      lowStock: stock.status === 'fulfilled' ? itemsOf(stock.value).filter(lot => (lot.qty || 0) <= 100).length : null,
+      lowStock: stock.status === 'fulfilled' ? itemsOf(stock.value).filter(lot => lot.active !== false && (lot.state || 'in_stock') === 'in_stock' && lot.balanceStatus !== 'legacy_invalid' && (lot.qty || 0) <= 100).length : null,
     });
     if (recent.status === 'fulfilled') setRecentOrders(itemsOf(recent.value));
     setError(results.some(r => r.status === 'rejected') ? '部分数据加载失败' : '');
@@ -77,6 +77,6 @@ export default function HomeScreen() {
     onAgent={() => navigation.navigate(ROUTES.AGENT)}
     onCreate={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_ORDER) : undefined}
     onModel={canWrite(user) ? () => navigation.navigate(ROUTES.CREATE_MODEL) : undefined}
-    onAdjust={canWrite(user) ? () => navigation.navigate(ROUTES.ADJUST_TRANSACTION) : undefined}
+    onAdjust={canManage(user) ? () => navigation.navigate(ROUTES.ADJUST_TRANSACTION) : undefined}
     onExport={canExport(user) ? handleExport : undefined} />;
 }

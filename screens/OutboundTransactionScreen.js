@@ -19,8 +19,10 @@ import {
 import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
+import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
 const OutboundTransactionScreen = ({ navigation }) => {
+  const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
@@ -66,7 +68,7 @@ const OutboundTransactionScreen = ({ navigation }) => {
 
   const outLotOptions = useMemo(() => (
     stockLots
-      .filter((lot) => (lot.state || lot.status) === STOCK_STATUSES.IN_STOCK)
+      .filter((lot) => lot.active !== false && lot.balanceStatus !== 'legacy_invalid' && (lot.state || lot.status) === STOCK_STATUSES.IN_STOCK)
       .map((lot) => {
         const material = materials.find((item) => item.id === (lot.materialId || lot.material_id));
         const materialName = material
@@ -90,8 +92,8 @@ const OutboundTransactionScreen = ({ navigation }) => {
       Alert.alert('验证失败', '请选择批次');
       return false;
     }
-    if (!formData.qty || parseFloat(formData.qty) <= 0) {
-      Alert.alert('验证失败', '请输入有效的数量');
+    if (!isValidGramQuantity(formData.qty)) {
+      Alert.alert('验证失败', '请输入有效的克数，最多三位小数');
       return false;
     }
     if (selectedLotInfo && (selectedLotInfo.qty || 0) < parseFloat(formData.qty)) {
@@ -102,18 +104,19 @@ const OutboundTransactionScreen = ({ navigation }) => {
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (loading || !validateForm()) {
       return;
     }
 
     try {
       setLoading(true);
-      await stockAPI.inventoryTransaction({
+      const result = await submitCommand('inventory.post', {
         lotId: formData.lotId,
         type: INVENTORY_TXN_TYPES.OUT,
-        qty: parseFloat(formData.qty),
-        notes: formData.notes.trim() || undefined,
-      });
+        qty: formData.qty.trim(),
+        notes: formData.notes.trim(),
+      }, (body, key) => stockAPI.inventoryTransaction(body, key));
+      if (result === null) return;
 
       Alert.alert('成功', '出库操作成功', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -123,7 +126,7 @@ const OutboundTransactionScreen = ({ navigation }) => {
         return;
       }
       console.error('出库失败:', error);
-      Alert.alert('错误', '出库操作失败，请检查网络连接或稍后重试');
+      Alert.alert('错误', error.message || '出库操作失败，请重试');
     } finally {
       setLoading(false);
     }

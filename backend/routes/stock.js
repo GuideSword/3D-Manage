@@ -1,30 +1,32 @@
 const express = require('express');
 const router = express.Router();
-const { withData, nextId, appendAudit, now } = require('../utils/store');
+const { withData, appendAudit } = require('../utils/store');
+const inventory = require('../services/inventory');
 const { toCsv, fromCsv } = require('../utils/csv');
 const { requireRoles } = require('../middleware/auth');
 
-const toNumber = (value, fallback = 0) => {
-  const number = Number.parseFloat(value);
-  return Number.isFinite(number) ? number : fallback;
+const respondError = (res, error, fallback) => res.status(error.status || 500).json({
+  code: error.code && error.status ? error.code : 'INVENTORY_FAILED',
+  error: error.status ? error.message : fallback,
+});
+const commandOptions = (req) => ({
+  actor: req.user,
+  idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotencyKey,
+});
+const commandBody = (req) => {
+  if (req.body == null || typeof req.body !== 'object' || Array.isArray(req.body)) {
+    throw new inventory.InventoryError(400, 'INVALID_COMMAND', '库存操作内容必须为对象');
+  }
+  const { idempotencyKey, ...body } = req.body || {};
+  return body;
 };
-
-const normalizeLotPayload = (payload = {}, existing = null) => {
-  const timestamp = now();
-  return {
-    ...(existing || {}),
-    ...payload,
-    materialId: String(payload.materialId || payload.material_id || existing?.materialId || ''),
-    lotNo: payload.lotNo || payload.lot_no || existing?.lotNo || '',
-    serialNo: payload.serialNo || payload.serial_no || existing?.serialNo || '',
-    location: payload.location || existing?.location || '',
-    qty: toNumber(payload.qty ?? payload.qty_g, existing?.qty || 0),
-    state: payload.state || payload.status || existing?.state || 'in_stock',
-    notes: payload.notes || existing?.notes || '',
-    photoKey: payload.photoKey || payload.photo_key || existing?.photoKey || '',
-    createdAt: existing?.createdAt || timestamp,
-    updatedAt: timestamp,
-  };
+const commandRoute = (operation, makePayload, fallback) => async (req, res) => {
+  try {
+    const result = await inventory.executeCommand(operation, makePayload(req), commandOptions(req));
+    return res.status(result.status).json(result.body);
+  } catch (error) {
+    return respondError(res, error, fallback);
+  }
 };
 
 const filterLots = (lots, query = {}) => {
@@ -90,6 +92,13 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
         { key: 'materialId', label: 'material_id' },
         { key: 'type', label: 'type' },
         { key: 'qty', label: 'qty' },
+        { key: 'qtyMg', label: 'qty_mg' },
+        { key: 'beforeQty', label: 'before_qty' },
+        { key: 'afterQty', label: 'after_qty' },
+        { key: 'deltaQty', label: 'delta_qty' },
+        { key: 'deltaQtyMg', label: 'delta_qty_mg' },
+        { key: 'ledgerVersion', label: 'ledger_version' },
+        { key: 'source', label: 'source' },
         { key: 'orderId', label: 'order_id' },
         { key: 'notes', label: 'notes' },
         { key: 'createdAt', label: 'created_at' },
@@ -102,7 +111,12 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
         { key: 'serialNo', label: 'serial_no' },
         { key: 'location', label: 'location' },
         { key: 'qty', label: 'qty' },
+        { key: 'qtyMg', label: 'qty_mg' },
         { key: 'state', label: 'state' },
+        { key: 'active', label: 'active' },
+        { key: 'balanceStatus', label: 'balance_status' },
+        { key: 'ledgerBaselineQtyMg', label: 'ledger_baseline_qty_mg' },
+        { key: 'ledgerStartedAt', label: 'ledger_started_at' },
         { key: 'notes', label: 'notes' },
         { key: 'createdAt', label: 'created_at' },
         { key: 'updatedAt', label: 'updated_at' },
@@ -123,54 +137,20 @@ router.get('/export', requireRoles('owner'), async (req, res) => {
   }
 });
 
-router.post('/import', requireRoles('owner', 'staff'), async (req, res) => {
-  try {
-    const imported = await withData((data) => {
-      const incomingLots = Array.isArray(req.body.lots)
-        ? req.body.lots
-        : fromCsv(req.body.csv).map((row) => ({
-          materialId: row.material_id || row.materialId,
-          lotNo: row.lot_no || row.lotNo,
-          serialNo: row.serial_no || row.serialNo,
-          location: row.location,
-          qty: row.qty || row.qty_g,
-          state: row.state || row.status || 'in_stock',
-          notes: row.notes,
-        }));
-
-      const created = incomingLots.map((lotPayload) => {
-        const lot = normalizeLotPayload(lotPayload);
-        lot.id = nextId(data.stockLots);
-        data.stockLots.push(lot);
-        data.inventoryTxns.push({
-          id: nextId(data.inventoryTxns),
-          lotId: lot.id,
-          materialId: lot.materialId,
-          type: 'in',
-          qty: lot.qty,
-          notes: 'Imported stock lot.',
-          createdAt: now(),
-          actorId: String(req.user.id),
-        });
-        return lot;
-      });
-
-      appendAudit(data, {
-        actorId: String(req.user.id),
-        entity: 'stock',
-        entityId: null,
-        action: 'lots.import',
-        diff: { count: created.length },
-      });
-      return created;
-    });
-
-    res.status(201).json({ imported: imported.length, items: imported });
-  } catch (error) {
-    console.error('Import stock lots failed:', error);
-    res.status(400).json({ error: '导入库存批次失败' });
-  }
-});
+router.post('/import', requireRoles('owner', 'staff'), commandRoute('lots.import', (req) => {
+  const body = commandBody(req);
+  const lots = Array.isArray(body.lots) ? body.lots : fromCsv(body.csv).map((row) => ({
+    materialId: row.material_id || row.materialId,
+    lotNo: row.lot_no || row.lotNo,
+    serialNo: row.serial_no || row.serialNo,
+    location: row.location,
+    qty: row.qty ?? row.qty_g,
+    unit: row.unit ?? 'g',
+    state: row.state || row.status || 'in_stock',
+    notes: row.notes,
+  }));
+  return { lots };
+}, '导入库存批次失败'));
 
 router.get('/lots', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
   try {
@@ -193,31 +173,9 @@ router.get('/lots', requireRoles('owner', 'staff', 'viewer'), async (req, res) =
   }
 });
 
-router.post('/lots', requireRoles('owner', 'staff'), async (req, res) => {
-  try {
-    const created = await withData((data) => {
-      const material = data.materials.find((item) => item.id === String(req.body.materialId || req.body.material_id));
-      if (!material) {
-        return { status: 404, body: { error: '耗材不存在' } };
-      }
-
-      const lot = normalizeLotPayload(req.body);
-      lot.id = nextId(data.stockLots);
-      data.stockLots.push(lot);
-      appendAudit(data, {
-        actorId: String(req.user.id),
-        entity: 'stockLots',
-        entityId: lot.id,
-        action: 'create',
-        diff: lot,
-      });
-      return { status: 201, body: lot };
-    });
-    res.status(created.status).json(created.body);
-  } catch (error) {
-    res.status(500).json({ error: '创建库存批次失败' });
-  }
-});
+router.post('/lots', requireRoles('owner', 'staff'), commandRoute(
+  'lot.create', commandBody, '创建库存批次失败'
+));
 
 router.get('/inventory/txns', requireRoles('owner', 'staff', 'viewer'), async (req, res) => {
   try {
@@ -240,71 +198,9 @@ router.get('/inventory/txns', requireRoles('owner', 'staff', 'viewer'), async (r
   }
 });
 
-router.post('/inventory/txns', requireRoles('owner', 'staff'), async (req, res) => {
-  try {
-    const result = await withData((data) => {
-      const lot = data.stockLots.find((item) => item.id === String(req.body.lotId || req.body.lot_id));
-      if (!lot) {
-        return { status: 404, body: { error: '库存批次不存在' } };
-      }
-
-      const type = req.body.type;
-      const qty = toNumber(req.body.qty ?? req.body.qty_g, 0);
-      if (!['in', 'out', 'adjust', 'scrap'].includes(type)) {
-        return { status: 400, body: { error: '库存操作类型无效' } };
-      }
-      if (qty < 0 || (type !== 'adjust' && qty === 0)) {
-        return { status: 400, body: { error: '数量无效' } };
-      }
-
-      const before = { qty: lot.qty, state: lot.state };
-      if (type === 'in') {
-        lot.qty = toNumber(lot.qty, 0) + qty;
-      } else if (type === 'out') {
-        if (toNumber(lot.qty, 0) < qty) {
-          return { status: 400, body: { error: '库存不足' } };
-        }
-        lot.qty = toNumber(lot.qty, 0) - qty;
-      } else if (type === 'adjust') {
-        lot.qty = qty;
-      } else if (type === 'scrap') {
-        if (toNumber(lot.qty, 0) < qty) {
-          return { status: 400, body: { error: '库存不足' } };
-        }
-        lot.qty = toNumber(lot.qty, 0) - qty;
-        if (lot.qty === 0) {
-          lot.state = 'scrapped';
-        }
-      }
-
-      lot.updatedAt = now();
-      const txn = {
-        id: nextId(data.inventoryTxns),
-        lotId: lot.id,
-        materialId: lot.materialId || lot.material_id,
-        type,
-        qty,
-        notes: req.body.notes || req.body.reason || '',
-        orderId: req.body.orderId || req.body.relatedOrderId || req.body.related_order_id || '',
-        createdAt: now(),
-        actorId: String(req.user.id),
-      };
-      data.inventoryTxns.push(txn);
-      appendAudit(data, {
-        actorId: String(req.user.id),
-        entity: 'stockLots',
-        entityId: lot.id,
-        action: `inventory.${type}`,
-        diff: { before, after: { qty: lot.qty, state: lot.state }, txn },
-      });
-
-      return { status: 201, body: txn };
-    });
-    res.status(result.status).json(result.body);
-  } catch (error) {
-    res.status(500).json({ error: '库存操作失败' });
-  }
-});
+router.post('/inventory/txns', requireRoles('owner', 'staff'), commandRoute(
+  'inventory.post', commandBody, '库存操作失败'
+));
 
 router.get('/lots/:id/audit', requireRoles('owner'), async (req, res) => {
   try {
@@ -329,61 +225,16 @@ router.get('/lots/:id', requireRoles('owner', 'staff', 'viewer'), async (req, re
   }
 });
 
-router.patch('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
-  try {
-    const updated = await withData((data) => {
-      const lotIndex = data.stockLots.findIndex((item) => item.id === String(req.params.id));
-      if (lotIndex === -1) {
-        return null;
-      }
-      const before = data.stockLots[lotIndex];
-      const lot = normalizeLotPayload(req.body, before);
-      data.stockLots[lotIndex] = lot;
-      appendAudit(data, {
-        actorId: String(req.user.id),
-        entity: 'stockLots',
-        entityId: lot.id,
-        action: 'update',
-        diff: { before, after: lot },
-      });
-      return lot;
-    });
+router.patch('/lots/:id', requireRoles('owner', 'staff'), commandRoute(
+  'lot.update', (req) => ({ id: req.params.id, changes: commandBody(req) }), '更新库存批次失败'
+));
 
-    if (!updated) {
-      return res.status(404).json({ error: '库存批次不存在' });
-    }
-    return res.json(updated);
-  } catch (error) {
-    return res.status(500).json({ error: '更新库存批次失败' });
-  }
-});
+router.post('/lots/:id/archive', requireRoles('owner', 'staff'), commandRoute(
+  'lot.archive', (req) => ({ id: req.params.id, changes: commandBody(req) }), '停用库存批次失败'
+));
 
-router.delete('/lots/:id', requireRoles('owner', 'staff'), async (req, res) => {
-  try {
-    const deleted = await withData((data) => {
-      const lotIndex = data.stockLots.findIndex((item) => item.id === String(req.params.id));
-      if (lotIndex === -1) {
-        return null;
-      }
-
-      const [lot] = data.stockLots.splice(lotIndex, 1);
-      appendAudit(data, {
-        actorId: String(req.user.id),
-        entity: 'stockLots',
-        entityId: lot.id,
-        action: 'delete',
-        diff: lot,
-      });
-      return lot;
-    });
-
-    if (!deleted) {
-      return res.status(404).json({ error: '库存批次不存在' });
-    }
-    return res.json({ success: true });
-  } catch (error) {
-    return res.status(500).json({ error: '删除库存批次失败' });
-  }
-});
+router.delete('/lots/:id', requireRoles('owner', 'staff'), commandRoute(
+  'lot.delete', (req) => ({ id: req.params.id }), '删除库存批次失败'
+));
 
 module.exports = router;

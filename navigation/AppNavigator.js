@@ -14,6 +14,7 @@ import CreateOrderScreen from '../screens/CreateOrderScreen';
 import MaterialDetailScreen from '../screens/MaterialDetailScreen';
 import CreateMaterialScreen from '../screens/CreateMaterialScreen';
 import CreateModelScreen from '../screens/CreateModelScreen';
+import EditStockLotScreen from '../screens/EditStockLotScreen';
 import ModelDetailScreen from '../screens/ModelDetailScreen';
 import InboundTransactionScreen from '../screens/InboundTransactionScreen';
 import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
@@ -112,7 +113,7 @@ const AppNavigator = () => {
             {canWrite(user) ? <Stack.Screen
               name="CreateOrder"
               component={CreateOrderScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.CREATE_ORDER] }}
+              options={({ route }) => ({ title: route.params?.orderId ? '编辑订单' : SCREEN_TITLES[ROUTES.CREATE_ORDER] })}
             /> : null}
             <Stack.Screen
               name="MaterialDetail"
@@ -122,12 +123,12 @@ const AppNavigator = () => {
             {canWrite(user) ? <Stack.Screen
               name="CreateMaterial"
               component={CreateMaterialScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.CREATE_MATERIAL] }}
+              options={({ route }) => ({ title: route.params?.materialId ? '编辑耗材' : SCREEN_TITLES[ROUTES.CREATE_MATERIAL] })}
             /> : null}
             {canWrite(user) ? <Stack.Screen
               name="CreateModel"
               component={CreateModelScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.CREATE_MODEL] }}
+              options={({ route }) => ({ title: route.params?.modelId ? '编辑模型' : SCREEN_TITLES[ROUTES.CREATE_MODEL] })}
             /> : null}
             <Stack.Screen
               name="ModelDetail"
@@ -138,6 +139,11 @@ const AppNavigator = () => {
               name={ROUTES.INBOUND_TRANSACTION}
               component={InboundTransactionScreen}
               options={{ title: SCREEN_TITLES[ROUTES.INBOUND_TRANSACTION] }}
+            /> : null}
+            {canWrite(user) ? <Stack.Screen
+              name={ROUTES.EDIT_STOCK_LOT}
+              component={EditStockLotScreen}
+              options={{ title: SCREEN_TITLES[ROUTES.EDIT_STOCK_LOT] }}
             /> : null}
             {canWrite(user) ? <Stack.Screen
               name={ROUTES.OUTBOUND_TRANSACTION}

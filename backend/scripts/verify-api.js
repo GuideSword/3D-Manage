@@ -253,6 +253,7 @@ const main = async () => {
 
     const lot = await request('/api/stock/lots', {
       method: 'POST',
+      headers: { 'Idempotency-Key': 'verify-api-253' },
       body: JSON.stringify({
         materialId: material.id,
         lotNo: 'VERIFY-LOT-001',
@@ -263,11 +264,13 @@ const main = async () => {
 
     await request('/api/stock/inventory/txns', {
       method: 'POST',
+      headers: { 'Idempotency-Key': 'verify-api-263' },
       body: JSON.stringify({ lotId: lot.id, type: 'in', qty: 250, notes: 'verify inbound' }),
     });
 
     await request('/api/stock/inventory/txns', {
       method: 'POST',
+      headers: { 'Idempotency-Key': 'verify-api-268' },
       body: JSON.stringify({ lotId: lot.id, type: 'adjust', qty: 200, notes: 'verify count' }),
     });
 

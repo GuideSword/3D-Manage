@@ -39,11 +39,14 @@ docker cp "$db:/tmp/manage3d-backup.dump" "$backup/database.dump"
 docker compose -p "$project" exec -T db pg_restore -l /tmp/manage3d-backup.dump >/dev/null
 docker run --rm -v "$deployment/runtime:/source:ro" -v "$backup:/backup" alpine:3.22 tar -czf /backup/files.tar.gz -C /source data uploads
 docker run --rm -v "$backup:/backup:ro" alpine:3.22 tar -tzf /backup/files.tar.gz >/dev/null
-server_id=$(docker compose -p "$project" exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT data->''system''->>''serverId'' FROM app_store WHERE id=''default''"')
+metadata=$(docker compose -p "$project" run --rm --no-deps -v "$deployment/backend/scripts/store-backup-metadata.js:/app/scripts/store-backup-metadata.js:ro" -v "$deployment/backend/config/runtime.js:/app/config/runtime.js:ro" app node scripts/store-backup-metadata.js)
 db_hash=$(sha256sum "$backup/database.dump" | awk '{print $1}'); files_hash=$(sha256sum "$backup/files.tar.gz" | awk '{print $1}')
-counts=$(docker compose -p "$project" exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT jsonb_build_object(''users'',jsonb_array_length(data->''users''),''orders'',jsonb_array_length(data->''orders''),''models'',jsonb_array_length(data->''models''),''materials'',jsonb_array_length(data->''materials''),''stockLots'',jsonb_array_length(data->''stockLots''),''inventoryTxns'',jsonb_array_length(data->''inventoryTxns''),''auditLogs'',jsonb_array_length(data->''auditLogs'')) FROM app_store WHERE id=''default''"')
 key_value=$(awk -F= '/^AGENT_KEY_ENC_SECRET=/{sub(/^[^=]*=/,""); print; exit}' "$deployment/.env"); [ -n "$key_value" ] || { echo 'AGENT_KEY_ENC_SECRET missing from recovery bundle' >&2; exit 6; }
 key_id=$(printf %s "$key_value" | sha256sum | cut -c1-16)
-printf '{"status":"complete","serverId":"%s","apiVersion":"1","storeSchemaVersion":2,"utcTimestamp":"%s","postgresMajor":16,"storageMode":"postgres+sqlite+local-files","encryptionKeyId":"%s","appImageDigest":"%s","collectionCounts":%s,"hashes":{"databaseDumpSha256":"%s","filesArchiveSha256":"%s"}}\n' "$server_id" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$key_id" "$image_digest" "$counts" "$db_hash" "$files_hash" > "$backup/manifest.json"
+node - "$metadata" "$key_id" "$image_digest" "$db_hash" "$files_hash" "$project" > "$backup/manifest.json" <<'NODE'
+const [raw,encryptionKeyId,appImageDigest,databaseDumpSha256,filesArchiveSha256,composeProject]=process.argv.slice(2);
+const metadata=JSON.parse(raw);
+console.log(JSON.stringify({...metadata,status:'complete',apiVersion:'1',utcTimestamp:new Date().toISOString(),postgresMajor:16,storageMode:'postgres+sqlite+local-files',encryptionKeyId,appImageDigest,composeProject,hashes:{databaseDumpSha256,filesArchiveSha256}},null,2));
+NODE
 complete=true
 printf '%s\n' "$backup"

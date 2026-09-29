@@ -21,6 +21,7 @@ import {
 import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
+import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
 const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
   value,
@@ -28,6 +29,7 @@ const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
 }));
 
 const InboundTransactionScreen = ({ navigation }) => {
+  const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
@@ -83,7 +85,7 @@ const InboundTransactionScreen = ({ navigation }) => {
 
   const inLotOptions = useMemo(() => (
     stockLots
-      .filter((lot) => (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED)
+      .filter((lot) => lot.active !== false && lot.balanceStatus !== 'legacy_invalid' && (lot.state || lot.status) === STOCK_STATUSES.IN_STOCK)
       .map((lot) => {
         const material = materials.find((item) => item.id === (lot.materialId || lot.material_id));
         const materialName = material
@@ -100,7 +102,7 @@ const InboundTransactionScreen = ({ navigation }) => {
   const getMaterialLotsForIn = useCallback((materialId) => (
     stockLots.filter((lot) => (
       (lot.materialId || lot.material_id) === materialId
-      && (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED
+      && lot.active !== false && (lot.state || lot.status) === STOCK_STATUSES.IN_STOCK
     ))
   ), [stockLots]);
 
@@ -132,40 +134,35 @@ const InboundTransactionScreen = ({ navigation }) => {
         return false;
       }
     }
-    if (!formData.qty || parseFloat(formData.qty) <= 0) {
-      Alert.alert('验证失败', '请输入有效的数量');
+    if (!isValidGramQuantity(formData.qty)) {
+      Alert.alert('验证失败', '请输入有效的克数，最多三位小数');
       return false;
     }
     return true;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (loading || !validateForm()) {
       return;
     }
 
     try {
       setLoading(true);
-      let targetLotId = formData.lotId;
-
-      if (inTransactionType === 'new') {
-        const newLot = await stockAPI.createLot({
-          materialId: formData.materialId,
-          lotNo: formData.lotNo.trim(),
-          location: formData.location.trim() || undefined,
-          qty: 0,
-          state: STOCK_STATUSES.IN_STOCK,
-          notes: formData.notes.trim() || undefined,
-        });
-        targetLotId = newLot.id;
-      }
-
-      await stockAPI.inventoryTransaction({
-        lotId: targetLotId,
+      const payload = inTransactionType === 'new' ? {
+        materialId: formData.materialId,
+        lotNo: formData.lotNo.trim(),
+        location: formData.location.trim(),
+        qty: formData.qty.trim(),
+        notes: formData.notes.trim(),
+      } : {
+        lotId: formData.lotId,
         type: INVENTORY_TXN_TYPES.IN,
-        qty: parseFloat(formData.qty),
-        notes: formData.notes.trim() || undefined,
-      });
+        qty: formData.qty.trim(),
+        notes: formData.notes.trim(),
+      };
+      const result = await submitCommand(inTransactionType === 'new' ? 'lot.create' : 'inventory.post', payload,
+        (body, key) => inTransactionType === 'new' ? stockAPI.createLot(body, key) : stockAPI.inventoryTransaction(body, key));
+      if (result === null) return;
 
       Alert.alert('成功', '入库操作成功', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -175,7 +172,7 @@ const InboundTransactionScreen = ({ navigation }) => {
         return;
       }
       console.error('入库失败:', error);
-      Alert.alert('错误', '入库操作失败，请检查网络连接或稍后重试');
+      Alert.alert('错误', error.message || '入库操作失败，请重试');
     } finally {
       setLoading(false);
     }

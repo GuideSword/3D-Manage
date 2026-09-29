@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -14,6 +15,7 @@ import {
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
   RADIUS,
+  ROUTES,
   SPACING,
   TYPOGRAPHY,
 } from '../constants';
@@ -145,9 +147,9 @@ const OrderDetailScreen = ({ route, navigation }) => {
     );
   };
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     fetchOrderDetail();
-  }, [orderId]);
+  }, [orderId]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -306,6 +308,11 @@ const OrderDetailScreen = ({ route, navigation }) => {
             </View>
           </Card>
         ) : null}
+
+        {canWrite(user) ? <Card style={styles.section}>
+          <Button title="编辑订单" iconLeft="create-outline" fullWidth
+            onPress={() => navigation.navigate(ROUTES.CREATE_ORDER, { orderId })} />
+        </Card> : null}
 
         {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />

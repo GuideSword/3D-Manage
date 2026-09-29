@@ -13,6 +13,7 @@ function Invoke-Native([scriptblock]$Command) { & $Command; if ($LASTEXITCODE -n
 
 $backup = (Resolve-Path -LiteralPath $BackupDirectory).Path
 $deployment = (Resolve-Path -LiteralPath $DeploymentDirectory).Path
+if ($PreRestoreBackup) { $PreRestoreBackup = (Resolve-Path -LiteralPath $PreRestoreBackup).Path }
 $manifestPath = Join-Path $backup 'manifest.json'
 $dumpPath = Join-Path $backup 'database.dump'
 $archivePath = Join-Path $backup 'files.tar.gz'
@@ -20,7 +21,7 @@ foreach ($required in @($manifestPath, $dumpPath, $archivePath)) { if (-not (Tes
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 if ($manifest.status -ne 'complete') { throw 'Backup is not marked complete.' }
 if ($manifest.serverId -ne $ConfirmedServerId) { throw 'Confirmed serverId does not match backup manifest.' }
-if ($manifest.storeSchemaVersion -gt 2 -or $manifest.postgresMajor -ne 16) { throw 'Backup schema or PostgreSQL major is incompatible.' }
+Invoke-Native { node (Join-Path $PSScriptRoot 'backup-contract.cjs') verify $backup $ConfirmedServerId }
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $dumpPath).Hash.ToLowerInvariant() -ne $manifest.hashes.databaseDumpSha256) { throw 'Database dump hash mismatch.' }
 if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archivePath).Hash.ToLowerInvariant() -ne $manifest.hashes.filesArchiveSha256) { throw 'Files archive hash mismatch.' }
 $keyLine = Get-Content -LiteralPath (Join-Path $deployment '.env') | Where-Object { $_ -match '^AGENT_KEY_ENC_SECRET=' } | Select-Object -First 1
@@ -34,29 +35,36 @@ if ($LASTEXITCODE -ne 0) { throw 'Archive listing failed.' }
 foreach ($entry in $entries) {
   if ($entry.StartsWith('/') -or $entry -match '(^|/)\.\.(/|$)' -or $entry -notmatch '^(data|uploads)(/|$)') { throw "Unsafe archive entry: $entry" }
 }
+foreach ($name in @('data', 'uploads')) {
+  if (-not ($entries | Where-Object { $_ -eq $name -or $_ -eq "$name/" })) { throw "Archive is missing required directory: $name" }
+}
 $verboseEntries = & docker run --rm -v "${backup}:/backup:ro" alpine:3.22 tar -tvzf /backup/files.tar.gz
-if ($LASTEXITCODE -ne 0 -or ($verboseEntries | Where-Object { $_ -match '^[lh]' })) { throw 'Archive contains a link or cannot be inspected safely.' }
+if ($LASTEXITCODE -ne 0 -or ($verboseEntries | Where-Object { $_ -notmatch '^[-d]' })) { throw 'Archive contains a link/special file or cannot be inspected safely.' }
+if (-not $PSCmdlet.ShouldProcess("$deployment ($ProjectName)", 'Restore backup database and runtime files')) { return }
 
-$lockPath = Join-Path $deployment '.manage3d-operation.lock'; $lock = $null
+$lockPath = Join-Path $deployment '.manage3d-operation.lock'; $lock = $null; $locationPushed = $false
 try {
   $lock = [IO.File]::Open($lockPath, 'CreateNew', 'Write', 'None')
   Push-Location $deployment
-  $dbContainer = (& docker compose -p $ProjectName ps -q db).Trim()
+  $locationPushed = $true
+  $dbContainer = "$(& docker compose -p $ProjectName ps -q db)".Trim()
   if (-not $dbContainer) { throw 'Database container is not running.' }
-  $currentId = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT data->''system''->>''serverId'' FROM app_store WHERE id=''default''" 2>/dev/null || true').Trim()
-  if ($currentId -and -not $AllowEmptyTarget) {
+  $targetMetadata = & docker compose -p $ProjectName run --rm --no-deps -v "${deployment}/backend/scripts/store-backup-metadata.js:/app/scripts/store-backup-metadata.js:ro" -v "${deployment}/backend/config/runtime.js:/app/config/runtime.js:ro" app node scripts/store-backup-metadata.js --allow-empty
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect target identity safely.' }
+  $currentId = (($targetMetadata -join "`n") | ConvertFrom-Json).serverId
+  if ($currentId) {
     if (-not $PreRestoreBackup -or -not (Test-Path -LiteralPath $PreRestoreBackup)) { throw 'Populated targets require a verified pre-restore backup.' }
     if ($currentId -ne $ConfirmedServerId) { throw 'Target serverId does not match the confirmed backup serverId.' }
+    $resolvedPreBackup = (Resolve-Path -LiteralPath $PreRestoreBackup).Path
+    if ($resolvedPreBackup -eq $backup) { throw 'Pre-restore backup must be a separate current-target backup.' }
+    Invoke-Native { node (Join-Path $PSScriptRoot 'backup-contract.cjs') verify $resolvedPreBackup $currentId }
   } elseif (-not $currentId -and -not $AllowEmptyTarget) { throw 'Use -AllowEmptyTarget for empty-host recovery.' }
 
   Invoke-Native { docker cp $dumpPath "${dbContainer}:/tmp/manage3d-restore.dump" }
   Invoke-Native { docker compose -p $ProjectName exec -T db sh -c 'dropdb -U "$POSTGRES_USER" --if-exists manage3d_restore_check && createdb -U "$POSTGRES_USER" manage3d_restore_check && pg_restore -U "$POSTGRES_USER" -d manage3d_restore_check /tmp/manage3d-restore.dump' }
-  $checkId = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d manage3d_restore_check -Atc "SELECT data->''system''->>''serverId'' FROM app_store WHERE id=''default''"').Trim()
-  if ($checkId -ne $ConfirmedServerId) { throw 'Isolated restore serverId verification failed.' }
-  $checkCounts = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d manage3d_restore_check -Atc "SELECT jsonb_build_object(''users'',jsonb_array_length(data->''users''),''orders'',jsonb_array_length(data->''orders''),''models'',jsonb_array_length(data->''models''),''materials'',jsonb_array_length(data->''materials''),''stockLots'',jsonb_array_length(data->''stockLots''),''inventoryTxns'',jsonb_array_length(data->''inventoryTxns''),''auditLogs'',jsonb_array_length(data->''auditLogs'')) FROM app_store WHERE id=''default''"').Trim() | ConvertFrom-Json
-  foreach ($property in $manifest.collectionCounts.PSObject.Properties) {
-    if ($checkCounts.($property.Name) -ne $property.Value) { throw "Isolated restore count mismatch: $($property.Name)" }
-  }
+  $checkMetadata = & docker compose -p $ProjectName run --rm --no-deps -v "${deployment}/backend/scripts/store-backup-metadata.js:/app/scripts/store-backup-metadata.js:ro" -v "${deployment}/backend/config/runtime.js:/app/config/runtime.js:ro" app node scripts/store-backup-metadata.js manage3d_restore_check
+  if ($LASTEXITCODE -ne 0) { throw 'Isolated restore metadata inspection failed.' }
+  Invoke-Native { node (Join-Path $PSScriptRoot 'backup-contract.cjs') compare $backup $ConfirmedServerId ($checkMetadata -join "`n") }
 
   Invoke-Native { docker compose -p $ProjectName stop -t 30 app }
   $stage = Join-Path $deployment "runtime.restore-stage.$([DateTimeOffset]::UtcNow.ToUnixTimeSeconds())"
@@ -76,7 +84,9 @@ try {
   Invoke-Native { docker compose -p $ProjectName up -d app }
   Write-Output "Restore started successfully. Prior runtime retained at $prior. All users must sign in again; rotate JWT_SECRET for complete token invalidation."
 } finally {
-  Pop-Location -ErrorAction SilentlyContinue
-  if ($lock) { $lock.Dispose() }
-  if (Test-Path -LiteralPath $lockPath) { Remove-Item -LiteralPath $lockPath -Force }
+  if ($locationPushed) { Pop-Location }
+  if ($lock) {
+    $lock.Dispose()
+    if (Test-Path -LiteralPath $lockPath) { Remove-Item -LiteralPath $lockPath -Force }
+  }
 }

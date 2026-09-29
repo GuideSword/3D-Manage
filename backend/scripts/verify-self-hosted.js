@@ -410,12 +410,14 @@ const main = async () => {
     const material = await readJson(materialResponse);
     const lotResponse = await staffRequest('/api/stock/lots', {
       method: 'POST',
+      headers: { 'Idempotency-Key': 'verify-self-hosted-410' },
       body: JSON.stringify({ materialId: material.id, lotNo: 'ACTOR-VERIFY', qty: 0 }),
     });
     assert.equal(lotResponse.status, 201);
     const lot = await readJson(lotResponse);
     const transactionResponse = await staffRequest('/api/stock/inventory/txns', {
       method: 'POST',
+      headers: { 'Idempotency-Key': 'verify-self-hosted-416' },
       body: JSON.stringify({ lotId: lot.id, type: 'in', qty: 100, actorId: 'forged-user' }),
     });
     assert.equal(transactionResponse.status, 201);

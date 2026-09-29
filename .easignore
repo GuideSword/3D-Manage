@@ -45,6 +45,14 @@ node_modules/
 *.apk
 .tmp/
 output/
+runtime/
+.backups/
+*.jks
+*.keystore
+*.pem
+*.key
+*.p12
+credentials.json
 android/.gradle/
 android/build/
 android/app/build/

@@ -26,6 +26,7 @@ $lockPath = Join-Path $deployment '.manage3d-operation.lock'
 $lock = $null
 $appWasRunning = $false
 $complete = $false
+$locationPushed = $false
 try {
   $lock = [IO.File]::Open($lockPath, 'CreateNew', 'Write', 'None')
   $writer = [IO.StreamWriter]::new($lock)
@@ -33,15 +34,16 @@ try {
   $writer.Flush()
 
   Push-Location $deployment
-  $appContainer = (& docker compose -p $ProjectName ps -q app).Trim()
+  $locationPushed = $true
+  $appContainer = "$(& docker compose -p $ProjectName ps -q app)".Trim()
   if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect Compose app service.' }
   $appWasRunning = [bool]$appContainer
-  if (-not $appContainer) { $appContainer = (& docker compose -p $ProjectName ps -aq app).Trim() }
+  if (-not $appContainer) { $appContainer = "$(& docker compose -p $ProjectName ps -aq app)".Trim() }
   $imageDigest = if ($appContainer) { (& docker inspect --format '{{.Image}}' $appContainer).Trim() } else { '' }
   if ($appWasRunning) { Invoke-Native { docker compose -p $ProjectName stop -t 30 app } }
 
   Invoke-Native { docker compose -p $ProjectName run --rm --no-deps app node scripts/checkpoint-agent-db.js }
-  $dbContainer = (& docker compose -p $ProjectName ps -q db).Trim()
+  $dbContainer = "$(& docker compose -p $ProjectName ps -q db)".Trim()
   if (-not $dbContainer) { throw 'Database container is not running.' }
   Invoke-Native { docker compose -p $ProjectName exec -T db sh -c 'rm -f /tmp/manage3d-backup.dump && pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc -f /tmp/manage3d-backup.dump' }
   Invoke-Native { docker cp "${dbContainer}:/tmp/manage3d-backup.dump" (Join-Path $resolvedBackup 'database.dump') }
@@ -51,21 +53,22 @@ try {
   Invoke-Native { docker run --rm -v "${runtime}:/source:ro" -v "${resolvedBackup}:/backup" alpine:3.22 tar -czf /backup/files.tar.gz -C /source data uploads }
   Invoke-Native { docker run --rm -v "${resolvedBackup}:/backup:ro" alpine:3.22 tar -tzf /backup/files.tar.gz }
 
-  $serverId = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT data->''system''->>''serverId'' FROM app_store WHERE id=''default''"').Trim()
+  $metadataRaw = & docker compose -p $ProjectName run --rm --no-deps -v "${deployment}/backend/scripts/store-backup-metadata.js:/app/scripts/store-backup-metadata.js:ro" -v "${deployment}/backend/config/runtime.js:/app/config/runtime.js:ro" app node scripts/store-backup-metadata.js
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect source business store.' }
+  $metadata = ($metadataRaw -join "`n") | ConvertFrom-Json
+  $serverId = $metadata.serverId
   if ($LASTEXITCODE -ne 0 -or -not $serverId) { throw 'Unable to read backup serverId.' }
   $dbHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $resolvedBackup 'database.dump')).Hash.ToLowerInvariant()
   $filesHash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $resolvedBackup 'files.tar.gz')).Hash.ToLowerInvariant()
-  $countsRaw = (& docker compose -p $ProjectName exec -T db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "SELECT jsonb_build_object(''users'',jsonb_array_length(data->''users''),''orders'',jsonb_array_length(data->''orders''),''models'',jsonb_array_length(data->''models''),''materials'',jsonb_array_length(data->''materials''),''stockLots'',jsonb_array_length(data->''stockLots''),''inventoryTxns'',jsonb_array_length(data->''inventoryTxns''),''auditLogs'',jsonb_array_length(data->''auditLogs'')) FROM app_store WHERE id=''default''"').Trim()
-  if ($LASTEXITCODE -ne 0) { throw 'Unable to record collection counts.' }
   $keyLine = Get-Content -LiteralPath (Join-Path $deployment '.env') | Where-Object { $_ -match '^AGENT_KEY_ENC_SECRET=' } | Select-Object -First 1
   if (-not $keyLine) { throw 'AGENT_KEY_ENC_SECRET is missing from the recovery bundle.' }
   $keyValue = $keyLine.Substring('AGENT_KEY_ENC_SECRET='.Length)
   $keyId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($keyValue))).Substring(0,16).ToLowerInvariant()
   $manifest = [ordered]@{
-    status = 'complete'; serverId = $serverId; apiVersion = '1'; storeSchemaVersion = 2
+    status = 'complete'; serverId = $serverId; apiVersion = '1'; storeSchemaVersion = $metadata.storeSchemaVersion
     utcTimestamp = (Get-Date).ToUniversalTime().ToString('o'); composeProject = $ProjectName
     postgresMajor = 16; storageMode = 'postgres+sqlite+local-files'; encryptionKeyId = $keyId
-    appImageDigest = $imageDigest; collectionCounts = ($countsRaw | ConvertFrom-Json)
+    appImageDigest = $imageDigest; collectionCounts = $metadata.collectionCounts
     hashes = @{ databaseDumpSha256 = $dbHash; filesArchiveSha256 = $filesHash }
   }
   $manifest | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath (Join-Path $resolvedBackup 'manifest.json') -Encoding utf8NoBOM
@@ -77,8 +80,10 @@ try {
   throw
 } finally {
   try { if ($appWasRunning) { Invoke-Native { docker compose -p $ProjectName up -d app } } } finally {
-    Pop-Location -ErrorAction SilentlyContinue
-    if ($lock) { $lock.Dispose() }
-    if (Test-Path -LiteralPath $lockPath) { Remove-Item -LiteralPath $lockPath -Force }
+    if ($locationPushed) { Pop-Location }
+    if ($lock) {
+      $lock.Dispose()
+      if (Test-Path -LiteralPath $lockPath) { Remove-Item -LiteralPath $lockPath -Force }
+    }
   }
 }

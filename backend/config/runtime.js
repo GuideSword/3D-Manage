@@ -2,7 +2,7 @@ const packageJson = require('../package.json');
 
 const PRODUCT_NAME = '3D Manage';
 const API_VERSION = '1';
-const CURRENT_SCHEMA_VERSION = 2;
+const CURRENT_SCHEMA_VERSION = 3;
 
 const isWeakSecret = (value) => (
   typeof value !== 'string'

@@ -15,6 +15,7 @@ import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI, stockAPI } from '../utils/api';
 import { validateExtension } from '../utils/upload';
+import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { useAppTheme } from '../context/ThemeContext';
 
 const IMPORT_OPTIONS = [
@@ -32,6 +33,7 @@ const EXAMPLE_HEADERS = {
 };
 
 const DataImportScreen = ({ navigation }) => {
+  const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [importType, setImportType] = useState('orders');
@@ -74,6 +76,7 @@ const DataImportScreen = ({ navigation }) => {
   };
 
   const handleImport = async () => {
+    if (loading) return;
     if (!csvText.trim()) {
       Alert.alert('验证失败', '请粘贴 CSV 内容或选择 CSV 文件');
       return;
@@ -89,7 +92,8 @@ const DataImportScreen = ({ navigation }) => {
       } else if (importType === 'materials') {
         result = await materialsAPI.import({ csv: csvText });
       } else {
-        result = await stockAPI.importLots({ csv: csvText });
+        result = await submitCommand('lots.import', { csv: csvText }, (body, key) => stockAPI.importLots(body, key));
+        if (result === null) return;
       }
       Alert.alert('成功', `已导入 ${result.imported || 0} 条数据`, [
         { text: '确定', onPress: () => navigation.goBack() },

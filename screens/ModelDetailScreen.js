@@ -1,4 +1,5 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
@@ -13,7 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
-import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
+import { RADIUS, ROUTES, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card, ProtectedImage } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
@@ -85,9 +86,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     fetchModelDetail();
-  }, [modelId]);
+  }, [modelId]));
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -370,6 +371,11 @@ const ModelDetailScreen = ({ route, navigation }) => {
           </View>
         </Card>
         </> : null}
+
+        {canWrite(user) ? <Card style={styles.section}>
+          <Button title="编辑模型" iconLeft="create-outline" fullWidth
+            onPress={() => navigation.navigate(ROUTES.CREATE_MODEL, { modelId })} />
+        </Card> : null}
 
         {canWrite(user) ? <Card style={styles.dangerSection}>
           <SectionHeader title="危险操作" />

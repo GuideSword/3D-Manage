@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -16,6 +17,8 @@ import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
+import { useEditRecord } from '../utils/useEditRecord';
+import EditLoadState from '../components/EditLoadState';
 
 const SOURCE_OPTIONS = [
   { value: 'original', label: '原创' },
@@ -32,10 +35,14 @@ const IMAGE_TYPE_OPTIONS = [
 const MODEL_EXTENSIONS = ['stl', 'obj', '3mf', 'step', 'stp', 'zip'];
 const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
-const CreateModelScreen = ({ navigation }) => {
+const CreateModelScreen = ({ navigation, route }) => {
+  const modelId = route.params?.modelId;
+  const isEditing = Boolean(modelId);
+  const submitting = useRef(false);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
+  const [saveError, setSaveError] = useState('');
   const [selectedModelFile, setSelectedModelFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageType, setImageType] = useState('cover');
@@ -43,6 +50,9 @@ const CreateModelScreen = ({ navigation }) => {
     name: '',
     description: '',
     source: 'original',
+  });
+  const { record, loadingRecord, loadError, reload } = useEditRecord(modelId, modelsAPI, (model) => {
+    setFormData({ name: model.name || '', description: model.description || '', source: model.source || 'original' });
   });
 
   const pickModelFile = async () => {
@@ -91,14 +101,17 @@ const CreateModelScreen = ({ navigation }) => {
 
   const validateForm = () => {
     if (!formData.name.trim()) {
+      setSaveError('请输入模型名称');
       Alert.alert('验证失败', '请输入模型名称');
       return false;
     }
     if (!formData.description.trim()) {
+      setSaveError('请输入模型描述');
       Alert.alert('验证失败', '请输入模型描述');
       return false;
     }
     if (!formData.source) {
+      setSaveError('请选择模型来源');
       Alert.alert('验证失败', '请选择模型来源');
       return false;
     }
@@ -106,17 +119,21 @@ const CreateModelScreen = ({ navigation }) => {
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (submitting.current || (isEditing && !record) || !validateForm()) {
       return;
     }
 
     try {
+      submitting.current = true;
+      setSaveError('');
       setLoading(true);
-      const newModel = await modelsAPI.create({
+      const payload = {
         name: formData.name.trim(),
         description: formData.description.trim(),
         source: formData.source,
-      });
+      };
+      const newModel = isEditing ? await modelsAPI.update(modelId, payload) : await modelsAPI.create(payload);
+      if (isEditing) { navigation.goBack(); return; }
 
       if (selectedModelFile) {
         await modelsAPI.uploadModelFile(newModel.id, pickerAssetToFormFile(selectedModelFile));
@@ -126,6 +143,10 @@ const CreateModelScreen = ({ navigation }) => {
         await modelsAPI.uploadImage(newModel.id, pickerAssetToFormFile(selectedImage), imageType);
       }
 
+      if (Platform.OS === 'web') {
+        navigation.replace(ROUTES.MODEL_DETAIL, { modelId: newModel.id });
+        return;
+      }
       Alert.alert('成功', '模型创建成功', [
         {
           text: '查看模型',
@@ -137,12 +158,16 @@ const CreateModelScreen = ({ navigation }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
-      console.error('创建模型失败:', error);
-      Alert.alert('错误', error.message || '创建模型失败，请检查网络连接或稍后重试');
+      console.error('保存模型失败:', error);
+      setSaveError(error.message || '保存模型失败，请重试');
+      Alert.alert('错误', error.message || '保存模型失败，请检查网络连接或稍后重试');
     } finally {
+      submitting.current = false;
       setLoading(false);
     }
   };
+
+  if (isEditing && !record) return <EditLoadState loading={loadingRecord} error={loadError} onRetry={reload} onCancel={() => navigation.goBack()} />;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -156,9 +181,9 @@ const CreateModelScreen = ({ navigation }) => {
             <Ionicons name="cube-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.headerText}>
-            <Text style={styles.eyebrow}>NEW MODEL</Text>
-            <Text style={styles.title}>新建模型</Text>
-            <Text style={styles.subtitle}>录入模型信息，并可同时上传模型文件和图片。</Text>
+            <Text style={styles.eyebrow}>{isEditing ? 'EDIT MODEL' : 'NEW MODEL'}</Text>
+            <Text style={styles.title}>{isEditing ? '编辑模型' : '新建模型'}</Text>
+            <Text style={styles.subtitle}>{isEditing ? '修改基础资料，文件和图片可在详情页管理。' : '录入模型信息，并可同时上传模型文件和图片。'}</Text>
           </View>
         </View>
 
@@ -191,7 +216,7 @@ const CreateModelScreen = ({ navigation }) => {
           </View>
         </Card>
 
-        <Card style={styles.section}>
+        {!isEditing ? <Card style={styles.section}>
           <Text style={styles.sectionTitle}>模型文件</Text>
           <Text style={styles.helperText}>
             支持 STL、OBJ、3MF、STEP、STP、ZIP。上传后系统会尽量生成自动预览图。
@@ -204,9 +229,9 @@ const CreateModelScreen = ({ navigation }) => {
             variant="outline"
             fullWidth
           />
-        </Card>
+        </Card> : null}
 
-        <Card style={styles.section}>
+        {!isEditing ? <Card style={styles.section}>
           <Text style={styles.sectionTitle}>模型图片</Text>
           <Text style={styles.helperText}>
             可以先上传封面图或实物打印图，之后也可以在详情页继续添加。
@@ -230,11 +255,12 @@ const CreateModelScreen = ({ navigation }) => {
             variant="outline"
             fullWidth
           />
-        </Card>
+        </Card> : null}
 
         <View style={styles.buttonContainer}>
+          {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
           <Button
-            title={loading ? '创建中...' : '创建模型'}
+            title={loading ? '保存中...' : isEditing ? '保存修改' : '创建模型'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
             disabled={loading}
@@ -244,6 +270,7 @@ const CreateModelScreen = ({ navigation }) => {
           />
           <Button
             title="取消"
+            disabled={loading}
             onPress={() => navigation.goBack()}
             variant="outline"
             fullWidth

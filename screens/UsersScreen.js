@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Modal,
@@ -30,6 +30,28 @@ const UsersScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [resetTarget, setResetTarget] = useState(null);
   const [resetPassword, setResetPassword] = useState('');
+  const [editTarget, setEditTarget] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editError, setEditError] = useState('');
+  const editing = useRef(false);
+
+  const saveName = async () => {
+    if (editing.current || !editTarget) return;
+    if (!editName.trim()) { setEditError('请输入姓名'); return; }
+    editing.current = true;
+    setLoading(true);
+    setEditError('');
+    try {
+      const updated = await usersAPI.update(editTarget.id, { name: editName.trim() });
+      setUsers((current) => current.map((user) => user.id === updated.id ? updated : user));
+      setEditTarget(null);
+    } catch (error) {
+      setEditError(error.message || '修改姓名失败');
+    } finally {
+      editing.current = false;
+      setLoading(false);
+    }
+  };
 
   const loadUsers = useCallback(async (refresh = false) => {
     refresh ? setRefreshing(true) : setLoading(true);
@@ -147,6 +169,9 @@ const UsersScreen = () => {
               <>
                 <Picker label="角色" value={user.role} options={ROLE_OPTIONS} onValueChange={(role) => updateUser(user, { role })} />
                 <View style={styles.actions}>
+                  <Button title="编辑姓名" variant="outline" size="small" disabled={loading} onPress={() => {
+                    setEditTarget(user); setEditName(user.name || ''); setEditError('');
+                  }} style={styles.action} />
                   <Button title={user.active === false ? '启用' : '停用'} variant={user.active === false ? 'outline' : 'danger'} size="small" onPress={() => toggleActive(user)} style={styles.action} />
                   <Button title="重置密码" variant="outline" size="small" onPress={() => setResetTarget(user)} style={styles.action} />
                 </View>
@@ -155,6 +180,19 @@ const UsersScreen = () => {
           </Card>
         ))}
       </ScrollView>
+
+      <Modal visible={Boolean(editTarget)} transparent animationType="fade" onRequestClose={() => { if (!editing.current) setEditTarget(null); }}>
+        <View style={styles.overlay}>
+          <Card style={styles.modalCard}>
+            <Text style={styles.sectionTitle}>编辑用户姓名</Text>
+            <Input label="姓名 *" value={editName} onChangeText={setEditName} editable={!loading} error={editError} />
+            <View style={styles.actions}>
+              <Button title="取消" variant="outline" disabled={loading} onPress={() => setEditTarget(null)} style={styles.action} />
+              <Button title="保存修改" loading={loading} onPress={saveName} style={styles.action} />
+            </View>
+          </Card>
+        </View>
+      </Modal>
 
       <Modal visible={Boolean(resetTarget)} transparent animationType="fade" onRequestClose={() => setResetTarget(null)}>
         <View style={styles.overlay}>

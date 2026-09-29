@@ -32,6 +32,7 @@ yarn-error.*
 
 # local env files
 .env
+.env.bak*
 .env*.local
 runtime/
 .backups/
@@ -48,6 +49,7 @@ __pycache__/
 
 # deployment artifacts (build these on demand, don't commit)
 /backend-deploy.tar.gz
+*.apk
 /output/
 
 # scratch / temporary working files (do not commit)

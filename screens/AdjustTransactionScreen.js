@@ -17,10 +17,15 @@ import {
   TYPOGRAPHY,
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
+import { useAuth } from '../context/AuthContext';
+import { canManage } from '../utils/permissions';
 import { useAppTheme } from '../context/ThemeContext';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
+import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
 const AdjustTransactionScreen = ({ navigation }) => {
+  const { user } = useAuth();
+  const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
@@ -53,6 +58,7 @@ const AdjustTransactionScreen = ({ navigation }) => {
       ]);
       setMaterials(materialsData || []);
       setStockLots(lotsData || []);
+      if (formData.lotId) setSelectedLotInfo((lotsData || []).find((lot) => lot.id === formData.lotId) || null);
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -66,7 +72,7 @@ const AdjustTransactionScreen = ({ navigation }) => {
 
   const lotOptions = useMemo(() => (
     stockLots
-      .filter((lot) => (lot.state || lot.status) !== STOCK_STATUSES.SCRAPPED)
+      .filter((lot) => lot.active !== false && lot.balanceStatus !== 'legacy_invalid' && (lot.state || lot.status) === STOCK_STATUSES.IN_STOCK)
       .map((lot) => {
         const material = materials.find((item) => item.id === (lot.materialId || lot.material_id));
         const materialName = material
@@ -94,26 +100,28 @@ const AdjustTransactionScreen = ({ navigation }) => {
       Alert.alert('验证失败', '请选择批次');
       return false;
     }
-    if (formData.qty === '' || Number.isNaN(Number.parseFloat(formData.qty)) || Number.parseFloat(formData.qty) < 0) {
-      Alert.alert('验证失败', '请输入有效的盘点数量');
+    if (!isValidGramQuantity(formData.qty, { allowZero: true })) {
+      Alert.alert('验证失败', '请输入有效的盘点克数，最多三位小数');
       return false;
     }
     return true;
   };
 
   const handleSubmit = async () => {
-    if (!validateForm()) {
+    if (loading || !validateForm()) {
       return;
     }
 
     try {
       setLoading(true);
-      await stockAPI.inventoryTransaction({
+      const result = await submitCommand('inventory.post', {
         lotId: formData.lotId,
         type: INVENTORY_TXN_TYPES.ADJUST,
-        qty: Number.parseFloat(formData.qty),
+        qty: formData.qty.trim(),
         notes: formData.notes.trim() || '库存盘点调整',
-      });
+        version: selectedLotInfo?.version,
+      }, (body, key) => stockAPI.inventoryTransaction(body, key));
+      if (result === null) return;
 
       Alert.alert('成功', '库存盘点已记录', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -123,11 +131,16 @@ const AdjustTransactionScreen = ({ navigation }) => {
         return;
       }
       console.error('库存盘点失败:', error);
-      Alert.alert('错误', '库存盘点失败，请检查网络连接或稍后重试');
+      Alert.alert('错误', error.message || '库存盘点失败，请重试');
+      if (error.status === 409) await loadData();
     } finally {
       setLoading(false);
     }
   };
+
+  if (!canManage(user)) {
+    return <LoadingState text="仅负责人可执行库存盘点" />;
+  }
 
   if (loadingData) {
     return <LoadingState text="加载库存数据中..." />;

@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import * as Crypto from 'expo-crypto';
 import {
   getServerRuntime,
   isCurrentRuntime,
@@ -83,6 +84,7 @@ export const apiRequest = async (endpoint, options = {}) => {
       const error = new Error(errorMessage);
       error.status = response.status;
       error.data = errorData;
+      error.code = errorData.code;
 
       if (response.status === 401 && !isLoginEndpoint(endpoint)) {
         error.authRequired = true;
@@ -182,6 +184,7 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
       const error = new Error(errorData.error || `HTTP ${response.status}`);
       error.status = response.status;
       error.data = errorData;
+      error.code = errorData.code;
       if (response.status === 401 && isApiOrigin && isCurrentRuntime(captured)) {
         error.authRequired = true;
         await clearToken(captured.serverKey);
@@ -491,6 +494,13 @@ export const materialsAPI = {
   },
 };
 
+// A caller retrying an uncertain write must pass the original key.
+const inventoryRequest = (endpoint, method, payload, key) => apiRequest(endpoint, {
+  method,
+  headers: { 'Idempotency-Key': key || Crypto.randomUUID() },
+  ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
+});
+
 // 库存API
 export const stockAPI = {
   // 获取库存批次列表
@@ -506,36 +516,15 @@ export const stockAPI = {
     return apiRequest(`/stock/lots/${id}`);
   },
 
-  // 创建库存批次
-  createLot: async (lotData) => {
-    return apiRequest('/stock/lots', {
-      method: 'POST',
-      body: JSON.stringify(lotData),
-    });
-  },
+  createLot: (lotData, key) => inventoryRequest('/stock/lots', 'POST', lotData, key),
 
-  // 更新库存批次
-  updateLot: async (id, lotData) => {
-    return apiRequest(`/stock/lots/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify(lotData),
-    });
-  },
+  updateLot: (id, lotData, key) => inventoryRequest(`/stock/lots/${id}`, 'PATCH', lotData, key),
 
-  // 删除库存批次
-  deleteLot: async (id) => {
-    return apiRequest(`/stock/lots/${id}`, {
-      method: 'DELETE',
-    });
-  },
+  archiveLot: (id, version, key) => inventoryRequest(`/stock/lots/${id}/archive`, 'POST', { version }, key),
 
-  // 库存操作（入库、出库、调整）
-  inventoryTransaction: async (transactionData) => {
-    return apiRequest('/stock/inventory/txns', {
-      method: 'POST',
-      body: JSON.stringify(transactionData),
-    });
-  },
+  deleteLot: (id, key) => inventoryRequest(`/stock/lots/${id}`, 'DELETE', undefined, key),
+
+  inventoryTransaction: (transactionData, key) => inventoryRequest('/stock/inventory/txns', 'POST', transactionData, key),
 
   getTransactions: async (params = {}) => {
     const queryString = buildQuery(params);
@@ -550,12 +539,7 @@ export const stockAPI = {
     return apiRequest(endpoint);
   },
 
-  importLots: async (payload) => {
-    return apiRequest('/stock/import', {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-  },
+  importLots: (payload, key) => inventoryRequest('/stock/import', 'POST', payload, key),
 };
 
 export default apiRequest;

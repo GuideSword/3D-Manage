@@ -2,6 +2,7 @@ const fs = require('fs').promises;
 const path = require('path');
 const { randomUUID } = require('node:crypto');
 const { CURRENT_SCHEMA_VERSION } = require('../config/runtime');
+const { gramsToMg } = require('../services/inventoryQuantity');
 
 const FILE_DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '../data');
 const DATA_FILE = path.join(FILE_DATA_DIR, 'store.json');
@@ -20,6 +21,7 @@ const COLLECTION_KEYS = [
   'inventoryTxns',
   'auditLogs',
   'objectUploads',
+  'commandReceipts',
 ];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -41,6 +43,7 @@ const createFreshData = () => {
     inventoryTxns: [],
     auditLogs: [],
     objectUploads: [],
+    commandReceipts: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -98,6 +101,26 @@ const migrateData = (input) => {
       user.tokenVersion = 1;
       changed = true;
     }
+  }
+
+  if (sourceVersion < 3) {
+    const timestamp = now();
+    for (const lot of data.stockLots) {
+      // Preserve the original balance and old absolute-adjust semantics.
+      // Only movements after this boundary belong to the new ledger.
+      lot.ledgerStartedAt = timestamp;
+      lot.version = 1;
+      lot.active = lot.active !== false;
+      try {
+        lot.qtyMg = gramsToMg(lot.qty ?? lot.qty_g);
+        lot.ledgerBaselineQtyMg = lot.qtyMg;
+        lot.balanceStatus = 'legacy_unverified';
+      } catch {
+        lot.ledgerBaselineQtyMg = null;
+        lot.balanceStatus = 'legacy_invalid';
+      }
+    }
+    changed = true;
   }
 
   if (data.schemaVersion !== CURRENT_SCHEMA_VERSION) {

@@ -90,7 +90,7 @@ const listOrders = {
 // get_order_detail
 // ------------------------------------------------------------------
 const getOrderDetailSchema = z.object({
-  order_id: z.string().describe('订单 ID（UUID）'),
+  order_id: z.string().describe('订单 ID'),
 });
 
 const getOrderDetail = {

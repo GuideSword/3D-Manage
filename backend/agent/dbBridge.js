@@ -107,38 +107,7 @@ async function getOrderDetail(orderId) {
   };
 }
 
-async function inventorySummary({ material_type, low_stock_only = false } = {}) {
-  const data = await withData((d) => d, { write: false });
-  const materials = data.materials || [];
-  const lots = data.stockLots || [];
-  // group lots by material_id
-  const byMat = new Map();
-  for (const lot of lots) {
-    if (lot.state === 'scrap' || lot.state === 'frozen') continue;
-    const key = String(lot.materialId || lot.material_id);
-    if (!byMat.has(key)) byMat.set(key, []);
-    byMat.get(key).push(lot);
-  }
-  const out = [];
-  for (const m of materials) {
-    if (material_type && m.type !== material_type) continue;
-    const matLots = byMat.get(String(m.id)) || [];
-    const totalQty = matLots.reduce((s, l) => s + Number(l.qty_g || l.qty || 0), 0);
-    const lowStock = totalQty < 100; // simple threshold
-    if (low_stock_only && !lowStock) continue;
-    out.push({
-      materialId: m.id,
-      materialName: `${m.type || ''} ${m.brand || ''} ${m.color || ''}`.trim() || m.name || String(m.id),
-      type: m.type,
-      brand: m.brand,
-      color: m.color,
-      totalQty,
-      lotCount: matLots.length,
-      lowStock,
-    });
-  }
-  return out;
-}
+const { inventorySummary } = require('../services/inventory');
 
 function cosine(a, b) {
   if (!a || !b || a.length !== b.length) return 0;

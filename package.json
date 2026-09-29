@@ -14,7 +14,11 @@
     "verify:release": "node --test tests/client/server-lifecycle.test.cjs && npm --prefix backend run verify:runtime && npm run verify:backend && npm --prefix backend run verify:self-hosted && npx expo export --platform web --output-dir .tmp/release-web",
     "build:android:preview": "eas build --platform android --profile preview",
     "build:android:production": "eas build --platform android --profile production",
-    "package:release": "node deploy/package-release.mjs"
+    "package:release": "node deploy/package-release.mjs",
+    "verify:erp": "node --test tests/backend/erp-inventory.test.cjs tests/client/erp-inventory-command.test.cjs",
+    "verify:edit": "node --test tests/backend/edit-forms.test.cjs tests/client/edit-form-core.test.cjs",
+    "verify:backup": "node --test tests/backend/backup-contract.test.cjs",
+    "verify:erp:postgres": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/ops/p0-inventory-postgres.verify.ps1"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
