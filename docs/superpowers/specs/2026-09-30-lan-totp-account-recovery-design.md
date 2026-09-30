@@ -8,7 +8,9 @@
 
 比较方案：仅增加恢复码容易交付，却不保护普通登录；仅凭 TOTP 允许重置密码会把短数字码变成单独的账号入口；选用密码加 TOTP 与独立恢复码，在不依赖域名、短信或邮件服务的情况下兼顾日常登录和设备丢失恢复。TOTP 不具备通行密钥的抗钓鱼能力，不声称是最高安全级别。
 
-本次不开发认证器 App。用户使用支持 RFC 6238 的现有认证器扫描二维码或手动输入绑定密钥。标准参数为每账号独立随机密钥、30 秒、6 位；服务器只容忍有限时钟偏差，成功使用的时间步不可重放。
+本次不开发认证器 App，也不依赖某一家认证器的云服务。验收基准选择 **Microsoft Authenticator 的“其他账号”**，兼容性再用 **Google Authenticator** 验证；两者均有官方说明支持为第三方账号扫描二维码生成动态码。用户可以选用其他支持同样参数的 TOTP 应用，但不能把仅支持短信验证码、厂商推送批准、HOTP 计数器码或专有企业令牌的应用视为兼容。
+
+具体互操作参数固定为 RFC 6238 TOTP、HMAC-SHA1、6 位、30 秒、每账号独立随机密钥、Base32 无填充编码。绑定二维码采用通行的 `otpauth://totp/` URI，带 URL 编码的稳定服务标识、账号标签，以及 `issuer`、`secret`、`algorithm=SHA1`、`digits=6`、`period=30`；同时显示手动输入密钥，解决认证器与本项目运行在同一部手机上无法互扫屏幕的问题。服务标识须能区分不同 3D Manage 安装，展示标签可随域名/IP 变化，但密钥和验证码算法不变。服务器只容忍有限时钟偏差，成功使用的时间步不可重放；绑定必须输入认证器实际生成的验证码并由服务端校验，不能只凭“扫码成功”启用。
 
 ## 局域网 HTTPS 与迁移准备
 
@@ -41,4 +43,4 @@ API 分为绑定开始/确认、MFA 登录完成、修改密码、恢复开始/�
 - 隔离环境完成后，在正式 Docker 升级前做全量备份和恢复演练。先用测试账号在 Android 真机及桌面 Web 验证 IP HTTPS、扫码、登录、修改密码、恢复码、退出与重新登录；确认原账号及业务数据不变，再让 Owner 自行绑定。
 - 阶段 02 关系存储迁移须原样迁移 MFA 状态和挑战/恢复码消费语义；未来域名切换验证无需重绑。公网开放之前另行检查证书、网络暴露和限流，不把局域网 CA 当作公网信任方案。
 
-依据：[RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238)、[OWASP MFA](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)、[OWASP 认证传输](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)、[Caddy 本地 HTTPS](https://caddyserver.com/docs/automatic-https)、[Android 网络安全配置](https://developer.android.com/privacy-and-security/security-config)、[Apple 局域网 TLS](https://developer.apple.com/documentation/network/creating-an-identity-for-local-network-tls)。
+依据：[RFC 6238](https://datatracker.ietf.org/doc/html/rfc6238)、[Google Authenticator 的通用二维码格式](https://github.com/google/google-authenticator/wiki/Key-Uri-Format)、[Microsoft Authenticator 添加其他账号](https://support.microsoft.com/en-us/authenticator/how-to-add-your-accounts-to-microsoft-authenticator)、[Google Authenticator 帮助](https://support.google.com/accounts/answer/1066447)、[OWASP MFA](https://cheatsheetseries.owasp.org/cheatsheets/Multifactor_Authentication_Cheat_Sheet.html)、[OWASP 认证传输](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)、[Caddy 本地 HTTPS](https://caddyserver.com/docs/automatic-https)、[Android 网络安全配置](https://developer.android.com/privacy-and-security/security-config)、[Apple 局域网 TLS](https://developer.apple.com/documentation/network/creating-an-identity-for-local-network-tls)。
