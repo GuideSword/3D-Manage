@@ -1,11 +1,25 @@
-param([ValidateSet('foundation', 'preflight', 'core', 'import')][string]$Suite = 'foundation')
+param(
+  [ValidateSet('foundation', 'preflight', 'core', 'import')][string]$Suite = 'foundation',
+  [string]$RehearsalSource,
+  [string]$RehearsalDecisions,
+  [string]$UploadDirectory
+)
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or newer is required.' }
+if ($RehearsalSource -or $RehearsalDecisions -or $UploadDirectory) {
+  if ($Suite -ne 'import' -or -not $RehearsalSource -or -not $RehearsalDecisions -or -not $UploadDirectory) {
+    throw 'Rehearsal requires import suite and explicit source, decisions and upload directory.'
+  }
+  $RehearsalSource = (Resolve-Path -LiteralPath $RehearsalSource).Path
+  $RehearsalDecisions = (Resolve-Path -LiteralPath $RehearsalDecisions).Path
+  $UploadDirectory = (Resolve-Path -LiteralPath $UploadDirectory).Path
+}
 $erpWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $erpContainerName = 'manage3d-erp-02a-verify'
 $erpCreatedId = $null
 $erpPreviousUrl = $env:ERP_BUSINESS_TEST_DATABASE_URL
 $erpPreviousPassword = $env:POSTGRES_PASSWORD
+$erpPreviousRehearsalUrl = $env:ERP_IMPORT_REHEARSAL_DATABASE_URL
 $erpRunId = [guid]::NewGuid().ToString('N')
 $erpExit = 1
 Push-Location $erpWorkspace
@@ -53,10 +67,30 @@ try {
     passed = $erpPassed
     skipped = $erpSkipped
     migrationSha256 = (Get-FileHash backend/business-db/migrations/0001_foundation.sql -Algorithm SHA256).Hash.ToLowerInvariant()
+    migrations = @(Get-ChildItem backend/business-db/migrations/*.sql | Sort-Object Name | ForEach-Object {
+      @{ filename = $_.Name; sha256 = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+    })
   }
   $erpEvidenceName = if ($Suite -ne 'foundation') { "$Suite-verification" } else { 'verification' }
   $erpOutput | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.log") -Encoding utf8
   $erpEvidence | ConvertTo-Json | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.json") -Encoding utf8
+  if ($erpExit -eq 0 -and $RehearsalSource) {
+    docker exec $erpCreatedId createdb -U postgres erp_import_rehearsal
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to create owned rehearsal database.' }
+    $env:ERP_IMPORT_REHEARSAL_DATABASE_URL = "postgresql://postgres:$($env:POSTGRES_PASSWORD)@127.0.0.1:${erpPort}/erp_import_rehearsal"
+    $erpRehearsals = @()
+    foreach ($erpExpectedReused in @($false, $true)) {
+      $erpRehearsalOutput = & node backend/scripts/erp-import-rehearsal.js --source-file $RehearsalSource --decisions-file $RehearsalDecisions --upload-dir $UploadDirectory --target-env ERP_IMPORT_REHEARSAL_DATABASE_URL
+      if ($LASTEXITCODE -ne 0) { throw 'Isolated source rehearsal failed.' }
+      $erpRehearsalResult = $erpRehearsalOutput | ConvertFrom-Json
+      if ($erpRehearsalResult.reused -ne $erpExpectedReused -or $erpRehearsalResult.productionCutover -ne $false) {
+        throw 'Isolated source rehearsal result was invalid.'
+      }
+      $erpRehearsals += $erpRehearsalResult
+      $erpRehearsalOutput | Write-Output
+    }
+    $erpRehearsals | ConvertTo-Json -Depth 10 | Set-Content (Join-Path $erpEvidenceDirectory 'source-import-rehearsal.json') -Encoding utf8
+  }
 } finally {
   try {
     if ($erpCreatedId) {
@@ -71,6 +105,8 @@ try {
     else { $env:ERP_BUSINESS_TEST_DATABASE_URL = $erpPreviousUrl }
     if ($null -eq $erpPreviousPassword) { Remove-Item Env:POSTGRES_PASSWORD -ErrorAction SilentlyContinue }
     else { $env:POSTGRES_PASSWORD = $erpPreviousPassword }
+    if ($null -eq $erpPreviousRehearsalUrl) { Remove-Item Env:ERP_IMPORT_REHEARSAL_DATABASE_URL -ErrorAction SilentlyContinue }
+    else { $env:ERP_IMPORT_REHEARSAL_DATABASE_URL = $erpPreviousRehearsalUrl }
     Pop-Location
   }
 }
