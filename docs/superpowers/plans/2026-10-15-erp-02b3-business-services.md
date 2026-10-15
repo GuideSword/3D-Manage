@@ -55,6 +55,27 @@ const models = createModelService(pool, {uploadDirectory});
 await models.list({actorId:'viewer',tokenVersion:'1'},{search:'模型',active:'all',limit:50,offset:0});
 ```
 
+## Task 3 执行步骤：订单关系服务
+
+**Files:** create `backend/modules/orders/lines.js`、`repository.js`、`service.js`、`attachments.js`、`tests/backend/erp-relational-orders.test.cjs`、`business-db/migrations/0003_order_editing.sql`；提取 `modules/catalog/files.js` 共用本地文件验证；extend import、core suite 与隔离 runner。
+
+- [ ] 写实际 PG 验收用例，确认缺少订单模块时失败：精确逐行取整和总额、超过 2^53、客户改名不覆盖快照、行说明/备注不重计价、在制商业修改拒绝、并发版本、附件/未知 JSON 保留、引用删除保护、批量失败全回滚。
+- [ ] SQL v3 增加 status_reason 并从原快照补齐；行位置唯一约束改为事务末检查以支持交换顺序。v1/v2 不改；导入器显式复制历史 statusReason，core 验证随最新迁移升级。
+- [ ] 行契约只允许 id（仅已有行）、modelId/modelName、quantity/unitPrice、materialType/color/layerHeightMm/externalFileUrl/notes。新行 ID 由服务端生成，subtotal/total 不接受客户端决定。数量三位、单价六位，调用 multiplyToCents/sumCents；未改价格或数量时保留原行金额，未改金融事实时保留原 total。
+- [ ] 资料修改先锁父订单并校验 version；行保留原 ID，原位更新并以 JSONB 合并已允许字段，未知快照数字不经过 JS 浮点重写；仅删除实际移除行。关联模型未变时保留原名称，历史已失效模型引用允许沿用原快照，新选模型须有效且启用。
+- [ ] 新订单绑定有效客户并复制姓名/联系/地址；已有单修改客户档案不回写订单。更换客户或显式刷新快照只允许 draft/pending_review 且没有关联库存事实；in_progress/completed/cancelled 只允许说明性资料编辑。状态变更使用原 allowedTransitions 独立命令并审计原因。
+- [ ] 注册 order.create/update/transition/delete/import、order.refreshCustomer、order.attachment.add/remove。附件验证实际路径/hash/大小，与父版本/审计/回执原子提交，普通编辑不得覆盖附件数组；解除引用和删除订单不删除物理文件。库存事实及后续 FK 拒绝删除并完整回滚子清理。
+- [ ] 只读列表/详情输出精确字符串、客户/行/附件快照，支持搜索、状态、客户、日期与分页。批量导入复用同一创建服务，第二条无效则第一条也回滚。HTTP/CSV/AI 接线仍属于 02D。
+- [ ] 执行 orders、catalog、commands、core、import 必要回归及既有库存/编辑/备份；保存正式只读 hash/结构证据、更新计划并提交。本项达门槛后进入 Task 4 库存关系服务，不能标记阶段 02 完成。
+
+调用契约：
+
+```js
+const orders = createOrderService(pool, {uploadDirectory});
+const {body: order} = await orders.execute({operation:'order.create',actorId:'owner',tokenVersion:'1',key:'request-id',payload:{customerId:'c1',items:[{modelId:'m1',quantity:'0.333',unitPrice:'3.000001'}]}});
+await orders.execute({operation:'order.update',actorId:'owner',tokenVersion:'1',key:'next-id',payload:{id:order.id,version:order.version,changes:{notes:''}}});
+```
+
 ## 后续任务范围（进入前分别细化代码步骤）
 
 以下顺序保留全部 02B3 交付范围，Task 1 完成不能据此标记本包完成。
