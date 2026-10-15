@@ -92,6 +92,8 @@ test('isolated legacy import preserves business facts and rolls back incomplete 
     assert.deepEqual((await pool.query('SELECT password_hash,token_version::text FROM erp.users')).rows[0], { password_hash: 'untouched-hash', token_version: '7' });
     assert.equal((await pool.query("SELECT qty_mg FROM erp.stock_lots WHERE id='l1'")).rows[0].qty_mg, '400000');
     assert.equal((await pool.query("SELECT delta_qty_mg FROM erp.inventory_txns WHERE id='old'")).rows[0].delta_qty_mg, null);
+    assert.deepEqual((await pool.query('SELECT id FROM erp.inventory_txns ORDER BY posting_seq')).rows.map(row => row.id), ['old', 'new']);
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.inventory_txns WHERE posting_seq IS NULL')).rows[0].n, 0);
     assert.deepEqual((await pool.query("SELECT actor_id,legacy_actor_id FROM erp.audit_logs WHERE id='a1'")).rows[0], { actor_id: null, legacy_actor_id: 'deleted' });
     assert.equal((await pool.query('SELECT status_code FROM erp.command_receipts')).rows[0].status_code, 201);
     assert.equal((await pool.query("SELECT metadata->>'status' AS status FROM erp.object_uploads")).rows[0].status, 'pending');
