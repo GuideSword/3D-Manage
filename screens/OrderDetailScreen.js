@@ -25,6 +25,7 @@ import { useAuth } from '../context/AuthContext';
 import { canWrite } from '../utils/permissions';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
+import orderDisplay from '../utils/orderDisplayCore.cjs';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
@@ -174,7 +175,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
   const attachments = order.attachments || [];
-  const total = Number(order.total || 0);
+  const total = orderDisplay.amount(order.total);
   const currency = order.currency || 'CNY';
   const statusColor = getOrderStatusColor(order.status, colors);
   const availableActions = getAvailableActions(order.status);
@@ -205,7 +206,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
 
         <Card style={styles.section}>
           <View style={styles.summaryGrid}>
-            <SummaryTile label="订单总额" value={`${currency} ${total.toFixed(2)}`} highlight />
+            <SummaryTile label="订单总额" value={`${currency} ${total}`} highlight />
             <SummaryTile label="创建时间" value={order.createdAt || order.created_at || '未知'} />
             <SummaryTile label="交付日期" value={order.dueDate || order.due_date || '未设置'} />
           </View>
@@ -216,7 +217,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           {orderItems.length > 0 ? orderItems.map((item, index) => {
             const quantity = item.quantity || item.qty || 0;
             const unitPrice = item.unitPrice || item.unit_price || 0;
-            const itemTotal = quantity * unitPrice;
+            const itemTotal = orderDisplay.lineAmount(item);
             return (
               <View key={item.id || index} style={styles.orderItem}>
                 <View style={styles.orderItemLeft}>
@@ -227,11 +228,11 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     {item.materialType || item.material_type || '未知材质'} · {item.color || '未知颜色'}
                   </Text>
                   <Text style={styles.orderItemSpec}>
-                    数量 {quantity} · 单价 {currency} {Number(unitPrice).toFixed(2)}
+                    数量 {quantity} · 单价 {currency} {orderDisplay.unitPrice(unitPrice)}
                   </Text>
                 </View>
                 <Text style={styles.orderItemTotal}>
-                  {currency} {Number(itemTotal).toFixed(2)}
+                  {currency} {itemTotal}
                 </Text>
               </View>
             );

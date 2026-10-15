@@ -122,6 +122,7 @@ test('relational orders preserve commercial facts and use exact transactional ed
     await assert.rejects(command('order.update', { id: order.id, version: order.version, changes: { status: 'in_progress' } }), { status: 400 });
     for (const status of ['pending_review', 'in_progress']) order = (await command('order.transition', { id: order.id, version: order.version, status, reason: '人工确认' })).body;
     assert.equal(order.statusReason, '人工确认');
+    assert.equal(order.commercialEditable, false);
     for (const changes of [{ customerId: 'c2' }, { items: [{ id: order.items[0].id, quantity: '3' }] }]) {
       await assert.rejects(command('order.update', { id: order.id, version: order.version, changes }), { code: 'ORDER_COMMERCIAL_LOCKED', status: 409 });
     }
@@ -175,6 +176,7 @@ test('relational orders preserve commercial facts and use exact transactional ed
     await pool.query("INSERT INTO erp.warehouses(id,code,name) VALUES('w1','W1','仓库')");
     await pool.query("INSERT INTO erp.stock_lots(id,material_id,warehouse_id,qty_mg,baseline_qty_mg,balance_status) VALUES('l1','mat1','w1',0,0,'tracked')");
     await pool.query("INSERT INTO erp.inventory_txns(id,lot_id,order_id,type,legacy_payload) VALUES('legacy-txn','l1',$1,'out','{}')", [order.id]);
+    assert.equal((await orders.get(viewer, order.id)).commercialEditable, false);
     await assert.rejects(command('order.delete', { id: order.id, version: order.version }), { code: 'ENTITY_REFERENCED' });
     await assert.rejects(command('order.update', { id: order.id, version: order.version, changes: { customerId: 'c2' } }), { code: 'ORDER_COMMERCIAL_LOCKED' });
     assert.equal((await orders.get(viewer, order.id)).items.length, 1);

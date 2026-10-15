@@ -2,7 +2,8 @@
 const v = require('../catalog/validation');
 const { fileMetadata } = require('../catalog/files');
 const { logicalModel } = require('./lines');
-const COLUMNS = 'id,number,customer_id,customer_snapshot::text AS customer_raw,status,status_reason,currency,total::text,notes,due_date,created_by,version,active,created_at,updated_at,legacy_payload::text AS legacy_raw';
+const COLUMNS = `id,number,customer_id,customer_snapshot::text AS customer_raw,status,status_reason,currency,total::text,notes,due_date,created_by,version,active,created_at,updated_at,legacy_payload::text AS legacy_raw,
+  (status IN ('draft','pending_review') AND NOT EXISTS(SELECT 1 FROM erp.inventory_txns fact WHERE fact.order_id=orders.id)) AS commercial_editable`;
 async function lineRows(tx, id) {
   return (await tx.query(`SELECT id,position,model_id,model_name_snapshot,quantity::text,unit_price::text,subtotal::text,spec_snapshot::text AS spec_raw
     FROM erp.order_items WHERE order_id=$1 ORDER BY position`, [id])).rows;
@@ -29,6 +30,7 @@ async function detail(tx, row) {
     ...(Object.hasOwn(legacy, 'due_date') ? { due_date: row.due_date } : {}),
     id: row.id, number: row.number, customerId: row.customer_id, customer: v.legacy(row.customer_raw),
     status: row.status, statusReason: row.status_reason, currency: row.currency, total: row.total, notes: row.notes, dueDate: row.due_date,
+    commercialEditable: row.commercial_editable,
     createdBy: row.created_by, version: row.version, active: row.active, createdAt: v.iso(row.created_at), updatedAt: v.iso(row.updated_at),
     items,
     attachments: attachments.map(file => ({ ...fileMetadata(file.metadata_raw), position: file.position, fileKey: file.file_key, originalName: file.original_name })),

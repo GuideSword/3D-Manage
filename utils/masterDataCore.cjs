@@ -50,8 +50,8 @@ function createBusinessCommandController(createKey, { reusable = false } = {}) {
     }
   } };
 }
-function createMasterDataApi({ request, getRuntime }) {
-  const call = (path, method = 'GET', payload, key) => {
+function createRelationalRequest({ request, getRuntime }) {
+  return (path, method = 'GET', payload, key) => {
     if (!supportsMasterData(getRuntime())) fail('当前服务器尚未启用资料维护', 'MASTER_DATA_UNAVAILABLE');
     const headers = {};
     if (method !== 'GET') {
@@ -60,6 +60,9 @@ function createMasterDataApi({ request, getRuntime }) {
     }
     return request(path, { method, headers, ...(payload === undefined ? {} : { body: JSON.stringify(payload) }) });
   };
+}
+function createMasterDataApi(dependencies) {
+  const call = createRelationalRequest(dependencies);
   const identifier = value => {
     if (typeof value !== 'string' || !value.trim() || value.length > 500) fail('资料标识无效');
     return encodeURIComponent(value);
@@ -94,4 +97,4 @@ function createMasterDataApi({ request, getRuntime }) {
     }),
   });
 }
-module.exports = { PARTNER_FIELDS, supportsMasterData, partnerKind, partnerToForm, formToPartner, recordVersion, createBusinessCommandController, createMasterDataApi };
+module.exports = { PARTNER_FIELDS, supportsMasterData, partnerKind, partnerToForm, formToPartner, recordVersion, createBusinessCommandController, createMasterDataApi, createRelationalRequest };
