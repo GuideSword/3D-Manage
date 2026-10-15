@@ -80,6 +80,7 @@ test('relational inventory is exact, serializable per lot and preserves historic
     lot = await inventory.get(viewer, lot.id);
     assert.equal(lot.qty, '0'); assert.equal(lot.state, 'scrapped');
     await assert.rejects(post(lot, 'in', '1'), { code: 'LOT_INACTIVE' });
+    await assert.rejects(command('lot.setState', { id: lot.id, version: lot.version, state: 'in_stock' }), { code: 'LOT_INACTIVE' });
     await assert.rejects(pool.query('UPDATE erp.inventory_txns SET notes=$2 WHERE id=$1', [txn.id, 'edit']), { code: '55000' });
   });
   await t.test('roles, count versions, reasons and payload precision are enforced without partial writes', async () => {
@@ -132,7 +133,11 @@ test('relational inventory is exact, serializable per lot and preserves historic
     assert.equal(lot.qtyMg, initial.qtyMg); assert.equal(lot.notes, ''); assert.equal(lot.location, 'A-01');
     await assert.rejects(command('lot.update', { id: lot.id, version: lot.version, changes: { qtyMg: '1' } }), { status: 400 });
     await assert.rejects(command('lot.update', { id: lot.id, version: '1', changes: { notes: '旧版本' } }), { code: 'VERSION_CONFLICT' });
+    const summaryBefore = (await inventory.summary(viewer, { materialId: 'mat' }))[0];
     lot = (await command('lot.setState', { id: lot.id, version: lot.version, state: 'frozen' })).body;
+    const frozenSummary = (await inventory.summary(viewer, { materialId: 'mat' }))[0];
+    assert.equal(frozenSummary.totalQtyMg, summaryBefore.totalQtyMg);
+    assert.equal(BigInt(frozenSummary.availableQtyMg), BigInt(summaryBefore.availableQtyMg) - 500000n);
     await assert.rejects(post(lot, 'out', '1'), { code: 'LOT_INACTIVE' });
     lot = (await command('lot.setState', { id: lot.id, version: lot.version, state: 'in_stock' })).body;
     lot = (await command('lot.archive', { id: lot.id, version: lot.version })).body;
@@ -169,6 +174,9 @@ test('relational inventory is exact, serializable per lot and preserves historic
     await assert.rejects(create('1', { materialId: 'disabled' }), { code: 'MATERIAL_UNAVAILABLE' });
     await assert.rejects(create('1', { warehouseId: 'other' }), { code: 'INVALID_WAREHOUSE' });
     await assert.rejects(create('1', { photoKey: '../escape' }), { code: 'FILE_REFERENCE_INVALID' });
+    await pool.query('UPDATE erp.warehouses SET is_default=false');
+    try { await assert.rejects(create('1'), { code: 'DEFAULT_WAREHOUSE_MISSING' }); }
+    finally { await pool.query("UPDATE erp.warehouses SET is_default=true WHERE id='w1'"); }
     const lot = await create('1');
     await assert.rejects(post(lot, 'out', '1', { orderId: 'missing' }), { code: 'ORDER_NOT_FOUND' });
     assert.equal((await inventory.get(viewer, lot.id)).qty, '1');
