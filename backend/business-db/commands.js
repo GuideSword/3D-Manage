@@ -49,7 +49,7 @@ function createBusinessCommands(pool, definitions) {
   if (!definitions || typeof definitions !== 'object' || Array.isArray(definitions) || !Object.keys(definitions).length) invalid();
   const registry = new Map();
   for (const [operation, descriptor] of Object.entries(definitions)) {
-    if (!/^[a-z][a-z0-9_.-]{0,127}$/.test(operation) || !descriptor || !Array.isArray(descriptor.roles)
+    if (!/^[a-z][A-Za-z0-9_.-]{0,127}$/.test(operation) || !descriptor || !Array.isArray(descriptor.roles)
         || !descriptor.roles.length || descriptor.roles.some(role => !['owner', 'staff'].includes(role))
         || typeof descriptor.handle !== 'function' || (descriptor.authorize !== undefined && typeof descriptor.authorize !== 'function')) invalid();
     const scope = descriptor.scope ?? 'business';
