@@ -2,6 +2,7 @@
 const { createHash, randomUUID } = require('node:crypto');
 const { withBusinessTransaction } = require('./transaction');
 const { lockUserWrites } = require('./userGuard');
+const { assertBusinessWritesAllowed } = require('./maintenance');
 
 function businessError(code, message, status = 400) { return Object.assign(new Error(message), { code, status }); }
 function fail(code, message, status) { throw businessError(code, message, status); }
@@ -83,6 +84,7 @@ function createCommandEngine(pool, definitions, accountOnly = false) {
     if (typeof digest !== 'string' || !/^[a-f0-9]{64}$/.test(digest)) fail('ERP_COMMAND_DIGEST_INVALID', '操作摘要配置无效', 500);
     try {
       return await withBusinessTransaction(pool, async tx => {
+        await assertBusinessWritesAllowed(tx);
         // Serialize a key before locking its actor, so same-key account updates
         // cannot deadlock with a replay waiting while holding FOR SHARE.
         const identity = JSON.stringify([definition.scope, actorId, key]);

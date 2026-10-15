@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken');
 const { randomBytes, randomUUID } = require('node:crypto');
 const { withBusinessTransaction } = require('../../business-db/transaction');
 const { lockUserWrites } = require('../../business-db/userGuard');
+const { assertBusinessWritesAllowed } = require('../../business-db/maintenance');
 const { TOKEN_AUDIENCE } = require('../../utils/authTokens');
 const v = require('../catalog/validation');
 const { credentialKey } = require('./validation');
@@ -32,6 +33,7 @@ function createUserAuthentication(pool, { jwtSecret, expiresIn = '7d' } = {}) {
       const matches = await bcrypt.compare(password, hash);
       if (!validHash || !matches) invalid();
       return withBusinessTransaction(pool, async tx => {
+        await assertBusinessWritesAllowed(tx);
         await lockUserWrites(tx);
         const system = await installation(tx);
         if (!system?.initialized_at || system.server_id !== initial.server_id) v.fail('系统身份已变化，请重新连接', 'SERVER_ID_CHANGED', 409);

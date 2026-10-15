@@ -212,7 +212,7 @@ function createRelationalRouter(pool, options = {}) {
     if (['entity.parse.failed', 'entity.too.large'].includes(error.type)) return res.status(error.type === 'entity.too.large' ? 413 : 400)
       .json({ code: 'REQUEST_BODY_INVALID', error: '请求内容格式无效或超过允许大小' });
     const publicError = Number.isInteger(error.status) && error.status >= 400 && error.status <= 499 && /^[A-Z_]+$/.test(error.code || '');
-    if (error.code === 'RELATIONAL_STORAGE_NOT_ACTIVE') return res.status(503).json({ code: error.code, error: error.message });
+    if (['RELATIONAL_STORAGE_NOT_ACTIVE', 'BUSINESS_MAINTENANCE', 'MAINTENANCE_STATE_INVALID'].includes(error.code)) return res.status(503).json({ code: error.code, error: error.message });
     res.status(publicError ? error.status : 500).json({ code: publicError ? error.code : 'BUSINESS_SERVICE_UNAVAILABLE', error: publicError ? error.message : '业务服务暂时不可用，请稍后重试' });
   });
   return router;

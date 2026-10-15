@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory', 'users', 'adapters', 'master-data', 'storage-mode', 'runtime', 'server-runtime')][string]$Suite = 'foundation',
+  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory', 'users', 'adapters', 'master-data', 'storage-mode', 'runtime', 'server-runtime', 'maintenance')][string]$Suite = 'foundation',
   [string]$RehearsalSource,
   [string]$RehearsalDecisions,
   [string]$UploadDirectory
@@ -57,6 +57,7 @@ try {
   } elseif ($Suite -eq 'storage-mode') { @('tests/backend/erp-storage-mode.test.cjs')
   } elseif ($Suite -eq 'runtime') { @('tests/backend/erp-business-runtime.test.cjs')
   } elseif ($Suite -eq 'server-runtime') { @('tests/backend/erp-server-runtime.test.cjs')
+  } elseif ($Suite -eq 'maintenance') { @('tests/backend/erp-maintenance.test.cjs')
   } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
   $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE

@@ -70,4 +70,4 @@ function createVersionedDeleter(tables) {
   };
 }
 
-module.exports = { createVersionedUpdater, createVersionedDeleter };
+module.exports = { versionString, createVersionedUpdater, createVersionedDeleter };

@@ -9,10 +9,14 @@ const http = require('node:http');
 const bcrypt = require('../../backend/node_modules/bcryptjs');
 const { createBusinessPool } = require('../../backend/business-db/connection');
 const { migrateBusinessDatabase } = require('../../backend/business-db/migrator');
+const { createMaintenanceService } = require('../../backend/business-db/maintenance');
+const jwt = require('../../backend/node_modules/jsonwebtoken');
+const { TOKEN_AUDIENCE } = require('../../backend/utils/authTokens');
 const databaseUrl = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
 const password = 'Server-Runtime-Fixture-2026!';
 const bootstrapToken = 'server-runtime-bootstrap-token-32-characters';
 const serverId = '11111111-1111-4111-8111-111111111111';
+const jwtSecret = 'server-runtime-jwt-fixture-at-least-32-characters';
 
 async function request(base, endpoint, method = 'GET', body, token, extra = {}) {
   const response = await fetch(base + endpoint, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...extra }, body: body === undefined ? undefined : JSON.stringify(body) });
@@ -33,7 +37,7 @@ async function createHarness(t) {
     const child = fork(path.resolve(__dirname, '../fixtures/erp-server-child.cjs'), [], { silent: true,
       cwd: path.resolve(__dirname, '../..'), env: { ...process.env, NODE_ENV: 'test', HOST: '127.0.0.1', PORT: '0',
         STORE_DRIVER: driver, DATABASE_URL: connectionString, STORE_TABLE: 'app_store', STORE_ID: 'default', DATABASE_SSL: 'false',
-        DATA_DIR: dataDir, UPLOAD_DIR: path.join(dataDir, 'uploads'), JWT_SECRET: 'server-runtime-jwt-fixture-at-least-32-characters',
+        DATA_DIR: dataDir, UPLOAD_DIR: path.join(dataDir, 'uploads'), JWT_SECRET: jwtSecret,
         AGENT_KEY_ENC_SECRET: 'server-runtime-agent-fixture-at-least-32-characters', BOOTSTRAP_TOKEN: bootstrapToken,
         OSS_ENABLED: 'false', AGENT_ENABLED: 'false', ...override } });
     let logs = '';
@@ -137,6 +141,30 @@ test('real PostgreSQL server selects one storage mode before importing initializ
       assert.equal((await pool.query("SELECT count(*)::int AS n FROM pg_stat_activity WHERE application_name='manage3d-erp' AND datname=current_database()")).rows[0].n, 1);
       assert.deepEqual((await pool.query('SELECT data::text AS raw FROM public.app_store')).rows, before);
     } finally { await new Promise(resolve => occupied.close(resolve)); }
+  });
+  await t.test('maintenance persists over real server restarts while health and authenticated reads stay available', async () => {
+    const maintenance = createMaintenanceService(pool);
+    const initial = await maintenance.status({ expectedServerId: serverId });
+    await maintenance.setState({ expectedServerId: serverId, expectedVersion: initial.version, state: 'maintenance', reason: '实际重启维护验收' });
+    const token = jwt.sign({ sub: 'owner', ver: '1' }, jwtSecret, { audience: TOKEN_AUDIENCE, issuer: `3d-manage:${serverId}` });
+    const audits = (await pool.query('SELECT count(*)::int AS n FROM erp.audit_logs')).rows[0].n;
+    try {
+      for (let run = 0; run < 2; run++) {
+        const child = await launch('maintained-server', 'postgres', databaseUrl);
+        assert.equal(child.state, 'ready', child.logs()); assert.equal(child.loadedLegacy, false); assert.equal(child.loadedAI, false);
+        assert.equal((await request(child.base, '/health')).status, 200);
+        assert.equal((await request(child.base, '/api/system/info')).status, 200);
+        assert.equal((await request(child.base, '/api/customers', 'GET', undefined, token)).status, 200);
+        const login = await request(child.base, '/api/auth/login', 'POST', { email: 'owner@server.example.test', password });
+        assert.equal(login.status, 503); assert.equal(login.body.code, 'BUSINESS_MAINTENANCE');
+        assert.equal((await child.stop()).code, 0);
+        assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.audit_logs')).rows[0].n, audits);
+        assert.deepEqual((await pool.query('SELECT data::text AS raw FROM public.app_store')).rows, before);
+      }
+    } finally {
+      const current = await maintenance.status({ expectedServerId: serverId });
+      await maintenance.setState({ expectedServerId: serverId, expectedVersion: current.version, state: 'open', reason: '重启验收结束' });
+    }
   });
   await t.test('shutdown during pending startup cannot leave a listening server or PostgreSQL connection', async () => {
     const child = await launch('stop-during-start', 'postgres', databaseUrl, { ERP_RUNTIME_STOP_DURING_START: 'true' });
