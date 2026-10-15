@@ -9,6 +9,8 @@ const { createBusinessPool, closeBusinessPool } = require('../../backend/busines
 const { migrateBusinessDatabase, loadMigrations } = require('../../backend/business-db/migrator');
 const { multiplyToCents } = require('../../backend/business-db/decimal');
 const { withBusinessTransaction } = require('../../backend/business-db/transaction');
+const { createVersionedUpdater } = require('../../backend/business-db/versioned');
+const updateVersioned = createVersionedUpdater({ 'erp.transaction_probe': ['value'] });
 const migrationDirectory = path.resolve(__dirname, '../../backend/business-db/migrations');
 
 async function temporaryMigrations(t, files) {
@@ -65,6 +67,21 @@ test('transaction commits once, preserves callback failures, and discards a conn
 });
 
 const databaseUrl = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
+test('versioned writes reject invalid versions and unregistered identifiers before issuing SQL', async () => {
+  const tx = { query: async () => { throw new Error('SQL must not run'); } };
+  const valid = { table: 'erp.transaction_probe', id: 'p1', expectedVersion: 1, changes: { value: 'next' } };
+  for (const expectedVersion of [undefined, null, 0, -1, 1.1, false, '0', '-1', '1e2', '1.5', '9223372036854775807', Number.MAX_SAFE_INTEGER + 1]) {
+    await assert.rejects(updateVersioned(tx, { ...valid, expectedVersion }), { code: 'VERSION_INVALID', status: 400 });
+  }
+  for (const changes of [{ version: 9 }, { created_at: 'today' }, { unknown: 'value' }, {}, null, []]) {
+    await assert.rejects(updateVersioned(tx, { ...valid, changes }), { code: 'VERSION_FIELDS_INVALID', status: 400 });
+  }
+  await assert.rejects(updateVersioned(tx, { ...valid, table: 'erp.transaction_probe;DROP SCHEMA erp CASCADE' }),
+    { code: 'VERSION_TARGET_INVALID', status: 400 });
+  assert.throws(() => createVersionedUpdater({ 'public.users': ['value'] }), { code: 'ERP_VERSION_TARGET_INVALID' });
+  assert.throws(() => createVersionedUpdater({ 'erp.anything': ['version'] }), { code: 'ERP_VERSION_TARGET_INVALID' });
+});
+
 test('isolated PostgreSQL 16 foundation', { skip: !databaseUrl }, async t => {
   const target = new URL(databaseUrl);
   assert.equal(target.pathname, '/erp_02a_verify', 'Tests require the dedicated empty fixture database');
@@ -135,6 +152,35 @@ test('isolated PostgreSQL 16 foundation', { skip: !databaseUrl }, async t => {
       });
       assert.equal(returned, 'committed');
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.transaction_probe')).rows[0].n, 3);
+    } finally { await pool.query('DROP TABLE erp.transaction_probe'); }
+  });
+
+  await t.test('concurrent version updates choose one winner and audit failure rolls back its update', async () => {
+    await pool.query('CREATE TABLE erp.transaction_probe(id text PRIMARY KEY, value text NOT NULL, version bigint NOT NULL CHECK(version>0))');
+    const change = (tx, value, id = 'p1', expectedVersion = 1) => updateVersioned(tx, {
+      table: 'erp.transaction_probe', id, expectedVersion, changes: { value },
+    });
+    try {
+      await pool.query("INSERT INTO erp.transaction_probe VALUES('p1','original',1)");
+      const results = await Promise.allSettled(['first', 'second'].map(value => withBusinessTransaction(pool, tx => change(tx, value))));
+      assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
+      const conflict = results.find(result => result.status === 'rejected').reason;
+      assert.equal(conflict.code, 'VERSION_CONFLICT');
+      assert.equal(conflict.status, 409);
+      const winner = (await pool.query("SELECT * FROM erp.transaction_probe WHERE id='p1'")).rows[0];
+      assert.equal(winner.version, '2');
+      await assert.rejects(withBusinessTransaction(pool, tx => change(tx, 'missing', 'absent')), { code: 'ENTITY_NOT_FOUND', status: 404 });
+      await assert.rejects(withBusinessTransaction(pool, async tx => {
+        await change(tx, 'should roll back', 'p1', 2);
+        await tx.query("INSERT INTO erp.transaction_probe VALUES('p1','audit collision',1)");
+      }), { code: '23505' });
+      assert.deepEqual((await pool.query("SELECT * FROM erp.transaction_probe WHERE id='p1'")).rows[0], winner);
+      const value = "'; DROP TABLE erp.transaction_probe; --";
+      const updated = await withBusinessTransaction(pool, tx => change(tx, value, 'p1', '2'));
+      assert.equal(updated.value, value);
+      await pool.query("INSERT INTO erp.transaction_probe VALUES('large','before',9007199254740993)");
+      const large = await withBusinessTransaction(pool, tx => change(tx, 'after', 'large', '9007199254740993'));
+      assert.equal(large.version, '9007199254740994');
     } finally { await pool.query('DROP TABLE erp.transaction_probe'); }
   });
 });
