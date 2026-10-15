@@ -36,24 +36,27 @@ async function createBusinessRuntime({ driver, connectionString, expectedServerI
     const assertOpen = () => {
       if (closed) throw unavailable('BUSINESS_RUNTIME_CLOSED', '服务正在维护，请稍后再试');
     };
+    const checkReady = async () => {
+      assertOpen();
+      if (pool) {
+        const current = await inspectBusinessStorage(pool);
+        if (current.mode !== binding.mode || current.schemaVersion !== binding.schemaVersion
+          || current.installation?.serverId !== binding.installation?.serverId) {
+          throw unavailable('BUSINESS_RUNTIME_CHANGED', '服务配置已变化，请稍后重试');
+        }
+      }
+      // close() may have begun while discovery was awaiting PostgreSQL.
+      assertOpen();
+    };
     const router = async (req, res, next) => {
       try {
-        assertOpen();
-        if (pool) {
-          const current = await inspectBusinessStorage(pool);
-          if (current.mode !== binding.mode || current.schemaVersion !== binding.schemaVersion
-            || current.installation?.serverId !== binding.installation?.serverId) {
-            throw unavailable('BUSINESS_RUNTIME_CHANGED', '服务配置已变化，请稍后重试');
-          }
-        }
-        // close() may have begun while discovery was awaiting PostgreSQL.
-        assertOpen();
+        await checkReady();
         return await handle.router(req, res, next);
       } catch (cause) {
         return next(unavailable(cause?.code || 'STORAGE_UNAVAILABLE', '服务器存储暂不可用，请稍后再试', cause));
       }
     };
-    return { mode: binding.mode, router, close };
+    return { mode: binding.mode, router, checkReady, close };
   } catch (failure) {
     try { await dispose(handle, pool); }
     catch (cleanupError) {
