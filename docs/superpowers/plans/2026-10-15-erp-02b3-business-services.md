@@ -80,14 +80,14 @@ await orders.execute({operation:'order.update',actorId:'owner',tokenVersion:'1',
 
 **Files:** create `backend/modules/inventory/quantity.js`、`repository.js`、`movements.js`、`service.js`、`tests/backend/erp-relational-inventory.test.cjs`、`business-db/migrations/0004_inventory_posting_order.sql`；extend 隔离 runner 的 inventory suite。
 
-- [ ] 写实际 PG 验收：期初/入出库/盘点/报废 before/after/delta，重复键及并发同键一次记账，不同键争抢不超扣；资料编辑不改余额；非法批量第二项全回滚；旧绝对 adjust 不累加，legacy_invalid 不可操作。
-- [ ] 数量以十进制克字符串解析成 BigInt 毫克，单批余额受 PostgreSQL int64 上限约束；拒绝负数/指数/多余精度/部分解析/不安全 Number，输出克和毫克字符串，不做浮点累计。
-- [ ] 注册原库存命令名与 inventory scope，保持旧回执摘要重放：lot.create、lots.import、inventory.post、lot.update、lot.archive、lot.delete；增加受控 lot.setState（只在 in_stock/frozen 之间切换，不能恢复已报废批次）。资料编辑/停用/删除必须 version，普通过账可携带快照版本，绝对盘点必须 version。来源、actor、余额和 ledger 字段由服务器决定。
-- [ ] 库存使用默认启用仓库；新批次须有效启用耗材。正期初生成唯一 opening 入库事实，基线为 0；0 期初不伪造数量流水。post 先锁关联订单，再锁批次，检查启用/冻结/报废/历史余额与可用量后一次写余额、流水、审计、回执；盘点与报废只允许 Owner（按阶段 02 设计，比原 P0 Staff 报废权限收紧）。
-- [ ] SQL v4 增加内部 posting_seq，保证同批流水稳定顺序，不依赖并发事务开始时间或 UUID 排序。旧 v3 已有行保持 NULL，不伪造先后；新插入/隔离导入按实际插入顺序分配。v1–v3 不修改，库存事实不可编辑。
-- [ ] 批次资料采用白名单，不接受数量、物料、仓库、账本字段。photoKey 替换验证本地文件，清空不删除物理内容。删除须 tracked/零余额/无流水/无旧订单快照或 FK 引用，失败完整回滚，删除审计保留原资料。
-- [ ] 只读提供批次列表/详情、流水列表/详情、当前账号回执和库存摘要；均复核账号、同一只读一致快照。摘要使用当前余额/可操作余额，单独暴露历史未核验和非法余额；不靠求和旧流水推断余额。数量总和使用 PG numeric/BigInt，即使多批总量超过单 bigint 仍精确。
-- [ ] 实际 PG 验证 Owner/Staff/Viewer、失效 token、超界余额、冻结/停用/报废、订单锁协作、批次资料版本与库存竞争、审计/回执故障回滚、正常及旧流水可读、无跳过。完成库存/订单/公共命令/core/import必要回归与既有库存/编辑/备份，记录正式只读数据未改变；达到约 95% 后进入 Task 5 用户服务。
+- [x] 写实际 PG 验收：期初/入出库/盘点/报废 before/after/delta，重复键及并发同键一次记账，不同键争抢不超扣；资料编辑不改余额；非法批量第二项全回滚；旧绝对 adjust 不累加，legacy_invalid 不可操作。
+- [x] 数量以十进制克字符串解析成 BigInt 毫克，单批余额受 PostgreSQL int64 上限约束；拒绝负数/指数/多余精度/部分解析/不安全 Number，输出克和毫克字符串，不做浮点累计。
+- [x] 注册原库存命令名与 inventory scope，保持旧回执摘要重放：lot.create、lots.import、inventory.post、lot.update、lot.archive、lot.delete；增加受控 lot.setState（只在 in_stock/frozen 之间切换，不能恢复已报废批次）。资料编辑/停用/删除必须 version，普通过账可携带快照版本，绝对盘点必须 version。来源、actor、余额和 ledger 字段由服务器决定。
+- [x] 库存使用默认启用仓库；新批次须有效启用耗材。正期初生成唯一 opening 入库事实，基线为 0；0 期初不伪造数量流水。post 先锁关联订单，再锁批次，检查启用/冻结/报废/历史余额与可用量后一次写余额、流水、审计、回执；盘点与报废只允许 Owner（按阶段 02 设计，比原 P0 Staff 报废权限收紧）。
+- [x] SQL v4 增加内部 posting_seq，保证同批流水稳定顺序，不依赖并发事务开始时间或 UUID 排序。旧 v3 已有行保持 NULL，不伪造先后；新插入/隔离导入按实际插入顺序分配。v1–v3 不修改，库存事实不可编辑。
+- [x] 批次资料采用白名单，不接受数量、物料、仓库、账本字段。photoKey 替换验证本地文件，清空不删除物理内容。删除须 tracked/零余额/无流水/无旧订单快照或 FK 引用，失败完整回滚，删除审计保留原资料。
+- [x] 只读提供批次列表/详情、流水列表/详情、当前账号回执和库存摘要；均复核账号、同一只读一致快照。摘要使用当前余额/可操作余额，单独暴露历史未核验和非法余额；不靠求和旧流水推断余额。数量总和使用 PG numeric/BigInt，即使多批总量超过单 bigint 仍精确。
+- [x] 实际 PG 验证 Owner/Staff/Viewer、失效 token、超界余额、冻结/停用/报废、订单锁协作、批次资料版本与库存竞争、审计/回执故障回滚、正常及旧流水可读、无跳过。完成库存/订单/公共命令/core/import必要回归与既有库存/编辑/备份，记录正式只读数据未改变；达到约 95% 后进入 Task 5 用户服务。
 
 调用契约：
 
@@ -104,7 +104,7 @@ await inventory.execute({operation:'lot.update',actorId:'owner',tokenVersion:'1'
 
 - [x] Task 2：`backend/modules/materials/`、`models/` 的列表/详情/创建/版本编辑/停用/引用删除保护，模型文件子记录与原 metadata 保留。沿用命令入口与服务端字段白名单；测试原值回填/清空/并发和角色。
 - [x] Task 3：`backend/modules/orders/` 的精确金额、客户 FK/历史快照、附件及规格保留、状态转换、版本编辑、删除保护；新单逐行金额取整，历史单不得在无行修改时重算。CSV 整批同事务。
-- [ ] Task 4：`backend/modules/inventory/` 的锁定余额、入出库/盘点/报废、受控期初、批次资料版本编辑、流水与回执同事务；并发不同键不超扣，旧绝对盘点不累加。
+- [x] Task 4：`backend/modules/inventory/` 的锁定余额、入出库/盘点/报废、受控期初、批次资料版本编辑、流水与回执同事务；并发不同键不超扣，旧绝对盘点不累加。
 - [ ] Task 5：`backend/modules/users/` 的安全账号 DTO、角色与最后有效 Owner 保护、密码/token 失效、用户姓名编辑；读取与认证适配不暴露 hash。完成用户管理并发验证。
 - [ ] Task 6：领域服务实际 PG 验证及 HTTP/CSV/AI 适配契约测试，核对不导入旧 store，不把 JSONB 作为业务写入目标。正式同源接线与发布仍属于 02D。
 
@@ -112,4 +112,4 @@ await inventory.execute({operation:'lot.update',actorId:'owner',tokenVersion:'1'
 
 ## 当前进度（2026-10-15）
 
-Tasks 1–3 已完成并达到推进门槛。订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v3 隔离升级与正式快照副本导入/重跑通过；正式来源 hash 和业务/AI 摘要未变化，正式库仍无 erp schema。下一步 Task 4 库存关系服务；Task 4–6、整个 02B3 和阶段 02 仍未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)。
+Tasks 1–4 已完成并达到推进门槛。库存 16/16、订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v4 隔离升级、旧流水排序不伪造、正式快照副本导入/重跑通过；正式来源 hash 与业务/AI 摘要未变化，正式库无 erp schema。下一步 Task 5 用户关系服务；Task 5–6、整个 02B3 和阶段 02 尚未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)、[Task 4](../../rehearsals/2026-10-15-erp-02b3-inventory.md)。
