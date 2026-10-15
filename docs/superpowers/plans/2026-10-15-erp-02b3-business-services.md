@@ -76,6 +76,28 @@ const {body: order} = await orders.execute({operation:'order.create',actorId:'ow
 await orders.execute({operation:'order.update',actorId:'owner',tokenVersion:'1',key:'next-id',payload:{id:order.id,version:order.version,changes:{notes:''}}});
 ```
 
+## Task 4 执行步骤：库存关系服务
+
+**Files:** create `backend/modules/inventory/quantity.js`、`repository.js`、`movements.js`、`service.js`、`tests/backend/erp-relational-inventory.test.cjs`、`business-db/migrations/0004_inventory_posting_order.sql`；extend 隔离 runner 的 inventory suite。
+
+- [ ] 写实际 PG 验收：期初/入出库/盘点/报废 before/after/delta，重复键及并发同键一次记账，不同键争抢不超扣；资料编辑不改余额；非法批量第二项全回滚；旧绝对 adjust 不累加，legacy_invalid 不可操作。
+- [ ] 数量以十进制克字符串解析成 BigInt 毫克，单批余额受 PostgreSQL int64 上限约束；拒绝负数/指数/多余精度/部分解析/不安全 Number，输出克和毫克字符串，不做浮点累计。
+- [ ] 注册原库存命令名与 inventory scope，保持旧回执摘要重放：lot.create、lots.import、inventory.post、lot.update、lot.archive、lot.delete；增加受控 lot.setState（只在 in_stock/frozen 之间切换，不能恢复已报废批次）。资料编辑/停用/删除必须 version，普通过账可携带快照版本，绝对盘点必须 version。来源、actor、余额和 ledger 字段由服务器决定。
+- [ ] 库存使用默认启用仓库；新批次须有效启用耗材。正期初生成唯一 opening 入库事实，基线为 0；0 期初不伪造数量流水。post 先锁关联订单，再锁批次，检查启用/冻结/报废/历史余额与可用量后一次写余额、流水、审计、回执；盘点与报废只允许 Owner（按阶段 02 设计，比原 P0 Staff 报废权限收紧）。
+- [ ] SQL v4 增加内部 posting_seq，保证同批流水稳定顺序，不依赖并发事务开始时间或 UUID 排序。旧 v3 已有行保持 NULL，不伪造先后；新插入/隔离导入按实际插入顺序分配。v1–v3 不修改，库存事实不可编辑。
+- [ ] 批次资料采用白名单，不接受数量、物料、仓库、账本字段。photoKey 替换验证本地文件，清空不删除物理内容。删除须 tracked/零余额/无流水/无旧订单快照或 FK 引用，失败完整回滚，删除审计保留原资料。
+- [ ] 只读提供批次列表/详情、流水列表/详情、当前账号回执和库存摘要；均复核账号、同一只读一致快照。摘要使用当前余额/可操作余额，单独暴露历史未核验和非法余额；不靠求和旧流水推断余额。数量总和使用 PG numeric/BigInt，即使多批总量超过单 bigint 仍精确。
+- [ ] 实际 PG 验证 Owner/Staff/Viewer、失效 token、超界余额、冻结/停用/报废、订单锁协作、批次资料版本与库存竞争、审计/回执故障回滚、正常及旧流水可读、无跳过。完成库存/订单/公共命令/core/import必要回归与既有库存/编辑/备份，记录正式只读数据未改变；达到约 95% 后进入 Task 5 用户服务。
+
+调用契约：
+
+```js
+const inventory = createInventoryService(pool, {uploadDirectory});
+const {body: lot} = await inventory.execute({operation:'lot.create',actorId:'owner',tokenVersion:'1',key:'create-id',payload:{materialId:'mat1',qty:'500',unit:'g'}});
+await inventory.execute({operation:'inventory.post',actorId:'staff',tokenVersion:'1',key:'out-id',payload:{lotId:lot.id,type:'out',qty:'100',orderId:'o1'}});
+await inventory.execute({operation:'lot.update',actorId:'owner',tokenVersion:'1',key:'edit-id',payload:{id:lot.id,version:'2',changes:{location:'A-01',notes:''}}});
+```
+
 ## 后续任务范围（进入前分别细化代码步骤）
 
 以下顺序保留全部 02B3 交付范围，Task 1 完成不能据此标记本包完成。
