@@ -16,6 +16,7 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { canExport } from '../utils/permissions';
+import masterDataCore from '../utils/masterDataCore.cjs';
 
 const SettingsScreen = () => {
   const { colors, themeMode, setThemeMode } = useAppTheme();
@@ -114,6 +115,15 @@ const SettingsScreen = () => {
           <ThemeModePicker value={themeMode} onChange={setThemeMode} />
         </Card>
       </View>
+
+      {masterDataCore.supportsMasterData(server) ? <View style={styles.section}>
+        <Text style={styles.sectionTitle}>资料维护</Text>
+        <Card style={styles.card} padding="none">
+          <ActionRow styles={styles} colors={colors} icon="people-outline" label="客户资料" hint="客户、联系人与联系方式" onPress={() => navigation.navigate(ROUTES.CUSTOMERS)} />
+          <ActionRow styles={styles} colors={colors} icon="business-outline" label="供应商资料" hint="供应商与采购联系资料" onPress={() => navigation.navigate(ROUTES.SUPPLIERS)} />
+          <ActionRow styles={styles} colors={colors} icon="cube-outline" label="默认仓库" hint="查看仓库信息和维护名称" onPress={() => navigation.navigate(ROUTES.WAREHOUSE_SETTINGS)} />
+        </Card>
+      </View> : null}
 
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>服务器配置</Text>

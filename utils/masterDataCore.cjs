@@ -1,6 +1,6 @@
 'use strict';
 const { createInventoryCommandController } = require('./inventoryCommandCore.cjs');
-const fail = (message, code = 'MASTER_DATA_INPUT_INVALID') => { throw Object.assign(new Error(message), { code }); };
+const fail = (message, code = 'MASTER_DATA_INPUT_INVALID') => { throw Object.assign(new Error(message), { code, status: code === 'MASTER_DATA_UNAVAILABLE' ? 503 : 400 }); };
 const PARTNER_FIELDS = Object.freeze([
   { key: 'code', label: '编号', max: 120, required: true },
   { key: 'name', label: '名称', max: 240, required: true },
