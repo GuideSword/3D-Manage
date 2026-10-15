@@ -1,0 +1,69 @@
+$ErrorActionPreference = 'Stop'
+if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or newer is required.' }
+$erpWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
+$erpContainerName = 'manage3d-erp-02a-verify'
+$erpCreatedId = $null
+$erpPreviousUrl = $env:ERP_BUSINESS_TEST_DATABASE_URL
+$erpPreviousPassword = $env:POSTGRES_PASSWORD
+$erpRunId = [guid]::NewGuid().ToString('N')
+$erpExit = 1
+Push-Location $erpWorkspace
+try {
+  $erpExisting = docker ps -aq --filter "name=^/${erpContainerName}$"
+  if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect test containers.' }
+  if ($erpExisting) { throw 'The ERP 02A test container already exists; no existing container was changed.' }
+  $env:POSTGRES_PASSWORD = [Convert]::ToHexString([Security.Cryptography.RandomNumberGenerator]::GetBytes(32))
+  $erpCreatedId = docker run -d --name $erpContainerName --label "com.manage3d.erp-02a-run=$erpRunId" --env POSTGRES_PASSWORD --env POSTGRES_DB=erp_02a_verify --publish '127.0.0.1::5432' --tmpfs /var/lib/postgresql/data postgres:16-bookworm
+  if ($LASTEXITCODE -ne 0 -or $erpCreatedId -notmatch '^[a-f0-9]{64}$') {
+    $erpCreatedId = $null
+    throw 'Unable to create isolated PostgreSQL 16.'
+  }
+  $erpReady = $false
+  for ($erpAttempt = 0; $erpAttempt -lt 60; $erpAttempt++) {
+    docker exec $erpCreatedId pg_isready -h 127.0.0.1 -U postgres -d erp_02a_verify | Out-Null
+    if ($LASTEXITCODE -eq 0) { $erpReady = $true; break }
+    Start-Sleep -Milliseconds 500
+  }
+  if (-not $erpReady) { throw 'Isolated PostgreSQL did not become ready.' }
+  $erpPort = (docker port $erpCreatedId 5432/tcp).Trim().Split(':')[-1]
+  if ($LASTEXITCODE -ne 0 -or $erpPort -notmatch '^\d+$') { throw 'Unable to read isolated database port.' }
+  $env:ERP_BUSINESS_TEST_DATABASE_URL = "postgresql://postgres:$($env:POSTGRES_PASSWORD)@127.0.0.1:${erpPort}/erp_02a_verify"
+  $erpOutput = & node --test tests/backend/erp-decimal.test.cjs tests/backend/erp-postgres.test.cjs 2>&1
+  $erpExit = $LASTEXITCODE
+  $erpOutput | Write-Output
+  $erpEvidenceDirectory = Join-Path $erpWorkspace '.tmp/erp-02a'
+  New-Item -ItemType Directory -Force -Path $erpEvidenceDirectory | Out-Null
+  $erpLog = $erpOutput -join "`n"
+  $erpPassed = [regex]::Match($erpLog, '(?m)^# pass (\d+)').Groups[1].Value
+  $erpSkipped = [regex]::Match($erpLog, '(?m)^# skipped (\d+)').Groups[1].Value
+  if ($erpSkipped -ne '0' -and $erpExit -eq 0) { $erpExit = 1 }
+  $erpEvidence = [ordered]@{
+    result = $(if ($erpExit -eq 0) { 'passed' } else { 'failed' })
+    utcTimestamp = [DateTimeOffset]::UtcNow.ToString('o')
+    testDatabase = 'erp_02a_verify'
+    postgresMajor = 16
+    containerRunId = $erpRunId
+    passed = $erpPassed
+    skipped = $erpSkipped
+    migrationSha256 = (Get-FileHash backend/business-db/migrations/0001_foundation.sql -Algorithm SHA256).Hash.ToLowerInvariant()
+  }
+  $erpOutput | Set-Content (Join-Path $erpEvidenceDirectory 'verification.log') -Encoding utf8
+  $erpEvidence | ConvertTo-Json | Set-Content (Join-Path $erpEvidenceDirectory 'verification.json') -Encoding utf8
+} finally {
+  try {
+    if ($erpCreatedId) {
+      $erpLabel = docker inspect --format '{{index .Config.Labels "com.manage3d.erp-02a-run"}}' $erpCreatedId
+      if ($LASTEXITCODE -eq 0 -and $erpLabel -eq $erpRunId) {
+        docker rm -f $erpCreatedId | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to clean up the owned ERP test container.' }
+      } else { throw 'Test container ownership check failed; cleanup was refused.' }
+    }
+  } finally {
+    if ($null -eq $erpPreviousUrl) { Remove-Item Env:ERP_BUSINESS_TEST_DATABASE_URL -ErrorAction SilentlyContinue }
+    else { $env:ERP_BUSINESS_TEST_DATABASE_URL = $erpPreviousUrl }
+    if ($null -eq $erpPreviousPassword) { Remove-Item Env:POSTGRES_PASSWORD -ErrorAction SilentlyContinue }
+    else { $env:POSTGRES_PASSWORD = $erpPreviousPassword }
+    Pop-Location
+  }
+}
+exit $erpExit

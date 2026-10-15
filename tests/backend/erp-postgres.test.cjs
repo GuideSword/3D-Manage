@@ -5,7 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { createBusinessPool, closeBusinessPool } = require('../../backend/business-db/connection');
+const { createBusinessPool, closeBusinessPool, assertBusinessDatabaseVersion } = require('../../backend/business-db/connection');
 const { migrateBusinessDatabase, loadMigrations } = require('../../backend/business-db/migrator');
 const { multiplyToCents } = require('../../backend/business-db/decimal');
 const { withBusinessTransaction } = require('../../backend/business-db/transaction');
@@ -44,6 +44,13 @@ test('migration files reject duplicate versions, sequence gaps, and invalid SQL 
   ]) {
     const directory = await temporaryMigrations(t, files);
     await assert.rejects(loadMigrations(directory), { code: 'ERP_MIGRATION_FILES_INVALID' });
+  }
+});
+
+test('unsupported PostgreSQL major versions are rejected', async () => {
+  for (const version of [150000, 170000]) {
+    await assert.rejects(assertBusinessDatabaseVersion({ query: async () => ({ rows: [{ version }] }) }),
+      { code: 'ERP_DATABASE_VERSION_UNSUPPORTED' });
   }
 });
 
