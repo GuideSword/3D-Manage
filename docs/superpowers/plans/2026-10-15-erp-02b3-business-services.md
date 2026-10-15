@@ -59,14 +59,14 @@ await models.list({actorId:'viewer',tokenVersion:'1'},{search:'模型',active:'a
 
 **Files:** create `backend/modules/orders/lines.js`、`repository.js`、`service.js`、`attachments.js`、`tests/backend/erp-relational-orders.test.cjs`、`business-db/migrations/0003_order_editing.sql`；提取 `modules/catalog/files.js` 共用本地文件验证；extend import、core suite 与隔离 runner。
 
-- [ ] 写实际 PG 验收用例，确认缺少订单模块时失败：精确逐行取整和总额、超过 2^53、客户改名不覆盖快照、行说明/备注不重计价、在制商业修改拒绝、并发版本、附件/未知 JSON 保留、引用删除保护、批量失败全回滚。
-- [ ] SQL v3 增加 status_reason 并从原快照补齐；行位置唯一约束改为事务末检查以支持交换顺序。v1/v2 不改；导入器显式复制历史 statusReason，core 验证随最新迁移升级。
-- [ ] 行契约只允许 id（仅已有行）、modelId/modelName、quantity/unitPrice、materialType/color/layerHeightMm/externalFileUrl/notes。新行 ID 由服务端生成，subtotal/total 不接受客户端决定。数量三位、单价六位，调用 multiplyToCents/sumCents；未改价格或数量时保留原行金额，未改金融事实时保留原 total。
-- [ ] 资料修改先锁父订单并校验 version；行保留原 ID，原位更新并以 JSONB 合并已允许字段，未知快照数字不经过 JS 浮点重写；仅删除实际移除行。关联模型未变时保留原名称，历史已失效模型引用允许沿用原快照，新选模型须有效且启用。
-- [ ] 新订单绑定有效客户并复制姓名/联系/地址；已有单修改客户档案不回写订单。更换客户或显式刷新快照只允许 draft/pending_review 且没有关联库存事实；in_progress/completed/cancelled 只允许说明性资料编辑。状态变更使用原 allowedTransitions 独立命令并审计原因。
-- [ ] 注册 order.create/update/transition/delete/import、order.refreshCustomer、order.attachment.add/remove。附件验证实际路径/hash/大小，与父版本/审计/回执原子提交，普通编辑不得覆盖附件数组；解除引用和删除订单不删除物理文件。库存事实及后续 FK 拒绝删除并完整回滚子清理。
-- [ ] 只读列表/详情输出精确字符串、客户/行/附件快照，支持搜索、状态、客户、日期与分页。批量导入复用同一创建服务，第二条无效则第一条也回滚。HTTP/CSV/AI 接线仍属于 02D。
-- [ ] 执行 orders、catalog、commands、core、import 必要回归及既有库存/编辑/备份；保存正式只读 hash/结构证据、更新计划并提交。本项达门槛后进入 Task 4 库存关系服务，不能标记阶段 02 完成。
+- [x] 写实际 PG 验收用例，确认缺少订单模块时失败：精确逐行取整和总额、超过 2^53、客户改名不覆盖快照、行说明/备注不重计价、在制商业修改拒绝、并发版本、附件/未知 JSON 保留、引用删除保护、批量失败全回滚。
+- [x] SQL v3 增加 status_reason 并从原快照补齐；行位置唯一约束改为事务末检查以支持交换顺序。v1/v2 不改；导入器显式复制历史 statusReason，core 验证随最新迁移升级。
+- [x] 行契约只允许 id（仅已有行）、modelId/modelName、quantity/unitPrice、materialType/color/layerHeightMm/externalFileUrl/notes。新行 ID 由服务端生成，subtotal/total 不接受客户端决定。数量三位、单价六位，调用 multiplyToCents/sumCents；未改价格或数量时保留原行金额，未改金融事实时保留原 total。
+- [x] 资料修改先锁父订单并校验 version；行保留原 ID，原位更新并以 JSONB 合并已允许字段，未知快照数字不经过 JS 浮点重写；仅删除实际移除行。关联模型未变时保留原名称，历史已失效模型引用允许沿用原快照，新选模型须有效且启用。
+- [x] 新订单绑定有效客户并复制姓名/联系/地址；已有单修改客户档案不回写订单。更换客户或显式刷新快照只允许 draft/pending_review 且没有关联库存事实；in_progress/completed/cancelled 只允许说明性资料编辑。状态变更使用原 allowedTransitions 独立命令并审计原因。
+- [x] 注册 order.create/update/transition/delete/import、order.refreshCustomer、order.attachment.add/remove。附件验证实际路径/hash/大小，与父版本/审计/回执原子提交，普通编辑不得覆盖附件数组；解除引用和删除订单不删除物理文件。库存事实及后续 FK 拒绝删除并完整回滚子清理。
+- [x] 只读列表/详情输出精确字符串、客户/行/附件快照，支持搜索、状态、客户、日期与分页。批量导入复用同一创建服务，第二条无效则第一条也回滚。HTTP/CSV/AI 接线仍属于 02D。
+- [x] 执行 orders、catalog、commands、core、import 必要回归及既有库存/编辑/备份；保存正式只读 hash/结构证据、更新计划并提交。本项达门槛后进入 Task 4 库存关系服务，不能标记阶段 02 完成。
 
 调用契约：
 
@@ -81,7 +81,7 @@ await orders.execute({operation:'order.update',actorId:'owner',tokenVersion:'1',
 以下顺序保留全部 02B3 交付范围，Task 1 完成不能据此标记本包完成。
 
 - [x] Task 2：`backend/modules/materials/`、`models/` 的列表/详情/创建/版本编辑/停用/引用删除保护，模型文件子记录与原 metadata 保留。沿用命令入口与服务端字段白名单；测试原值回填/清空/并发和角色。
-- [ ] Task 3：`backend/modules/orders/` 的精确金额、客户 FK/历史快照、附件及规格保留、状态转换、版本编辑、删除保护；新单逐行金额取整，历史单不得在无行修改时重算。CSV 整批同事务。
+- [x] Task 3：`backend/modules/orders/` 的精确金额、客户 FK/历史快照、附件及规格保留、状态转换、版本编辑、删除保护；新单逐行金额取整，历史单不得在无行修改时重算。CSV 整批同事务。
 - [ ] Task 4：`backend/modules/inventory/` 的锁定余额、入出库/盘点/报废、受控期初、批次资料版本编辑、流水与回执同事务；并发不同键不超扣，旧绝对盘点不累加。
 - [ ] Task 5：`backend/modules/users/` 的安全账号 DTO、角色与最后有效 Owner 保护、密码/token 失效、用户姓名编辑；读取与认证适配不暴露 hash。完成用户管理并发验证。
 - [ ] Task 6：领域服务实际 PG 验证及 HTTP/CSV/AI 适配契约测试，核对不导入旧 store，不把 JSONB 作为业务写入目标。正式同源接线与发布仍属于 02D。
@@ -90,4 +90,4 @@ await orders.execute({operation:'order.update',actorId:'owner',tokenVersion:'1',
 
 ## 当前进度（2026-10-15）
 
-Task 1、Task 2 已完成并达到推进门槛。公共命令 9/9、模型/耗材 catalog 12/12、foundation 17/17、既有库存/编辑/备份 30/30 通过，无跳过。来源 raw hash 未变化，正式库仍无 erp schema；关系服务未接线正式入口。下一步 Task 3 订单关系服务；Task 3–6、整个 02B3 和阶段 02 仍未完成。证据见[Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)。
+Tasks 1–3 已完成并达到推进门槛。订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v3 隔离升级与正式快照副本导入/重跑通过；正式来源 hash 和业务/AI 摘要未变化，正式库仍无 erp schema。下一步 Task 4 库存关系服务；Task 4–6、整个 02B3 和阶段 02 仍未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)。
