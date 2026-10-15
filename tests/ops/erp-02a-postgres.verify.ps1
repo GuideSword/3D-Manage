@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('foundation', 'preflight', 'core', 'import')][string]$Suite = 'foundation',
+  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands')][string]$Suite = 'foundation',
   [string]$RehearsalSource,
   [string]$RehearsalDecisions,
   [string]$UploadDirectory
@@ -47,6 +47,7 @@ try {
     @('tests/backend/erp-preflight.test.cjs', 'tests/backend/erp-preflight-postgres.test.cjs')
   } elseif ($Suite -eq 'core') { @('tests/backend/erp-core-schema.test.cjs')
   } elseif ($Suite -eq 'import') { @('tests/backend/erp-import.test.cjs')
+  } elseif ($Suite -eq 'commands') { @('tests/backend/erp-commands.test.cjs')
   } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
   $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE
