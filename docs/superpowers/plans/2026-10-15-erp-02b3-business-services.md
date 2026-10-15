@@ -98,6 +98,31 @@ await inventory.execute({operation:'inventory.post',actorId:'staff',tokenVersion
 await inventory.execute({operation:'lot.update',actorId:'owner',tokenVersion:'1',key:'edit-id',payload:{id:lot.id,version:'2',changes:{location:'A-01',notes:''}}});
 ```
 
+## Task 5 执行步骤：用户与认证关系服务
+
+**Files:** create `backend/modules/users/{validation,repository,service,authentication}.js`、`business-db/userGuard.js`、`business-db/migrations/0005_user_protection.sql`、`tests/backend/erp-relational-users.test.cjs`；extend `business-db/commands.js`、import/core 必要验证和 runner 的 users suite。
+
+- [ ] 写实际 PG 用例确认模块缺失：Owner 用户 CRUD/姓名编辑，Staff/Viewer 管理拒绝，公开 DTO 无 hash，重复邮箱，旧版本，最后有效 Owner 及两 Owner 并发保护；密码重置/本人修改、旧 token 失效、失败回滚和秘密不进入审计/回执。
+- [ ] SQL v5 增加 last_login_at 并保留旧值；user_write_guard 单行在用户 UPDATE/DELETE 前锁定并翻转，用于并发与 RR 写冲突；延迟约束拒绝移除最后有效 Owner。空库初始化允许尚无用户，已存在 Owner 不得失去最后一位。v1–v4 不修改，导入复制原 hash/tokenVersion/lastLoginAt。
+- [ ] 公共命令增加服务端声明 lockUsers，在任何账号共享锁前取得 guard，避免两个 Owner 交叉管理互锁；增加服务器自定义 payloadDigest。凭据操作采用 JWT 密钥经用途隔离派生的 HMAC 摘要，禁止用包含密码的普通 SHA-256 充当可离线猜测的密码验证器。只保存摘要，不保存命令 payload。
+- [ ] user.create/update/delete/resetPassword 仅 Owner；ID 由服务器生成，email 创建时归一且编辑不可变，name/role/active 白名单、编辑与删除须 version。角色或启用状态变化递增 token_version，姓名变化不注销会话；删除受 FK 与自删/最后 Owner 保护，删除前审计仅使用公开 DTO。Owner 密码沿用本人修改或主机恢复，不由普通重置入口覆盖。
+- [ ] 新增单独 account.changePassword 入口，允许 Owner/Staff/Viewer 维护本人密码，目标只来自当前已核验账号，不能提交他人 ID。复用事务/审计/回执与 guard；普通业务命令仍不能注册 Viewer 写权限。需当前密码、version 和新密码，成功递增版本及 token_version，全部旧登录失效。
+- [ ] 密码设置沿用现有 12 字符/72 UTF-8 字节上限、bcrypt 12；密码与 hash 不出现在 DTO、日志、审计或回执结果中。新工厂必须显式传入足够长度 JWT 密钥，不读取日常业务连接或自行生成替代凭据；任何正式账号不修改。
+- [ ] 认证服务从 installation 读取服务器身份，保持 HS256 issuer/audience 与旧令牌兼容；ver 同时接受旧安全整数和新字符串。登录用旧 hash 校验，不自动改密码；成功更新登录时间并写不含密码的审计。密码校验后在 guard 下重新读取，防止重置竞争。缺失账号使用 dummy bcrypt 比较，失败提示一致；鉴权不取密码 hash，DB 故障不得伪装成账号失效。HTTP 登录限流复用与路由接线属于 Task 6/02D。
+- [ ] 实际 PG 验证两个 Owner 并发自停用至少保留一位、直接 RR 更新不会写偏、延迟约束及 FK、并发版本、凭据故障回滚、JWT 过期/错误签名/错服务器/旧 ver。运行 users、commands/core/import 与相关领域回归；核对正式数据只读前后一致并更新计划，达到约 95% 后进入 Task 6 适配契约。
+
+调用契约：
+
+```js
+const users = createUserService(pool, {jwtSecret});
+const created = await users.execute({operation:'user.create',actorId:'owner',tokenVersion:'1',key:'create-id',payload:{email:'staff@example.test',name:'员工',role:'staff',password:'A-long-password'}});
+await users.execute({operation:'user.update',actorId:'owner',tokenVersion:'1',key:'edit-id',payload:{id:created.body.id,version:created.body.version,changes:{name:'新姓名'}}});
+const authentication = createUserAuthentication(pool, {jwtSecret});
+const login = await authentication.login({email,password});
+const session = await authentication.authenticate(login.token);
+await users.changeOwnPassword({...session,key:'password-id',payload:{version:session.user.version,currentPassword,newPassword}});
+```
+
 ## 后续任务范围（进入前分别细化代码步骤）
 
 以下顺序保留全部 02B3 交付范围，Task 1 完成不能据此标记本包完成。
