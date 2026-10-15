@@ -102,14 +102,14 @@ await inventory.execute({operation:'lot.update',actorId:'owner',tokenVersion:'1'
 
 **Files:** create `backend/modules/users/{validation,repository,service,authentication}.js`、`business-db/userGuard.js`、`business-db/migrations/0005_user_protection.sql`、`tests/backend/erp-relational-users.test.cjs`；extend `business-db/commands.js`、import/core 必要验证和 runner 的 users suite。
 
-- [ ] 写实际 PG 用例确认模块缺失：Owner 用户 CRUD/姓名编辑，Staff/Viewer 管理拒绝，公开 DTO 无 hash，重复邮箱，旧版本，最后有效 Owner 及两 Owner 并发保护；密码重置/本人修改、旧 token 失效、失败回滚和秘密不进入审计/回执。
-- [ ] SQL v5 增加 last_login_at 并保留旧值；user_write_guard 单行在用户 UPDATE/DELETE 前锁定并翻转，用于并发与 RR 写冲突；延迟约束拒绝移除最后有效 Owner。空库初始化允许尚无用户，已存在 Owner 不得失去最后一位。v1–v4 不修改，导入复制原 hash/tokenVersion/lastLoginAt。
-- [ ] 公共命令增加服务端声明 lockUsers，在任何账号共享锁前取得 guard，避免两个 Owner 交叉管理互锁；增加服务器自定义 payloadDigest。凭据操作采用 JWT 密钥经用途隔离派生的 HMAC 摘要，禁止用包含密码的普通 SHA-256 充当可离线猜测的密码验证器。只保存摘要，不保存命令 payload。
-- [ ] user.create/update/delete/resetPassword 仅 Owner；ID 由服务器生成，email 创建时归一且编辑不可变，name/role/active 白名单、编辑与删除须 version。角色或启用状态变化递增 token_version，姓名变化不注销会话；删除受 FK 与自删/最后 Owner 保护，删除前审计仅使用公开 DTO。Owner 密码沿用本人修改或主机恢复，不由普通重置入口覆盖。
-- [ ] 新增单独 account.changePassword 入口，允许 Owner/Staff/Viewer 维护本人密码，目标只来自当前已核验账号，不能提交他人 ID。复用事务/审计/回执与 guard；普通业务命令仍不能注册 Viewer 写权限。需当前密码、version 和新密码，成功递增版本及 token_version，全部旧登录失效。
-- [ ] 密码设置沿用现有 12 字符/72 UTF-8 字节上限、bcrypt 12；密码与 hash 不出现在 DTO、日志、审计或回执结果中。新工厂必须显式传入足够长度 JWT 密钥，不读取日常业务连接或自行生成替代凭据；任何正式账号不修改。
-- [ ] 认证服务从 installation 读取服务器身份，保持 HS256 issuer/audience 与旧令牌兼容；ver 同时接受旧安全整数和新字符串。登录用旧 hash 校验，不自动改密码；成功更新登录时间并写不含密码的审计。密码校验后在 guard 下重新读取，防止重置竞争。缺失账号使用 dummy bcrypt 比较，失败提示一致；鉴权不取密码 hash，DB 故障不得伪装成账号失效。HTTP 登录限流复用与路由接线属于 Task 6/02D。
-- [ ] 实际 PG 验证两个 Owner 并发自停用至少保留一位、直接 RR 更新不会写偏、延迟约束及 FK、并发版本、凭据故障回滚、JWT 过期/错误签名/错服务器/旧 ver。运行 users、commands/core/import 与相关领域回归；核对正式数据只读前后一致并更新计划，达到约 95% 后进入 Task 6 适配契约。
+- [x] 写实际 PG 用例确认模块缺失：Owner 用户 CRUD/姓名编辑，Staff/Viewer 管理拒绝，公开 DTO 无 hash，重复邮箱，旧版本，最后有效 Owner 及两 Owner 并发保护；密码重置/本人修改、旧 token 失效、失败回滚和秘密不进入审计/回执。
+- [x] SQL v5 增加 last_login_at 并保留旧值；user_write_guard 单行在用户 UPDATE/DELETE 前锁定并翻转，用于并发与 RR 写冲突；延迟约束拒绝移除最后有效 Owner。空库初始化允许尚无用户，已存在 Owner 不得失去最后一位。v1–v4 不修改，导入复制原 hash/tokenVersion/lastLoginAt。
+- [x] 公共命令增加服务端声明 lockUsers，在任何账号共享锁前取得 guard，避免两个 Owner 交叉管理互锁；增加服务器自定义 payloadDigest。凭据操作采用 JWT 密钥经用途隔离派生的 HMAC 摘要，禁止用包含密码的普通 SHA-256 充当可离线猜测的密码验证器。只保存摘要，不保存命令 payload。
+- [x] user.create/update/delete/resetPassword 仅 Owner；ID 由服务器生成，email 创建时归一且编辑不可变，name/role/active 白名单、编辑与删除须 version。角色或启用状态变化递增 token_version，姓名变化不注销会话；删除受 FK 与自删/最后 Owner 保护，删除前审计仅使用公开 DTO。Owner 密码沿用本人修改或主机恢复，不由普通重置入口覆盖。
+- [x] 新增单独 account.changePassword 入口，允许 Owner/Staff/Viewer 维护本人密码，目标只来自当前已核验账号，不能提交他人 ID。复用事务/审计/回执与 guard；普通业务命令仍不能注册 Viewer 写权限。需当前密码、version 和新密码，成功递增版本及 token_version，全部旧登录失效。
+- [x] 密码设置沿用现有 12 字符/72 UTF-8 字节上限、bcrypt 12；密码与 hash 不出现在 DTO、日志、审计或回执结果中。新工厂必须显式传入足够长度 JWT 密钥，不读取日常业务连接或自行生成替代凭据；任何正式账号不修改。
+- [x] 认证服务从 installation 读取服务器身份，保持 HS256 issuer/audience 与旧令牌兼容；ver 同时接受旧安全整数和新字符串。登录用旧 hash 校验，不自动改密码；成功更新登录时间并写不含密码的审计。密码校验后在 guard 下重新读取，防止重置竞争。缺失账号使用 dummy bcrypt 比较，失败提示一致；鉴权不取密码 hash，DB 故障不得伪装成账号失效。HTTP 登录限流复用与路由接线属于 Task 6/02D。
+- [x] 实际 PG 验证两个 Owner 并发自停用至少保留一位、直接 RR 更新不会写偏、延迟约束及 FK、并发版本、凭据故障回滚、JWT 过期/错误签名/错服务器/旧 ver。运行 users、commands/core/import 与相关领域回归；核对正式数据只读前后一致并更新计划，达到约 95% 后进入 Task 6 适配契约。
 
 调用契约：
 
@@ -130,11 +130,11 @@ await users.changeOwnPassword({...session,key:'password-id',payload:{version:ses
 - [x] Task 2：`backend/modules/materials/`、`models/` 的列表/详情/创建/版本编辑/停用/引用删除保护，模型文件子记录与原 metadata 保留。沿用命令入口与服务端字段白名单；测试原值回填/清空/并发和角色。
 - [x] Task 3：`backend/modules/orders/` 的精确金额、客户 FK/历史快照、附件及规格保留、状态转换、版本编辑、删除保护；新单逐行金额取整，历史单不得在无行修改时重算。CSV 整批同事务。
 - [x] Task 4：`backend/modules/inventory/` 的锁定余额、入出库/盘点/报废、受控期初、批次资料版本编辑、流水与回执同事务；并发不同键不超扣，旧绝对盘点不累加。
-- [ ] Task 5：`backend/modules/users/` 的安全账号 DTO、角色与最后有效 Owner 保护、密码/token 失效、用户姓名编辑；读取与认证适配不暴露 hash。完成用户管理并发验证。
+- [x] Task 5：`backend/modules/users/` 的安全账号 DTO、角色与最后有效 Owner 保护、密码/token 失效、用户姓名编辑；读取与认证适配不暴露 hash。完成用户管理并发验证。
 - [ ] Task 6：领域服务实际 PG 验证及 HTTP/CSV/AI 适配契约测试，核对不导入旧 store，不把 JSONB 作为业务写入目标。正式同源接线与发布仍属于 02D。
 
 主数据 CRUD/页面在 02C，维护停写/正式批准映射/冷备份/切换/恢复及客户端能力守卫在 02D；阶段 03–12 仍按总计划执行。每包达到约 95% 且余项不阻断才推进。
 
 ## 当前进度（2026-10-15）
 
-Tasks 1–4 已完成并达到推进门槛。库存 16/16、订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v4 隔离升级、旧流水排序不伪造、正式快照副本导入/重跑通过；正式来源 hash 与业务/AI 摘要未变化，正式库无 erp schema。下一步 Task 5 用户关系服务；Task 5–6、整个 02B3 和阶段 02 尚未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)、[Task 4](../../rehearsals/2026-10-15-erp-02b3-inventory.md)。
+Tasks 1–5 已完成并达到推进门槛。用户 18/18、库存 16/16、订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v5 隔离升级和正式快照副本导入/重跑通过；正式来源 hash、账号凭据与业务/AI 摘要未变化，正式库仍无 erp schema。下一步 Task 6 HTTP/CSV/AI 适配契约；整个 02B3、02C/02D 和阶段 02 尚未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)、[Task 4](../../rehearsals/2026-10-15-erp-02b3-inventory.md)、[Task 5](../../rehearsals/2026-10-15-erp-02b3-users.md)。
