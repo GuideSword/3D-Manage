@@ -27,6 +27,22 @@ async function loadMigrations(directory) {
   return migrations;
 }
 
+function assertMigrationHistory(rows, migrations, { requireCurrent = false } = {}) {
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const source = migrations[row.version - 1];
+    if (!source) throw migrationError('ERP_MIGRATION_FUTURE', '数据库迁移版本高于当前程序，请先升级');
+    if (row.version !== index + 1) throw migrationError('ERP_MIGRATION_HISTORY_INVALID', '数据库迁移登记不连续');
+    if (row.filename !== source.filename || row.sha256 !== source.sha256) {
+      throw migrationError('ERP_MIGRATION_CHANGED', '已执行的迁移文件被修改，拒绝继续迁移');
+    }
+  }
+  if (requireCurrent && rows.length !== migrations.length) {
+    throw migrationError('ERP_MIGRATION_PENDING', '数据库结构尚未升级完成，请先完成维护迁移');
+  }
+  return migrations.at(-1).version;
+}
+
 async function migrateBusinessDatabase(pool, { migrationsDirectory = path.join(__dirname, 'migrations') } = {}) {
   const migrations = await loadMigrations(migrationsDirectory);
   return withBusinessTransaction(pool, async client => {
@@ -38,15 +54,7 @@ async function migrateBusinessDatabase(pool, { migrationsDirectory = path.join(_
       applied_at timestamptz NOT NULL DEFAULT now()
     )`);
     const { rows } = await client.query('SELECT version, filename, sha256 FROM erp.schema_migrations ORDER BY version');
-    for (let index = 0; index < rows.length; index += 1) {
-      const row = rows[index];
-      const source = migrations[row.version - 1];
-      if (!source) throw migrationError('ERP_MIGRATION_FUTURE', '数据库迁移版本高于当前程序，请先升级');
-      if (row.version !== index + 1) throw migrationError('ERP_MIGRATION_HISTORY_INVALID', '数据库迁移登记不连续');
-      if (row.filename !== source.filename || row.sha256 !== source.sha256) {
-        throw migrationError('ERP_MIGRATION_CHANGED', '已执行的迁移文件被修改，拒绝继续迁移');
-      }
-    }
+    assertMigrationHistory(rows, migrations);
     const applied = [];
     for (const migration of migrations.slice(rows.length)) {
       await client.query(migration.sql);
@@ -58,4 +66,4 @@ async function migrateBusinessDatabase(pool, { migrationsDirectory = path.join(_
   });
 }
 
-module.exports = { loadMigrations, migrateBusinessDatabase };
+module.exports = { loadMigrations, assertMigrationHistory, migrateBusinessDatabase };
