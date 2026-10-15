@@ -116,7 +116,7 @@ async function importLegacySnapshot(pool, { source: providedSource, decisions: p
         address: text(customer.address), notes: text(customer.notes), ...common(customer), legacy_payload: customerRaw });
       await map('orders.customer', row.id, 'customers', customerId);
       await insert('orders', { id: row.id, number: text(row.number || row.orderNo, `LEGACY-${row.id}`), customer_id: customerId,
-        customer_snapshot: customerRaw, status: row.status, currency: row.currency, total: exactText(row.total), notes: text(row.notes),
+        customer_snapshot: customerRaw, status: row.status, status_reason: text(row.statusReason), currency: row.currency, total: exactText(row.total), notes: text(row.notes),
         due_date: nullable(row.dueDate), created_by: row.createdBy, ...common(row), legacy_payload: raw });
       await map('orders', row.id, 'orders');
       const itemsField = Array.isArray(row.items) ? 'items' : 'orderItems';

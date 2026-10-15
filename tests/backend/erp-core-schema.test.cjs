@@ -5,7 +5,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const os = require('node:os');
 const { createBusinessPool } = require('../../backend/business-db/connection');
-const { migrateBusinessDatabase } = require('../../backend/business-db/migrator');
+const { migrateBusinessDatabase, loadMigrations } = require('../../backend/business-db/migrator');
 const url = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
 
 test('core schema enforces business invariants on PostgreSQL 16', { skip: !url }, async t => {
@@ -17,8 +17,9 @@ test('core schema enforces business invariants on PostgreSQL 16', { skip: !url }
   await fs.copyFile(path.resolve(__dirname, '../../backend/business-db/migrations/0001_foundation.sql'), path.join(v1, '0001_foundation.sql'));
   assert.deepEqual((await migrateBusinessDatabase(pool, { migrationsDirectory: v1 })).applied, [1]);
   const migrated = await migrateBusinessDatabase(pool);
-  assert.equal(migrated.version, 2);
-  assert.deepEqual(migrated.applied, [2]);
+  const migrations = await loadMigrations(path.resolve(__dirname, '../../backend/business-db/migrations'));
+  assert.equal(migrated.version, migrations.at(-1).version);
+  assert.deepEqual(migrated.applied, migrations.filter(m => m.version > 1).map(m => m.version));
   assert.deepEqual((await migrateBusinessDatabase(pool)).applied, []);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.installation')).rows[0].n, 0);
 

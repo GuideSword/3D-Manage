@@ -29,7 +29,7 @@ test('rehearsal CLI refuses default, nonlocal and daily database targets without
 });
 
 function fixture() {
-  const order = id => ({ id, number: `ORDER-${id}`, createdBy: 'u1', status: 'draft', currency: 'CNY', total: 1,
+  const order = id => ({ id, number: `ORDER-${id}`, createdBy: 'u1', status: 'draft', statusReason: '保留原原因', currency: 'CNY', total: 1,
     customer: { id: 'same', name: '同名客户', extra: true }, attachments: [], createdAt: timestamp,
     items: [{ id: 'line1', modelId: 'm1', modelName: '历史模型名', quantity: '0.333', unitPrice: '3.000001', subtotal: 1, color: '旧颜色' }] });
   return { schemaVersion: 3, system: { serverId: 'f5942634-5fdd-4964-abc6-3971b1787c0b', initializedAt: timestamp, organizationName: '测试组织' },
@@ -87,6 +87,7 @@ test('isolated legacy import preserves business facts and rolls back incomplete 
     assert.equal((await pool.query('SELECT source_raw FROM erp.migration_runs')).rows[0].source_raw, raw);
     assert.equal((await pool.query("SELECT legacy_payload->'customer'->>'extra' AS extra FROM erp.orders WHERE id='o1'")).rows[0].extra, '9007199254740993.01');
     assert.deepEqual((await pool.query('SELECT total::text AS total FROM erp.orders ORDER BY id')).rows, [{ total: '1' }, { total: '1' }]);
+    assert.equal((await pool.query('SELECT status_reason FROM erp.orders LIMIT 1')).rows[0].status_reason, '保留原原因');
     assert.equal((await pool.query('SELECT count(DISTINCT customer_id)::int AS n FROM erp.orders')).rows[0].n, 2);
     assert.deepEqual((await pool.query('SELECT password_hash,token_version::text FROM erp.users')).rows[0], { password_hash: 'untouched-hash', token_version: '7' });
     assert.equal((await pool.query("SELECT qty_mg FROM erp.stock_lots WHERE id='l1'")).rows[0].qty_mg, '400000');
