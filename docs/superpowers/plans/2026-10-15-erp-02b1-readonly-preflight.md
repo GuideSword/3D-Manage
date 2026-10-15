@@ -31,7 +31,7 @@
 
 ### Task 1：只读来源与精度
 
-- [ ] 写测试并确认模块缺失导致失败。关键断言：
+- [x] 写测试并确认模块缺失导致失败。关键断言：
 
 ```js
 const source = parseSource('{"total":9007199254740993.01}');
@@ -40,30 +40,34 @@ assertSourceHash(source, source.sha256);
 assert.throws(() => assertSourceHash(source, '0'.repeat(64)));
 ```
 
-- [ ] 实现原文 hash、UTF-8 校验、原生 reviver 数值原文保存；PostgreSQL 读操作显式只读事务、参数化 storeId、严格表标识符。所有异常均关闭连接，配置不自动读取默认业务连接。
-- [ ] 执行 `node --test tests/backend/erp-preflight.test.cjs`，来源用例通过后提交独立文件。
+- [x] 实现原文 hash、UTF-8 校验、原生 reviver 数值原文保存；PostgreSQL 读操作显式只读事务、参数化 storeId、严格表标识符。所有异常均关闭连接，配置不自动读取默认业务连接。
+- [x] 执行 `node --test tests/backend/erp-preflight.test.cjs`，来源用例通过后提交独立文件。
 
 ### Task 2：金额、关联与库存报告
 
-- [ ] 测试订单 `0.333 × 3.000001 = 1.00`、两行分别半分取整后合计 0.02、总额或原 subtotal 不一致、缺价、负数、重复 ID、失去 Owner、悬空物料和独立客户建议。
-- [ ] 复用 parseScaled/multiplyToCents/sumCents，保留原金额并输出逐行计算值。库存从明确 baseline 开始，只校验新账本；每笔 before/after/delta 与操作语义一致，最终余额对账；legacy_unverified 要求人工复核，legacy_invalid 阻断。
-- [ ] 使用只读 fixture 校验原对象及原始文本没有被修改。执行相同专项测试，提交报告模块与测试。
+- [x] 测试订单 `0.333 × 3.000001 = 1.00`、两行分别半分取整后合计 0.02、总额或原 subtotal 不一致、缺价、负数、重复 ID、失去 Owner、悬空物料和独立客户建议。
+- [x] 复用 parseScaled/multiplyToCents/sumCents，保留原金额并输出逐行计算值。库存从明确 baseline 开始，只校验新账本；每笔 before/after/delta 与操作语义一致，最终余额对账；legacy_unverified 要求人工复核，legacy_invalid 阻断。
+- [x] 使用只读 fixture 校验原对象及原始文本没有被修改。执行相同专项测试，提交报告模块与测试。
 
 ### Task 3：文件与产物
 
-- [ ] 临时上传根目录测试已知 hash、内容篡改、缺失文件、路径穿越、外部 symlink、Windows 分隔符和外链不联网。
-- [ ] 文件 hash 流式计算；真实路径必须留在上传根内。保存原文 snapshot.json、report.json、mappings.json、report.md 和 manifest.json；新目录创建失败时拒绝覆盖，文件按 Unix 0600、目录 0700 创建，Windows 沿用宿主目录权限。
-- [ ] CLI 使用参数数组调用，测试状态码与文件 hash；原 store.json 字节完全相同，不加载服务器或业务初始化。执行专项测试并提交。
+- [x] 临时上传根目录测试已知 hash、内容篡改、缺失文件、路径穿越、外部 symlink、Windows 分隔符和外链不联网。
+- [x] 文件 hash 流式计算；真实路径必须留在上传根内。保存原文 snapshot.json、report.json、mappings.json、report.md 和 manifest.json；新目录创建失败时拒绝覆盖，文件按 Unix 0600、目录 0700 创建，Windows 沿用宿主目录权限。
+- [x] CLI 使用参数数组调用，测试状态码与文件 hash；原 store.json 字节完全相同，不加载服务器或业务初始化。执行专项测试并提交。
 
 ### Task 4：真实 PostgreSQL 来源与正式只读演练
 
-- [ ] 在一次性 PostgreSQL 16 内建立独立 JSONB 来源，原金额以 data::text 读取。验证来源事务只读、写入被 PostgreSQL 拒绝，读取前后文本/hash 一致。
-- [ ] 扩展已有隔离验证工具选择 preflight suite，保留 foundation 默认行为；执行实际数据库用例，不把 skip 算通过。
-- [ ] 对正式来源只读运行预检，将原文与报告保存到忽略的 runtime/migration-preflight 目录；不输出完整客户资料、密码 hash 或连接串。核对正式业务与 AI 数据前后摘要和数据库结构。
-- [ ] 修复代码缺陷；真实业务异常保留报告，不能自动修正金额、余额或合并客户。写回总计划及执行记录并提交。
+- [x] 在一次性 PostgreSQL 16 内建立独立 JSONB 来源，原金额以 data::text 读取。验证来源事务只读、写入被 PostgreSQL 拒绝，读取前后文本/hash 一致。
+- [x] 扩展已有隔离验证工具选择 preflight suite，保留 foundation 默认行为；执行实际数据库用例，不把 skip 算通过。
+- [x] 对正式来源只读运行预检，将原文与报告保存到忽略的 runtime/migration-preflight 目录；不输出完整客户资料、密码 hash 或连接串。核对正式业务与 AI 数据前后摘要和数据库结构。
+- [x] 修复代码缺陷；真实业务异常保留报告，不能自动修正金额、余额或合并客户。写回总计划及执行记录并提交。
 
 ### Task 5：02B1 结束与 02B 后续边界
 
-- [ ] 运行 preflight 专项、02A foundation、库存/编辑/备份必要回归及 git diff --check。
-- [ ] 只有实现与验收达到约 95% 才结束本包；真实数据需要复核时保留阻断项，不标记可自动迁移。
-- [ ] 记录下一步为核心关系表、来源映射确认及隔离导入演练；02B/02C/02D 和整个阶段 02 均不能因此标记完成。
+- [x] 运行 preflight 专项、02A foundation、库存/编辑/备份必要回归及 git diff --check。
+- [x] 只有实现与验收达到约 95% 才结束本包；真实数据需要复核时保留阻断项，不标记可自动迁移。
+- [x] 记录下一步为核心关系表、来源映射确认及隔离导入演练；02B/02C/02D 和整个阶段 02 均不能因此标记完成。
+
+## 执行结果（2026-10-15）
+
+Tasks 1–5 已完成，02B1 主功能与验证达到推进门槛。专项 12/12、02A 17/17、库存/编辑/备份 30/30 通过，均无跳过。正式只读预检 0 blocker、2 review；原文、业务及 AI 摘要一致，正式库没有 erp schema。客户映射仍为未批准，不允许自动迁移。下一包为 02B2 核心关系表与隔离导入演练。详见[执行记录](../../rehearsals/2026-10-15-erp-02b1-preflight.md)。
