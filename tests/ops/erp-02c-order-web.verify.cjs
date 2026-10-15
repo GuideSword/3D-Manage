@@ -145,6 +145,7 @@ async function main() {
     assert.equal(order.items[0].layerHeightMm, '-1');
     assert.equal(order.attachments.length, 1); assert.equal(order.attachments[0].unknown, '9007199254740993.01');
     assert.equal(await fs.readFile(path.join(directory, 'uploads', filename), 'utf8'), bytes);
+    await page.getByText('CNY 9007199254740993.01', { exact: true }).first().waitFor();
     assert.ok((await page.locator('body').innerText()).includes('CNY 9007199254740993.01'));
     await page.screenshot({ path: path.join(directory, 'order-exact-details.png') });
     checks.push('执行中仅改交期/说明，精确历史金额、已删除模型引用、未知规格及附件实物保留');

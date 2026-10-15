@@ -65,3 +65,13 @@ APK 1.0.0/versionCode 1，x86_64，SHA-256 `c52f2f0c629d0ac011ab92171afb8a88e6d3
 原生验收发现列表在保存返回后返回 400。已用 HTTP/PG 回归重现：whatwg-fetch 为 cache:no-store 的 GET 自动附加 `_` 毫秒时间戳，领域查询白名单拒绝该传输参数；Web 原生 fetch 不附加，因此此前 Web 验收未暴露。关系 HTTP 边界仅剥离合法的单一 1–16 位数字时间戳，仍拒绝任意值、重复参数及未知业务筛选。新增断言先失败（预期200，实际400），修复后 master-data 10/10、adapters19/19，无跳过；模拟器客户查询和保存返回刷新恢复正常，无需改变正式服务或客户端。
 
 隔离验收服务增加仅用于 ANDROID-RETRY- 前缀 fixture、须显式本地一次性标记文件的已提交响应丢失模拟，业务提交之后才断开连接。安卓实际验证表单锁定原内容、顶部返回和系统返回均保留表单并提示重试；随后使用原键成功返回列表。数据库读取确认该编号只有一条，未重复建档。当前 Android 上该返回保护通过，未因导航库的风险提示自行改写业务 hook；尚不推断其他平台返回行为已验收。证据 `.tmp/erp-02c/android-response-dropped.json`、android-pending-before-back.png、android-pending-after-header-back.png、android-pending-after-system-back.png、android-customer-refreshed.png。后续继续验证编辑、权限、仓库和订单，本段不代表 Task 5 全部通过。
+
+## 02C 完成评估（2026-10-16）
+
+Task 5 后续检查已通过：Owner 客户原值回填、改名、联系人清空、保存返回刷新、停用/恢复及无引用删除；Owner默认仓库改名；Staff供应商新建/编辑及仓库只读；Viewer客户搜索和详情只读、仓库只读、订单无新建/编辑/状态/删除入口。安卓订单按编号C002选择同名客户，0.001×5合计0.01；新建后编辑备注和原生日期选择器交期2026-10-20，再返回详情刷新。隔离数据库核对customer-b、原模型和行ID、数量/单价/金额保留，version2。已查看原生截图，crash日志为空；证据 android-verification.json、native-db-verification.json、android-order-edited.png、android-viewer-order-readonly.png 均在 `.tmp/erp-02c/`。
+
+修复后 Web主数据12组、订单8组重新通过，无页面异常。一次订单Web复验在详情异步刷新之前立即断言金额，报告截屏已出现正确金额；将该断言改为等待确切金额元素后再检查，重新运行8组通过，未删减验收条件。客户端及相关纯函数40/40；实际PG master-data10/10、adapters19/19，无跳过。提交3a02a20包含原生构建与查询兼容修复，其他既有未提交工作未混入该提交。
+
+只读正式核对 `.tmp/erp-02c/formal-after-native.json`：业务和当前AI表计数/哈希与formal-after-orders完全一致，原始app_store SHA-256仍为fdfc1fe167994afa8f06bb24df3aa11830b85686b526019e311cb9ad3634d078，erp schema仍不存在。未重置原账号、未写正式验收数据。当前AI计数以本次快照为准，不借用历史文档中的数量。
+
+评估02C达到约95%且关键路径完整，推进02D。此为本包功能/验收门槛，不代表整个阶段02或正式关系模式已上线。02D仍须补齐首页统计、既有模型/耗材/库存/用户/状态等所有写入口版本与幂等、系统/下载/上传生命周期、HTTP/CSV/AI唯一事实源、主机恢复、批准映射、维护冷备与完整切换/恢复。原生日期只验收安卓，未声称iOS通过；未覆盖用户真实ARM手机。新附件上传本就归02D，仍是发布前必要项。
