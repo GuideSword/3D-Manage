@@ -4,6 +4,9 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { ORDER_STATUSES, ROUTES } from '../constants';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { relationalSystemAPI } from '../utils/relationalSystemApi';
+import dashboardCore from '../utils/systemDashboardCore.cjs';
 import { isAuthRequiredError, ordersAPI, stockAPI } from '../utils/api';
 import { canExport, canManage, canWrite } from '../utils/permissions';
 import CyberHome from '../components/home/CyberHome';
@@ -14,6 +17,7 @@ const countOf = response => response?.total ?? itemsOf(response).length;
 export default function HomeScreen() {
   const navigation = useNavigation();
   const { user } = useAuth();
+  const { server } = useServerConfig();
   const { isDark } = useAppTheme();
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -27,6 +31,20 @@ export default function HomeScreen() {
     const id = ++requestId.current;
     setRefreshing(refresh);
     if (!refresh) setLoading(true);
+    if (dashboardCore.supportsRelationalDashboard(server)) {
+      try {
+        const snapshot = await relationalSystemAPI.dashboard();
+        if (id !== requestId.current) return;
+        const current = dashboardCore.toHomeState(snapshot);
+        setStats(current.stats); setRecentOrders(current.recentOrders); setError('');
+      } catch (failure) {
+        if (id !== requestId.current || isAuthRequiredError(failure) || failure.staleSession) return;
+        setStats({ pendingReview: null, inProgress: null, lowStock: null }); setRecentOrders([]); setError('部分数据加载失败');
+      } finally {
+        if (id === requestId.current) { setLoading(false); setRefreshing(false); }
+      }
+      return;
+    }
     const results = await Promise.allSettled([
       ordersAPI.getAll({ status: ORDER_STATUSES.PENDING_REVIEW, pageSize: 1 }),
       ordersAPI.getAll({ status: ORDER_STATUSES.IN_PROGRESS, pageSize: 1 }),
@@ -49,7 +67,7 @@ export default function HomeScreen() {
     setError(results.some(r => r.status === 'rejected') ? '部分数据加载失败' : '');
     setLoading(false);
     setRefreshing(false);
-  }, []);
+  }, [server]);
 
   useFocusEffect(useCallback(() => {
     loadDashboard();

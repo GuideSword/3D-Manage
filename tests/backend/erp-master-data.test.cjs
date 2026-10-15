@@ -96,7 +96,7 @@ test('master data shares transactions, versions, roles and historical snapshots'
   });
   await t.test('HTTP master-data routes preserve roles, versions, capability guards and durable retries', async () => {
     const serverId = '11111111-1111-4111-8111-111111111111', jwtSecret = 'master-data-HTTP-fixture-secret-32-bytes';
-    await pool.query("INSERT INTO erp.installation VALUES('default',$1,'主数据验收',now(),'relational')", [serverId]);
+    await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'主数据验收',now(),'relational')", [serverId]);
     const app = express();
     app.use('/api', createRelationalRouter(pool, { jwtSecret }));
     const server = await new Promise(resolve => { const instance = app.listen(0, '127.0.0.1', () => resolve(instance)); });

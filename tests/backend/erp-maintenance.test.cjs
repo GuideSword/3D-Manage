@@ -36,7 +36,7 @@ test('PostgreSQL maintenance drains active writes, persists across connections a
   assert.equal(target.pathname, '/erp_02a_verify'); assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname));
   const pool = await createBusinessPool({ connectionString: databaseUrl }); t.after(() => pool.end());
   await migrateBusinessDatabase(pool);
-  await pool.query("INSERT INTO erp.installation VALUES('default',$1,'维护验收',now(),'relational')", [serverId]);
+  await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'维护验收',now(),'relational')", [serverId]);
   const password = 'Maintenance-Fixture-Only-2026!';
   const hash = await bcrypt.hash(password, 12);
   for (const role of ['owner', 'staff', 'viewer']) await pool.query('INSERT INTO erp.users(id,email,name,role,password_hash) VALUES($1,$2,$1,$1,$3)', [role, `${role}@maintenance.example.test`, hash]);

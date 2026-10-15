@@ -79,7 +79,7 @@ test('PostgreSQL runtime binds one source and fences later requests when databas
     } finally { await http.close(); await runtime.close(); await pool.query('DROP SCHEMA erp'); }
   });
   await migrateBusinessDatabase(pool);
-  await pool.query("INSERT INTO erp.installation VALUES('default',$1,'运行测试',now(),'relational')", [serverId]);
+  await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'运行测试',now(),'relational')", [serverId]);
   await pool.query("INSERT INTO erp.users(id,email,name,role,password_hash) VALUES('owner','owner@runtime.example.test','Owner','owner',$1)", [await bcrypt.hash('Runtime-Fixture-Only-2026!', 12)]);
   await t.test('relational HTTP login, authenticated reads and list queries never touch legacy JSONB', async () => {
     let legacyLoaded = 0, relationalLoaded = 0;

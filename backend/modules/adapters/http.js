@@ -7,7 +7,7 @@ const { createFailureLimiter } = require('../../utils/rateLimit');
 const { PRODUCT_NAME, API_VERSION, SERVER_VERSION } = require('../../config/runtime');
 const v = require('../catalog/validation');
 
-function listQuery(query) {
+function transportQuery(query) {
   const result = { ...query };
   // whatwg-fetch (React Native) adds a millisecond timestamp for no-store GETs.
   // Strip only that transport parameter; domain filters remain strictly checked.
@@ -15,6 +15,10 @@ function listQuery(query) {
     if (typeof result._ !== 'string' || !/^\d{1,16}$/.test(result._)) v.fail('缓存请求参数无效');
     delete result._;
   }
+  return result;
+}
+function listQuery(query) {
+  const result = transportQuery(query);
   for (const key of ['limit', 'offset', 'page', 'pageSize']) {
     if (result[key] === undefined) continue;
     if (typeof result[key] !== 'string' || !/^\d{1,10}$/.test(result[key])) v.fail('分页参数无效');
@@ -45,10 +49,12 @@ function createRelationalRouter(pool, options = {}) {
     return (await pool.query("SELECT server_id,organization_name,initialized_at,storage_mode FROM erp.installation WHERE id='default'")).rows[0];
   }
   router.get('/system/info', route(async (_req, res) => {
-    const state = await system();
-    res.json({ product: PRODUCT_NAME, serverId: state?.server_id ?? null, organizationName: state?.organization_name ?? '',
-      initialized: Boolean(state?.initialized_at), apiVersion: API_VERSION, serverVersion: SERVER_VERSION,
-      capabilities: { inventoryRulesVersion: 1, businessRulesVersion: state?.storage_mode === 'relational' ? 2 : 1, relationalBusiness: state?.storage_mode === 'relational' } });
+    const state = await services.system.publicStatus();
+    res.set('Cache-Control', 'no-store');
+    res.json({ product: PRODUCT_NAME, serverId: state.serverId, organizationName: state.organizationName, organizationVersion: state.organizationVersion,
+      initialized: state.initialized, maintenance: state.maintenance, apiVersion: API_VERSION, serverVersion: SERVER_VERSION,
+      capabilities: { inventoryRulesVersion: 1, businessRulesVersion: state.storageMode === 'relational' ? 2 : 1, relationalBusiness: state.storageMode === 'relational',
+        dashboardRulesVersion: state.storageMode === 'relational' ? 1 : 0, businessWritable: state.businessWritable, selfHosted: true, agent: false, objectStorage: false } });
   }));
   router.use(async (_req, _res, next) => {
     try {
@@ -105,6 +111,15 @@ function createRelationalRouter(pool, options = {}) {
     const result = await service.execute({ actorId, tokenVersion, key: req.get('Idempotency-Key'), operation, payload });
     res.status(result.status).json(result.body);
   };
+  router.get('/system/organization', route(async (req, res) => {
+    v.fields(transportQuery(req.query), []);
+    res.json(await services.system.organization(req.businessSession));
+  }));
+  router.patch('/system/organization', route((req, res) => execute(req, res, services.system, 'organization.update', req.body)));
+  router.get('/system/dashboard', route(async (req, res) => {
+    v.fields(transportQuery(req.query), []);
+    res.set('Cache-Control', 'private, no-store').json(await services.system.dashboard(req.businessSession));
+  }));
   router.get('/commands/:scope/:key', route(async (req, res) => {
     if (!['business', 'inventory', 'account'].includes(req.params.scope) || !/^[A-Za-z0-9._:-]{1,128}$/.test(req.params.key)) v.fail('操作标识无效');
     const result = await withAuthenticatedRead(pool, req.businessSession, async (tx, actor) => {
@@ -115,7 +130,7 @@ function createRelationalRouter(pool, options = {}) {
     res.json(result);
   }));
   router.get('/csv/:kind', route(async (req, res) => {
-    const file = await services.csv.exportRecords(req.businessSession, req.params.kind, req.query);
+    const file = await services.csv.exportRecords(req.businessSession, req.params.kind, transportQuery(req.query));
     res.set('Content-Type', file.contentType).set('Content-Disposition', `attachment; filename="${file.filename}"`).send(file.content);
   }));
   router.post('/csv/:kind', route(async (req, res) => {
@@ -125,7 +140,7 @@ function createRelationalRouter(pool, options = {}) {
   }));
   for (const [path, service, prefix] of [['materials', services.materials, 'material'], ['models', services.models, 'model'], ['orders', services.orders, 'order'], ['users', services.users, 'user'], ['inventory/lots', services.inventory, 'lot'], ['customers', services.customers, 'customer'], ['suppliers', services.suppliers, 'supplier']]) {
     if (['material', 'model', 'order'].includes(prefix)) {
-      router.get(`/${path}/export`, route(async (req, res) => res.json(await services.csv.exportRecords(req.businessSession, path, req.query))));
+      router.get(`/${path}/export`, route(async (req, res) => res.json(await services.csv.exportRecords(req.businessSession, path, transportQuery(req.query)))));
       router.post(`/${path}/import`, route(async (req, res) => {
         v.fields(req.body, ['csv'], ['csv']);
         const result = await services.csv.importRecords(req.businessSession, path, req.body.csv, req.get('Idempotency-Key'));
@@ -187,7 +202,7 @@ function createRelationalRouter(pool, options = {}) {
     await execute(req, res, services.orders, 'order.transition', { ...req.body, id: req.params.id });
   }));
   router.get('/stock/export', route(async (req, res) => {
-    const { type = 'lots', ...query } = req.query;
+    const { type = 'lots', ...query } = transportQuery(req.query);
     if (!['lots', 'transactions'].includes(type)) v.fail('库存导出类型无效');
     res.json(await services.csv.exportRecords(req.businessSession, type, query));
   }));
@@ -200,10 +215,12 @@ function createRelationalRouter(pool, options = {}) {
   router.get('/inventory/transactions/:id', route(async (req, res) => res.json(await services.inventory.getTransaction(req.businessSession, req.params.id))));
   router.post('/inventory/transactions', route((req, res) => execute(req, res, services.inventory, 'inventory.post', req.body)));
   router.get('/inventory/summary', route(async (req, res) => {
-    const query = { ...req.query };
-    if (query.lowStockOnly !== undefined) {
-      if (!['true', 'false'].includes(query.lowStockOnly)) v.fail('低库存筛选参数无效');
-      query.lowStockOnly = query.lowStockOnly === 'true';
+    const query = transportQuery(req.query);
+    if (query.lowStockOnly !== undefined && query.low_stock_only !== undefined) v.fail('低库存筛选参数不能重复');
+    for (const key of ['lowStockOnly', 'low_stock_only']) {
+      if (query[key] === undefined) continue;
+      if (!['true', 'false'].includes(query[key])) v.fail('低库存筛选参数无效');
+      query[key] = query[key] === 'true';
     }
     res.json(await services.inventory.summary(req.businessSession, query));
   }));

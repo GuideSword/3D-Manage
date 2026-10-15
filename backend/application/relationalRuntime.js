@@ -10,8 +10,6 @@ async function createRelationalRuntime({ pool, jwtSecret, uploadDirectory } = {}
   // Never mount their existing legacy-authenticated routers as a fallback.
   const pending = (_req, res) => res.status(503).json({ code: 'FEATURE_MAINTENANCE', error: '这项功能正在维护，请稍后再试' });
   router.use(['/agent', '/files', '/oss'], pending);
-  router.patch('/system/organization', pending);
-  router.get('/orders/stats', pending);
   router.use(createRelationalRouter(pool, { jwtSecret, uploadDirectory: uploadDirectory || UPLOAD_DIR }));
   return { router };
 }

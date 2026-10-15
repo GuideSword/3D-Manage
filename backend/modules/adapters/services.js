@@ -8,6 +8,7 @@ const { createUserAuthentication } = require('../users/authentication');
 const { createCsvAdapter } = require('./csv');
 const { createPartnerService } = require('../partners/service');
 const { createWarehouseService } = require('../warehouses/service');
+const { createSystemService } = require('../system/service');
 
 function createRelationalServices(pool, options = {}) {
   return Object.freeze({
@@ -15,6 +16,7 @@ function createRelationalServices(pool, options = {}) {
     inventory: createInventoryService(pool, options), users: createUserService(pool, options),
     authentication: createUserAuthentication(pool, options), csv: createCsvAdapter(pool, options),
     customers: createPartnerService(pool, 'customers'), suppliers: createPartnerService(pool, 'suppliers'), warehouses: createWarehouseService(pool),
+    system: createSystemService(pool),
   });
 }
 module.exports = { createRelationalServices };

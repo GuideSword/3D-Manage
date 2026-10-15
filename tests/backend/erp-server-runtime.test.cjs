@@ -104,7 +104,7 @@ test('real PostgreSQL server selects one storage mode before importing initializ
     assert.equal((await pool.query("SELECT to_regnamespace('erp') AS name")).rows[0].name, null);
   });
   await migrateBusinessDatabase(pool);
-  await pool.query("INSERT INTO erp.installation VALUES('default',$1,'关系资料',now(),'relational')", [serverId]);
+  await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'关系资料',now(),'relational')", [serverId]);
   await pool.query("INSERT INTO erp.users(id,email,name,role,password_hash) VALUES('owner','owner@server.example.test','Owner','owner',$1)", [hash]);
   await pool.query("UPDATE public.app_store SET data=jsonb_set(data,'{precisionProof}','9007199254740993.01')");
   const before = (await pool.query('SELECT data::text AS raw FROM public.app_store')).rows;
@@ -118,7 +118,8 @@ test('real PostgreSQL server selects one storage mode before importing initializ
       const login = await request(child.base, '/api/auth/login', 'POST', { email: 'owner@server.example.test', password });
       assert.equal(login.status, 200);
       assert.equal((await request(child.base, '/api/customers?_=1792080896260', 'GET', undefined, login.body.token)).status, 200);
-      for (const endpoint of ['/api/agent/conversations', '/api/files/old.pdf', '/api/oss/download-url', '/api/orders/stats']) {
+      assert.equal((await request(child.base, '/api/system/dashboard?_=1792080896260', 'GET', undefined, login.body.token)).status, 200);
+      for (const endpoint of ['/api/agent/conversations', '/api/files/old.pdf', '/api/oss/download-url']) {
         const response = await request(child.base, endpoint, 'GET', undefined, login.body.token);
         assert.equal(response.status, 503); assert.equal(response.body.code, 'FEATURE_MAINTENANCE');
       }
@@ -181,7 +182,7 @@ test('real PostgreSQL server selects one storage mode before importing initializ
       assert.equal(child.loadedLegacy, false); assert.equal(child.loadedAI, false); assert.equal(child.agentFile, false);
       await child.stop();
       assert.deepEqual((await pool.query('SELECT data::text AS raw FROM public.app_store')).rows, before);
-    } finally { await pool.query('INSERT INTO erp.installation VALUES($1,$2,$3,$4,$5)', [row.id, row.server_id, row.organization_name, row.initialized_at, row.storage_mode]); }
+    } finally { await pool.query('INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode,version) VALUES($1,$2,$3,$4,$5,$6)', [row.id, row.server_id, row.organization_name, row.initialized_at, row.storage_mode, row.version]); }
   });
   await t.test('corrupt migration history rejects startup without initializing old data or AI', async () => {
     const original = (await pool.query('SELECT sha256 FROM erp.schema_migrations WHERE version=1')).rows[0].sha256;

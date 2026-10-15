@@ -68,7 +68,7 @@ test('storage mode inspection is read-only and never falls back from damaged rel
     await refuses('ERP_STORAGE_INCOMPLETE');
   });
   await t.test('both explicit modes and repeated concurrent inspections retain identity and all data', async () => {
-    await pool.query("INSERT INTO erp.installation VALUES('default',$1,'运行核验', $2, 'legacy')", [serverId, '2026-10-16T00:00:00Z']);
+    await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'运行核验', $2, 'legacy')", [serverId, '2026-10-16T00:00:00Z']);
     assert.deepEqual(await inspectBusinessStorage(pool, { expectedServerId: serverId }), {
       mode: 'legacy', schemaVersion: version,
       installation: { serverId, organizationName: '运行核验', initializedAt: '2026-10-16T00:00:00.000Z' },

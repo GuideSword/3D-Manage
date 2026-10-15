@@ -19,6 +19,7 @@ async function assertBusinessWritesAllowed(tx) {
   const row = await controlRow(tx);
   if (row.state === 'maintenance') fail('BUSINESS_MAINTENANCE', '服务器正在维护，暂时不能保存修改');
 }
+const readBusinessWriteState = async tx => (await controlRow(tx)).state;
 const argumentsInvalid = () => fail('MAINTENANCE_ARGUMENTS_INVALID', '请明确指定维护目标、状态、版本和原因', 400);
 function validateTarget(input, allowed) {
   if (!input || typeof input !== 'object' || Array.isArray(input) || Object.keys(input).some(key => !allowed.includes(key))
@@ -68,4 +69,4 @@ function createMaintenanceService(pool) {
     },
   };
 }
-module.exports = { assertBusinessWritesAllowed, createMaintenanceService };
+module.exports = { assertBusinessWritesAllowed, readBusinessWriteState, createMaintenanceService };

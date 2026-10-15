@@ -41,7 +41,7 @@ test('CSV adapters share relational commands, snapshots, exact amounts and permi
   const serverId = 'f5942634-5fdd-4964-abc6-3971b1787c0b';
   const password = 'Adapter-Password-2026!';
   await pool.query('UPDATE erp.users SET password_hash=$1', [await bcrypt.hash(password, 12)]);
-  await pool.query("INSERT INTO erp.installation VALUES('default',$1,'适配测试',now(),'relational')", [serverId]);
+  await pool.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'适配测试',now(),'relational')", [serverId]);
   const token = id => jwt.sign({ sub: id, ver: '1' }, jwtSecret, { audience: TOKEN_AUDIENCE, issuer: `3d-manage:${serverId}` });
   const app = express();
   const uploadDirectory = await fs.mkdtemp(path.join(os.tmpdir(), 'erp-adapters-'));

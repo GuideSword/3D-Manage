@@ -30,7 +30,7 @@ async function main() {
     if ((await pool.query('SELECT count(*)::int AS n FROM erp.users')).rows[0].n) throw new Error('Acceptance database is not empty');
     const hash = await bcrypt.hash(password, 12);
     await withBusinessTransaction(pool, async tx => {
-      await tx.query("INSERT INTO erp.installation VALUES('default',$1,'隔离验收',now(),'relational')", [fixtureServerId]);
+      await tx.query("INSERT INTO erp.installation(id,server_id,organization_name,initialized_at,storage_mode) VALUES('default',$1,'隔离验收',now(),'relational')", [fixtureServerId]);
       for (const role of ['owner', 'staff', 'viewer']) await tx.query('INSERT INTO erp.users(id,email,name,role,password_hash) VALUES($1,$2,$3,$1,$4)', [role, `${role}@erp-02c.example.test`, `验收${role}`, hash]);
       await tx.query("INSERT INTO erp.warehouses(id,code,name,is_default) VALUES('default','DEFAULT','验收仓库',true)");
       await tx.query("INSERT INTO erp.customers(id,code,name,contact_name,phone) VALUES('customer-a','C001','同名客户','联系人甲','13800000001'),('customer-b','C002','同名客户','联系人乙','13800000002')");
