@@ -5,6 +5,7 @@ function createSessionLifecycleCore(initial = {}) {
     apiBaseUrl: null,
     serverId: null,
     serverKey: null,
+    capabilities: Object.freeze({}),
     sessionEpoch: 0,
     ...initial,
   };
@@ -19,6 +20,7 @@ function createSessionLifecycleCore(initial = {}) {
         apiBaseUrl: server?.apiBaseUrl || null,
         serverId: server?.serverId || null,
         serverKey: server?.serverKey || null,
+        capabilities: Object.freeze(server?.capabilities && typeof server.capabilities === 'object' && !Array.isArray(server.capabilities) ? { ...server.capabilities } : {}),
       };
       notify();
       return snapshot();
