@@ -19,6 +19,7 @@
     "verify:edit": "node --test tests/backend/edit-forms.test.cjs tests/client/edit-form-core.test.cjs",
     "verify:backup": "node --test tests/backend/backup-contract.test.cjs",
     "verify:erp:foundation": "pwsh -NoProfile -File tests/ops/erp-02a-postgres.verify.ps1",
+    "verify:erp:preflight": "pwsh -NoProfile -File tests/ops/erp-02a-postgres.verify.ps1 -Suite preflight",
     "verify:erp:postgres": "powershell -NoProfile -ExecutionPolicy Bypass -File tests/ops/p0-inventory-postgres.verify.ps1"
   },
   "dependencies": {

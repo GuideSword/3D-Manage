@@ -13,6 +13,7 @@
     "verify:runtime": "node scripts/verify-runtime.js",
     "verify:postgres": "node scripts/verify-postgres.js",
     "verify:erp:foundation": "pwsh -NoProfile -File ../tests/ops/erp-02a-postgres.verify.ps1",
+    "verify:erp:preflight": "pwsh -NoProfile -File ../tests/ops/erp-02a-postgres.verify.ps1 -Suite preflight",
     "migrate:file-to-postgres": "node scripts/migrate-file-to-postgres.js",
     "agent:checkpoint": "node scripts/checkpoint-agent-db.js",
     "agent:verify": "node scripts/verify-agent-db.js",

@@ -120,6 +120,25 @@ test('invalid historical balances and malformed collections remain visible as bl
   assert.ok(codes(report).includes('LEGACY_BALANCE_INVALID'));
 });
 
+test('tracked opening and absolute adjustment reconcile, while broken chains and invented baselines block', async () => {
+  const data = fixture();
+  data.stockLots = [{ id: 'lot1', materialId: 'mat1', qtyMg: '350000', qty: '350', balanceStatus: 'tracked', ledgerBaselineQtyMg: '0' }];
+  data.inventoryTxns = [
+    { id: 'opening', lotId: 'lot1', type: 'in', qtyMg: '500000', beforeQtyMg: '0', afterQtyMg: '500000', deltaQtyMg: '500000', ledgerVersion: 1 },
+    { id: 'count', lotId: 'lot1', type: 'adjust', qtyMg: '350000', beforeQtyMg: '500000', afterQtyMg: '350000', deltaQtyMg: '-150000', ledgerVersion: 1 },
+  ];
+  let report = await inspect(data);
+  assert.equal(report.blockerCount, 0);
+  assert.equal(report.stockLots[0].expectedQtyMg, '350000');
+  data.inventoryTxns.reverse();
+  assert.ok(codes(await inspect(data)).includes('LEDGER_CHAIN_BROKEN'));
+  data.inventoryTxns.reverse();
+  data.stockLots[0].ledgerBaselineQtyMg = '500000';
+  assert.ok(codes(await inspect(data)).includes('TRACKED_BASELINE_NONZERO'));
+  data.schemaVersion = false;
+  assert.ok(codes(await inspect(data)).includes('SOURCE_SCHEMA_UNSUPPORTED'));
+});
+
 test('file audit checks byte hashes, sizes, Windows paths, missing files and external links', async t => {
   const directory = await temporaryDirectory(t);
   await fs.mkdir(path.join(directory, 'models'));

@@ -35,6 +35,7 @@ function inspectInventory(data, add) {
     try {
       cursor = integer(lot.ledgerBaselineQtyMg);
       result.baselineQtyMg = String(cursor);
+      if (lot.balanceStatus === 'tracked' && cursor !== 0n) add('blocker', 'TRACKED_BASELINE_NONZERO', 'stockLots', lot.id, 'ledgerBaselineQtyMg');
     } catch (_) {
       add('blocker', 'LOT_BASELINE_MISSING', 'stockLots', lot.id, 'ledgerBaselineQtyMg');
     }

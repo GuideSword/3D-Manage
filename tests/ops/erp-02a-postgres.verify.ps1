@@ -1,3 +1,4 @@
+param([ValidateSet('foundation', 'preflight')][string]$Suite = 'foundation')
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or newer is required.' }
 $erpWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -28,7 +29,10 @@ try {
   $erpPort = (docker port $erpCreatedId 5432/tcp).Trim().Split(':')[-1]
   if ($LASTEXITCODE -ne 0 -or $erpPort -notmatch '^\d+$') { throw 'Unable to read isolated database port.' }
   $env:ERP_BUSINESS_TEST_DATABASE_URL = "postgresql://postgres:$($env:POSTGRES_PASSWORD)@127.0.0.1:${erpPort}/erp_02a_verify"
-  $erpOutput = & node --test tests/backend/erp-decimal.test.cjs tests/backend/erp-postgres.test.cjs 2>&1
+  $erpTests = if ($Suite -eq 'preflight') {
+    @('tests/backend/erp-preflight.test.cjs', 'tests/backend/erp-preflight-postgres.test.cjs')
+  } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') }
+  $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE
   $erpOutput | Write-Output
   $erpEvidenceDirectory = Join-Path $erpWorkspace '.tmp/erp-02a'
@@ -38,6 +42,7 @@ try {
   $erpSkipped = [regex]::Match($erpLog, '(?m)^# skipped (\d+)').Groups[1].Value
   if ($erpSkipped -ne '0' -and $erpExit -eq 0) { $erpExit = 1 }
   $erpEvidence = [ordered]@{
+    suite = $Suite
     result = $(if ($erpExit -eq 0) { 'passed' } else { 'failed' })
     utcTimestamp = [DateTimeOffset]::UtcNow.ToString('o')
     testDatabase = 'erp_02a_verify'
@@ -47,8 +52,9 @@ try {
     skipped = $erpSkipped
     migrationSha256 = (Get-FileHash backend/business-db/migrations/0001_foundation.sql -Algorithm SHA256).Hash.ToLowerInvariant()
   }
-  $erpOutput | Set-Content (Join-Path $erpEvidenceDirectory 'verification.log') -Encoding utf8
-  $erpEvidence | ConvertTo-Json | Set-Content (Join-Path $erpEvidenceDirectory 'verification.json') -Encoding utf8
+  $erpEvidenceName = if ($Suite -eq 'preflight') { 'preflight-verification' } else { 'verification' }
+  $erpOutput | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.log") -Encoding utf8
+  $erpEvidence | ConvertTo-Json | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.json") -Encoding utf8
 } finally {
   try {
     if ($erpCreatedId) {

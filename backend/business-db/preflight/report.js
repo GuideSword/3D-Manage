@@ -9,7 +9,7 @@ const COLLECTIONS = ['users', 'orders', 'models', 'materials', 'stockLots', 'inv
 async function buildPreflightReport(source, { uploadDirectory } = {}) {
   assertSourceHash(source, source.sha256);
   const report = { reportVersion: 1, sourceSha256: source.sha256, serverId: source.data.system?.serverId || null,
-    schemaVersion: source.data.schemaVersion || '1', counts: {}, versionDefaults: {}, issues: [], orders: [], stockLots: [], files: [], customerMappings: [] };
+    schemaVersion: source.data.schemaVersion ?? '1', counts: {}, versionDefaults: {}, issues: [], orders: [], stockLots: [], files: [], customerMappings: [] };
   const add = (severity, code, collection, entityId, field) => report.issues.push({ severity, code, collection,
     ...(identifier(entityId) ? { entityId } : {}), ...(field ? { field } : {}) });
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(report.serverId || '')) add('blocker', 'SERVER_ID_INVALID', 'system');
