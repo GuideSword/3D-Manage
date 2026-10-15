@@ -4,6 +4,7 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const { createHash } = require('node:crypto');
 const { assertBusinessDatabaseVersion } = require('./connection');
+const { withBusinessTransaction } = require('./transaction');
 
 function migrationError(code, message) {
   return Object.assign(new Error(message), { code });
@@ -28,9 +29,7 @@ async function loadMigrations(directory) {
 
 async function migrateBusinessDatabase(pool, { migrationsDirectory = path.join(__dirname, 'migrations') } = {}) {
   const migrations = await loadMigrations(migrationsDirectory);
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
+  return withBusinessTransaction(pool, async client => {
     await assertBusinessDatabaseVersion(client);
     await client.query('SELECT pg_advisory_xact_lock($1, $2)', [17042026, 2]);
     await client.query('CREATE SCHEMA IF NOT EXISTS erp');
@@ -55,14 +54,8 @@ async function migrateBusinessDatabase(pool, { migrationsDirectory = path.join(_
         [migration.version, migration.filename, migration.sha256]);
       applied.push(migration.version);
     }
-    await client.query('COMMIT');
     return { applied, version: migrations.at(-1).version };
-  } catch (error) {
-    try { await client.query('ROLLBACK'); } catch (rollbackError) { error.rollbackError = rollbackError; }
-    throw error;
-  } finally {
-    client.release();
-  }
+  });
 }
 
 module.exports = { loadMigrations, migrateBusinessDatabase };

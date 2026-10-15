@@ -8,6 +8,7 @@ const path = require('node:path');
 const { createBusinessPool, closeBusinessPool } = require('../../backend/business-db/connection');
 const { migrateBusinessDatabase, loadMigrations } = require('../../backend/business-db/migrator');
 const { multiplyToCents } = require('../../backend/business-db/decimal');
+const { withBusinessTransaction } = require('../../backend/business-db/transaction');
 const migrationDirectory = path.resolve(__dirname, '../../backend/business-db/migrations');
 
 async function temporaryMigrations(t, files) {
@@ -42,6 +43,25 @@ test('migration files reject duplicate versions, sequence gaps, and invalid SQL 
     const directory = await temporaryMigrations(t, files);
     await assert.rejects(loadMigrations(directory), { code: 'ERP_MIGRATION_FILES_INVALID' });
   }
+});
+
+test('transaction commits once, preserves callback failures, and discards a connection when rollback fails', async () => {
+  const queries = [];
+  const releases = [];
+  const client = { query: async sql => { queries.push(sql); }, release: error => releases.push(error) };
+  const pool = { connect: async () => client };
+  assert.equal(await withBusinessTransaction(pool, async tx => { assert.equal(tx, client); return 'result'; }), 'result');
+  assert.deepEqual(queries, ['BEGIN', 'COMMIT']);
+  assert.deepEqual(releases, [undefined]);
+  queries.length = 0;
+  releases.length = 0;
+  const original = new Error('business failed');
+  const rollback = new Error('rollback failed');
+  client.query = async sql => { queries.push(sql); if (sql === 'ROLLBACK') throw rollback; };
+  await assert.rejects(withBusinessTransaction(pool, async () => { throw original; }), error => error === original);
+  assert.equal(original.rollbackError, rollback);
+  assert.deepEqual(queries, ['BEGIN', 'ROLLBACK']);
+  assert.deepEqual(releases, [rollback]);
 });
 
 const databaseUrl = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
@@ -93,5 +113,28 @@ test('isolated PostgreSQL 16 foundation', { skip: !databaseUrl }, async t => {
       const { rows } = await pool.query('SELECT round($1::numeric(18,3)*$2::numeric(20,6),2)::text AS amount', [quantity, price]);
       assert.equal(multiplyToCents(quantity, price), rows[0].amount);
     }
+  });
+
+  await t.test('business, audit, and receipt writes share one transaction and roll back together', async () => {
+    await pool.query('CREATE TABLE erp.transaction_probe(id text PRIMARY KEY, value text NOT NULL, version bigint NOT NULL CHECK(version>0))');
+    try {
+      const insert = (tx, id) => tx.query('INSERT INTO erp.transaction_probe VALUES($1,$2,1)', [id, 'saved']);
+      await assert.rejects(withBusinessTransaction(pool, async tx => {
+        await insert(tx, 'business');
+        await insert(tx, 'audit');
+        await insert(tx, 'business');
+      }), { code: '23505' });
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.transaction_probe')).rows[0].n, 0);
+      const returned = await withBusinessTransaction(pool, async tx => {
+        await insert(tx, 'business');
+        const nested = async sameTx => (await sameTx.query('SELECT id FROM erp.transaction_probe')).rows;
+        assert.deepEqual(await nested(tx), [{ id: 'business' }]);
+        await insert(tx, 'audit');
+        await insert(tx, 'receipt');
+        return 'committed';
+      });
+      assert.equal(returned, 'committed');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.transaction_probe')).rows[0].n, 3);
+    } finally { await pool.query('DROP TABLE erp.transaction_probe'); }
   });
 });
