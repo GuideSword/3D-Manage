@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory')][string]$Suite = 'foundation',
+  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory', 'users')][string]$Suite = 'foundation',
   [string]$RehearsalSource,
   [string]$RehearsalDecisions,
   [string]$UploadDirectory
@@ -51,6 +51,7 @@ try {
   } elseif ($Suite -eq 'catalog') { @('tests/backend/erp-catalog.test.cjs')
   } elseif ($Suite -eq 'orders') { @('tests/backend/erp-relational-orders.test.cjs')
   } elseif ($Suite -eq 'inventory') { @('tests/backend/erp-relational-inventory.test.cjs')
+  } elseif ($Suite -eq 'users') { @('tests/backend/erp-relational-users.test.cjs')
   } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
   $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE

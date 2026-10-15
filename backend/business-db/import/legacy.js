@@ -84,7 +84,7 @@ async function importLegacySnapshot(pool, { source: providedSource, decisions: p
     const actorFields = actor => ({ actor_id: actor && users.has(actor) ? actor : null, legacy_actor_id: nullable(actor) });
     for (const [index, row] of data.users.entries()) {
       await insert('users', { id: row.id, email: row.email.trim(), name: text(row.name), role: row.role,
-        password_hash: row.passwordHash, token_version: row.tokenVersion, ...common(row), legacy_payload: payloads.users[index] });
+        password_hash: row.passwordHash, token_version: row.tokenVersion, last_login_at: row.lastLoginAt === '' || row.lastLoginAt == null ? null : row.lastLoginAt, ...common(row), legacy_payload: payloads.users[index] });
       await map('users', row.id, 'users');
     }
     for (const [index, row] of data.materials.entries()) {

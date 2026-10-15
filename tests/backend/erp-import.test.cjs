@@ -33,7 +33,7 @@ function fixture() {
     customer: { id: 'same', name: '同名客户', extra: true }, attachments: [], createdAt: timestamp,
     items: [{ id: 'line1', modelId: 'm1', modelName: '历史模型名', quantity: '0.333', unitPrice: '3.000001', subtotal: 1, color: '旧颜色' }] });
   return { schemaVersion: 3, system: { serverId: 'f5942634-5fdd-4964-abc6-3971b1787c0b', initializedAt: timestamp, organizationName: '测试组织' },
-    users: [{ id: 'u1', email: 'Owner@example.test', name: '原用户', role: 'owner', tokenVersion: 7, passwordHash: 'untouched-hash', active: true }],
+    users: [{ id: 'u1', email: 'Owner@example.test', name: '原用户', role: 'owner', tokenVersion: 7, passwordHash: 'untouched-hash', active: true, lastLoginAt: timestamp }],
     orders: [order('o1'), order('o2')], models: [{ id: 'm1', name: '模型', files: [], images: [] }], materials: [{ id: 'mat1', type: 'PLA', unitPrice: '0.010001' }],
     stockLots: [{ id: 'l1', materialId: 'mat1', qtyMg: 400000, qty: 400, ledgerBaselineQtyMg: 500000, balanceStatus: 'legacy_unverified', version: 2 }],
     inventoryTxns: [{ id: 'old', lotId: 'l1', type: 'adjust', qty: 500 },
@@ -90,6 +90,7 @@ test('isolated legacy import preserves business facts and rolls back incomplete 
     assert.equal((await pool.query('SELECT status_reason FROM erp.orders LIMIT 1')).rows[0].status_reason, '保留原原因');
     assert.equal((await pool.query('SELECT count(DISTINCT customer_id)::int AS n FROM erp.orders')).rows[0].n, 2);
     assert.deepEqual((await pool.query('SELECT password_hash,token_version::text FROM erp.users')).rows[0], { password_hash: 'untouched-hash', token_version: '7' });
+    assert.equal((await pool.query('SELECT last_login_at FROM erp.users')).rows[0].last_login_at.toISOString(), timestamp);
     assert.equal((await pool.query("SELECT qty_mg FROM erp.stock_lots WHERE id='l1'")).rows[0].qty_mg, '400000');
     assert.equal((await pool.query("SELECT delta_qty_mg FROM erp.inventory_txns WHERE id='old'")).rows[0].delta_qty_mg, null);
     assert.deepEqual((await pool.query('SELECT id FROM erp.inventory_txns ORDER BY posting_seq')).rows.map(row => row.id), ['old', 'new']);
