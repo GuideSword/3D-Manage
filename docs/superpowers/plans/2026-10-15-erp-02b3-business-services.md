@@ -123,6 +123,21 @@ const session = await authentication.authenticate(login.token);
 await users.changeOwnPassword({...session,key:'password-id',payload:{version:session.user.version,currentPassword,newPassword}});
 ```
 
+## Task 6 执行步骤：HTTP/CSV/AI 适配契约
+
+**Files:** create `backend/modules/adapters/{services,csvCodec,csv,agent,http}.js`、`tests/backend/erp-adapters.test.cjs`；export 现有领域的纯校验函数；extend runner adapters suite。正式 server.js、旧路由和旧 AI bridge 本包不改。
+
+- [ ] 先写实际 PG/loopback HTTP 用例，确认新适配层尚不存在。验证 HTTP/CSV/AI 查同一关系记录，改动均通过领域服务/审计/回执，不能写旧 app_store 或更改 AI SQLite。
+- [ ] 创建显式 pool/密钥/上传目录的服务装配。独立 HTTP Router 使用数据库 JWT 会话，客户端不能提供 actor；所有业务写要求 X-Business-Rules-Version:2 与幂等键，旧客户端写 428，GET/登录/本人改密不要求该业务头。关系路由仅在 installation.storage_mode=relational 时提供业务服务，禁止自动退回 JSONB。
+- [ ] 覆盖订单/模型/耗材/批次/流水/用户 CRUD、文件引用注册、状态、回执与版本；返回 API1 可读结构、精确字符串及能力元数据。验证 stale version、Viewer、伪造 actor、数据库失败与登录/本人改密限流，不把 DB 故障当成登出。
+- [ ] RFC4180 CSV 解析支持 BOM/换行/引号，严格拒绝重复头、坏行和不支持列，数量价格保持字符串。导入新业务记录，客户只用显式 customer_id，不按姓名合并；订单总额/行金额列如出现须与计算值核对，不能决定账务结果。原 ID 仅分组或来源显示，不覆盖服务器 ID。批量调用原领域 import，第二条失败全回滚。
+- [ ] CSV 导出只读 Owner 权限，静态 SQL 投影与过滤在同一一致快照读取全部匹配记录，保留金额与多行备注；文件二进制与历史完整恢复继续使用正式备份/恢复，而非把资料 CSV 当全量备份。
+- [ ] 新 AI bridge 的模型/耗材/订单/库存读取调用关系服务，语义向量索引可注入现有 SQLite lookup，但业务档案 hydrate 始终从关系服务读取且限定当前用户。工具上下文只暴露查询和 prepareRecordUpdate，不暴露确认或任意执行。
+- [ ] 待确认提案绑定账号/服务器/expectedVersion/修改内容/过期时间并签名；确认需显式 confirmed=true 与幂等键，重新校验权限并调用原领域 handler 同事务，不实现第二套业务规则。订单状态与说明混合修改须原子完成；客户快照不接受姓名猜配或直接回写。AI 新单确认须明确 customerId，由原订单创建服务计价。
+- [ ] adapters 实际 PG/HTTP 验收、相关领域与旧模块回归；核对正式数据未变，记录剩余的 02C 页面、02D 实际挂载/上传生命周期/主机恢复/备份切换。达到约 95% 后才结束 02B3，进入 02C，整个阶段 02 不标记完成。
+
+本包对接的是可挂载的独立适配层及真实契约验证。multipart/对象存储上传、真实 AI orchestrator 注入、主机 Owner 恢复和正式 server.js 挂载仍由 02D 统一完成，不能在本包双写旧存储。
+
 ## 后续任务范围（进入前分别细化代码步骤）
 
 以下顺序保留全部 02B3 交付范围，Task 1 完成不能据此标记本包完成。
