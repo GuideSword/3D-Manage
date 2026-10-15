@@ -85,4 +85,8 @@ function createMaterialService(pool) {
     }),
   };
 }
-module.exports = { createMaterialService, materialCommands };
+module.exports = { createMaterialService, materialCommands, validateMaterialChanges: input => {
+  const values = normalize(input);
+  if (Object.hasOwn(values, 'unit_price')) { values.unitPrice = values.unit_price; delete values.unit_price; }
+  return values;
+} };

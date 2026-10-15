@@ -89,7 +89,7 @@
 
 **目标：** 为客户、材料、订单、批次和后续单据建立稳定关联，避免每个新增模块重复解决一致性问题。
 
-**当前进度：** [02A](2026-09-30-erp-02a-data-foundation.md)、[02B1](2026-10-15-erp-02b1-readonly-preflight.md)、[02B2](2026-10-15-erp-02b2-core-import.md) 子计划已完成，证据分别见 [02A](../../rehearsals/2026-10-15-erp-02a-foundation.md)、[02B1](../../rehearsals/2026-10-15-erp-02b1-preflight.md)、[02B2](../../rehearsals/2026-10-15-erp-02b2-core-import.md)。核心表及隔离迁移已交付；[02B3 子计划](2026-10-15-erp-02b3-business-services.md) Tasks 1–5 公共命令及各核心领域服务已完成，当前进入 Task 6 HTTP/CSV/AI 适配契约，随后完成 02C 主数据页面与 02D 同源切换、停写备份及恢复。尚未正式迁移，下列阶段 02 整体验收项保持未完成。
+**当前进度：** [02A](2026-09-30-erp-02a-data-foundation.md)、[02B1](2026-10-15-erp-02b1-readonly-preflight.md)、[02B2](2026-10-15-erp-02b2-core-import.md) 子计划已完成，证据分别见 [02A](../../rehearsals/2026-10-15-erp-02a-foundation.md)、[02B1](../../rehearsals/2026-10-15-erp-02b1-preflight.md)、[02B2](../../rehearsals/2026-10-15-erp-02b2-core-import.md)。核心表及隔离迁移已交付；[02B3 子计划](2026-10-15-erp-02b3-business-services.md) Tasks 1–6 核心领域与 HTTP/CSV/AI 适配契约已完成，02B3 达到约 95% 推进线（本轮 140 项通过，无跳过），见[适配验收](../../rehearsals/2026-10-15-erp-02b3-adapters.md)。当前转入 [02C 主数据及页面](2026-10-15-erp-02c-master-data.md)，之后为 02D 同源切换、停写备份及恢复。尚未正式迁移，下列阶段 02 整体验收项保持未完成。
 
 **现有入口：** `backend/utils/store.js`、`backend/config/runtime.js`、`backend/server.js`、`backend/middleware/auth.js`、`utils/permissions.js`、`utils/api.js`、`navigation/AppNavigator.js`。
 
@@ -289,8 +289,8 @@ npm --prefix backend run verify:self-hosted
 | 工作项 | 当前状态 |
 | --- | --- |
 | 01 | 真机编辑和库存续验、本机 Docker 正式升级及原账号登录已完成；发布收尾仍有离机备份、临时文件清理与产物记录同步，见[本机升级记录](../../rehearsals/2026-09-30-local-docker-upgrade.md) |
-| 01A | 新增计划项；现有服务端会话/摘要可复用，客户端续接与中断轮次恢复未实施 |
-| 02 | 已准备 [主数据与关系存储设计](../specs/2026-09-29-erp-data-foundation-design.md)，未切换业务存储 |
+| 01A | 已按约 95% 门槛推进；中断恢复、备份隔离恢复与发布复核见正文 3A，保留设备特定补测 |
+| 02 | 02A、02B1、02B2 和 02B3 已达到子包推进门槛；当前进入 02C 主数据与页面，02D 正式切换/恢复未实施；正式业务存储未变 |
 | 03–10 | 规划阶段，尚未实施对应新增模块 |
 | 11–12 | 后续专项候选 |
 

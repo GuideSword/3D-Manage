@@ -127,14 +127,14 @@ await users.changeOwnPassword({...session,key:'password-id',payload:{version:ses
 
 **Files:** create `backend/modules/adapters/{services,csvCodec,csv,agent,http}.js`、`tests/backend/erp-adapters.test.cjs`；export 现有领域的纯校验函数；extend runner adapters suite。正式 server.js、旧路由和旧 AI bridge 本包不改。
 
-- [ ] 先写实际 PG/loopback HTTP 用例，确认新适配层尚不存在。验证 HTTP/CSV/AI 查同一关系记录，改动均通过领域服务/审计/回执，不能写旧 app_store 或更改 AI SQLite。
-- [ ] 创建显式 pool/密钥/上传目录的服务装配。独立 HTTP Router 使用数据库 JWT 会话，客户端不能提供 actor；所有业务写要求 X-Business-Rules-Version:2 与幂等键，旧客户端写 428，GET/登录/本人改密不要求该业务头。关系路由仅在 installation.storage_mode=relational 时提供业务服务，禁止自动退回 JSONB。
-- [ ] 覆盖订单/模型/耗材/批次/流水/用户 CRUD、文件引用注册、状态、回执与版本；返回 API1 可读结构、精确字符串及能力元数据。验证 stale version、Viewer、伪造 actor、数据库失败与登录/本人改密限流，不把 DB 故障当成登出。
-- [ ] RFC4180 CSV 解析支持 BOM/换行/引号，严格拒绝重复头、坏行和不支持列，数量价格保持字符串。导入新业务记录，客户只用显式 customer_id，不按姓名合并；订单总额/行金额列如出现须与计算值核对，不能决定账务结果。原 ID 仅分组或来源显示，不覆盖服务器 ID。批量调用原领域 import，第二条失败全回滚。
-- [ ] CSV 导出只读 Owner 权限，静态 SQL 投影与过滤在同一一致快照读取全部匹配记录，保留金额与多行备注；文件二进制与历史完整恢复继续使用正式备份/恢复，而非把资料 CSV 当全量备份。
-- [ ] 新 AI bridge 的模型/耗材/订单/库存读取调用关系服务，语义向量索引可注入现有 SQLite lookup，但业务档案 hydrate 始终从关系服务读取且限定当前用户。工具上下文只暴露查询和 prepareRecordUpdate，不暴露确认或任意执行。
-- [ ] 待确认提案绑定账号/服务器/expectedVersion/修改内容/过期时间并签名；确认需显式 confirmed=true 与幂等键，重新校验权限并调用原领域 handler 同事务，不实现第二套业务规则。订单状态与说明混合修改须原子完成；客户快照不接受姓名猜配或直接回写。AI 新单确认须明确 customerId，由原订单创建服务计价。
-- [ ] adapters 实际 PG/HTTP 验收、相关领域与旧模块回归；核对正式数据未变，记录剩余的 02C 页面、02D 实际挂载/上传生命周期/主机恢复/备份切换。达到约 95% 后才结束 02B3，进入 02C，整个阶段 02 不标记完成。
+- [x] 先写实际 PG/loopback HTTP 用例，确认新适配层尚不存在。验证 HTTP/CSV/AI 查同一关系记录，改动均通过领域服务/审计/回执，不能写旧 app_store 或更改 AI SQLite。
+- [x] 创建显式 pool/密钥/上传目录的服务装配。独立 HTTP Router 使用数据库 JWT 会话，客户端不能提供 actor；所有业务写要求 X-Business-Rules-Version:2 与幂等键，旧客户端写 428，GET/登录/本人改密不要求该业务头。关系路由仅在 installation.storage_mode=relational 时提供业务服务，禁止自动退回 JSONB。
+- [x] 覆盖订单/模型/耗材/批次/流水/用户 CRUD、文件引用注册、状态、回执与版本；返回 API1 可读结构、精确字符串及能力元数据。验证 stale version、Viewer、伪造 actor、数据库失败与登录/本人改密限流，不把 DB 故障当成登出。
+- [x] RFC4180 CSV 解析支持 BOM/换行/引号，严格拒绝重复头、坏行和不支持列，数量价格保持字符串。导入新业务记录，客户只用显式 customer_id，不按姓名合并；订单总额/行金额列如出现须与计算值核对，不能决定账务结果。原 ID 仅分组或来源显示，不覆盖服务器 ID。批量调用原领域 import，第二条失败全回滚。
+- [x] CSV 导出只读 Owner 权限，静态 SQL 投影与过滤在同一一致快照读取全部匹配记录，保留金额与多行备注；文件二进制与历史完整恢复继续使用正式备份/恢复，而非把资料 CSV 当全量备份。
+- [x] 新 AI bridge 的模型/耗材/订单/库存读取调用关系服务，语义向量索引可注入现有 SQLite lookup，但业务档案 hydrate 始终从关系服务读取且限定当前用户。工具上下文只暴露查询和 prepareRecordUpdate，不暴露确认或任意执行。
+- [x] 待确认提案绑定账号/服务器/expectedVersion/修改内容/过期时间并签名；确认需显式 confirmed=true 与幂等键，重新校验权限并调用原领域 handler 同事务，不实现第二套业务规则。订单状态与说明混合修改须原子完成；客户快照不接受姓名猜配或直接回写。AI 新单确认须明确 customerId，由原订单创建服务计价。
+- [x] adapters 实际 PG/HTTP 验收、相关领域与旧模块回归；核对正式数据未变，记录剩余的 02C 页面、02D 实际挂载/上传生命周期/主机恢复/备份切换。达到约 95% 后才结束 02B3，进入 02C，整个阶段 02 不标记完成。
 
 本包对接的是可挂载的独立适配层及真实契约验证。multipart/对象存储上传、真实 AI orchestrator 注入、主机 Owner 恢复和正式 server.js 挂载仍由 02D 统一完成，不能在本包双写旧存储。
 
@@ -146,10 +146,10 @@ await users.changeOwnPassword({...session,key:'password-id',payload:{version:ses
 - [x] Task 3：`backend/modules/orders/` 的精确金额、客户 FK/历史快照、附件及规格保留、状态转换、版本编辑、删除保护；新单逐行金额取整，历史单不得在无行修改时重算。CSV 整批同事务。
 - [x] Task 4：`backend/modules/inventory/` 的锁定余额、入出库/盘点/报废、受控期初、批次资料版本编辑、流水与回执同事务；并发不同键不超扣，旧绝对盘点不累加。
 - [x] Task 5：`backend/modules/users/` 的安全账号 DTO、角色与最后有效 Owner 保护、密码/token 失效、用户姓名编辑；读取与认证适配不暴露 hash。完成用户管理并发验证。
-- [ ] Task 6：领域服务实际 PG 验证及 HTTP/CSV/AI 适配契约测试，核对不导入旧 store，不把 JSONB 作为业务写入目标。正式同源接线与发布仍属于 02D。
+- [x] Task 6：领域服务实际 PG 验证及 HTTP/CSV/AI 适配契约测试，核对不导入旧 store，不把 JSONB 作为业务写入目标。正式同源接线与发布仍属于 02D。
 
 主数据 CRUD/页面在 02C，维护停写/正式批准映射/冷备份/切换/恢复及客户端能力守卫在 02D；阶段 03–12 仍按总计划执行。每包达到约 95% 且余项不阻断才推进。
 
 ## 当前进度（2026-10-15）
 
-Tasks 1–5 已完成并达到推进门槛。用户 18/18、库存 16/16、订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有库存/编辑/备份 30/30 通过，均无跳过。v5 隔离升级和正式快照副本导入/重跑通过；正式来源 hash、账号凭据与业务/AI 摘要未变化，正式库仍无 erp schema。下一步 Task 6 HTTP/CSV/AI 适配契约；整个 02B3、02C/02D 和阶段 02 尚未完成。证据见 [Task 1](../../rehearsals/2026-10-15-erp-02b3-command-boundary.md)、[Task 2](../../rehearsals/2026-10-15-erp-02b3-catalog.md)、[Task 3](../../rehearsals/2026-10-15-erp-02b3-orders.md)、[Task 4](../../rehearsals/2026-10-15-erp-02b3-inventory.md)、[Task 5](../../rehearsals/2026-10-15-erp-02b3-users.md)。
+Tasks 1–6 已完成，02B3 按约 95% 门槛进入 02C。Task 6 新增 HTTP/CSV/AI 独立适配，adapters 19/19，用户 18/18、库存 16/16、订单 15/15、catalog 12/12、commands 9/9、core 9/9、import 12/12 及既有编辑/库存/备份 30/30，合计 140 项通过，0 跳过。正式数据与 AI 表前后摘要相同，正式 raw hash 未变、erp schema 仍不存在。02C 页面与主数据、02D 正式挂载及恢复仍未完成，整个阶段 02 不标为完成。详见 [Task 6 验收](../../rehearsals/2026-10-15-erp-02b3-adapters.md)，下一步见 [02C 子计划](2026-10-15-erp-02c-master-data.md)。

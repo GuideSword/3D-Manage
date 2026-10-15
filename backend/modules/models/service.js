@@ -105,4 +105,4 @@ function createModelService(pool, options = {}) {
     }),
   };
 }
-module.exports = { createModelService, modelCommands };
+module.exports = { createModelService, modelCommands, validateModelChanges: input => normalize(input) };

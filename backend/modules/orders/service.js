@@ -19,6 +19,15 @@ function dueDate(value) {
       || !Number.isFinite(Date.parse(input)) || new Date(input).toISOString().slice(0, 10) !== input.slice(0, 10)) v.fail('日期格式或日期值无效');
   return input;
 }
+function orderStatus(value) {
+  if (typeof value !== 'string' || !Object.hasOwn(TRANSITIONS, value)) v.fail('订单状态无效');
+  return value;
+}
+function validateOrderProposalChanges(input) {
+  v.fields(input, ['notes', 'dueDate', 'status', 'reason']);
+  if (!Object.keys(input).length || (Object.hasOwn(input, 'reason') && !Object.hasOwn(input, 'status'))) v.fail('修改字段为空或缺少对应状态');
+  return Object.fromEntries(Object.entries(input).map(([key, value]) => [key, key === 'dueDate' ? dueDate(value) : key === 'status' ? orderStatus(value) : v.string(value)]));
+}
 async function lockOrder(tx, payload) {
   await tx.query('SELECT id FROM erp.orders WHERE id=$1 FOR UPDATE', [v.id(payload.id)]);
   return bump(tx, { table: 'erp.orders', id: payload.id, expectedVersion: payload.version, changes: {} });
@@ -101,6 +110,7 @@ function orderCommands({ uploadDirectory } = {}) {
     } },
     'order.transition': { roles: ['owner', 'staff'], async handle(tx, { payload, audit }) {
       v.fields(payload, ['id', 'version', 'status', 'reason'], ['id', 'version', 'status']);
+      orderStatus(payload.status);
       const current = await lockOrder(tx, payload);
       if (current.status !== payload.status && !TRANSITIONS[current.status].includes(payload.status)) v.fail('不允许进行该订单状态转换', 'ORDER_TRANSITION_INVALID');
       const reason = Object.hasOwn(payload, 'reason') ? v.string(payload.reason) : current.status_reason;
@@ -165,4 +175,4 @@ function createOrderService(pool, options = {}) {
     }),
   };
 }
-module.exports = { createOrderService, orderCommands };
+module.exports = { createOrderService, orderCommands, validateOrderProposalChanges };
