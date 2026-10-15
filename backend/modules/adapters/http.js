@@ -117,7 +117,7 @@ function createRelationalRouter(pool, options = {}) {
     const result = await services.csv.importRecords(req.businessSession, req.params.kind, req.body.csv, req.get('Idempotency-Key'));
     res.status(result.status).json(result.body);
   }));
-  for (const [path, service, prefix] of [['materials', services.materials, 'material'], ['models', services.models, 'model'], ['orders', services.orders, 'order'], ['users', services.users, 'user'], ['inventory/lots', services.inventory, 'lot']]) {
+  for (const [path, service, prefix] of [['materials', services.materials, 'material'], ['models', services.models, 'model'], ['orders', services.orders, 'order'], ['users', services.users, 'user'], ['inventory/lots', services.inventory, 'lot'], ['customers', services.customers, 'customer'], ['suppliers', services.suppliers, 'supplier']]) {
     if (['material', 'model', 'order'].includes(prefix)) {
       router.get(`/${path}/export`, route(async (req, res) => res.json(await services.csv.exportRecords(req.businessSession, path, req.query))));
       router.post(`/${path}/import`, route(async (req, res) => {
@@ -159,11 +159,13 @@ function createRelationalRouter(pool, options = {}) {
       v.fields(req.body, ['version'], ['version']);
       await execute(req, res, service, `${prefix}.delete`, { id: req.params.id, version: req.body.version });
     }));
-    if (['material', 'model'].includes(prefix)) router.post(`/${path}/:id/active`, route(async (req, res) => {
+    if (['material', 'model', 'customer', 'supplier'].includes(prefix)) router.post(`/${path}/:id/active`, route(async (req, res) => {
       v.fields(req.body, ['version', 'active'], ['version', 'active']);
       await execute(req, res, service, `${prefix}.setActive`, { ...req.body, id: req.params.id });
     }));
   }
+  router.get('/warehouses/default', route(async (req, res) => res.json(await services.warehouses.getDefault(req.businessSession))));
+  router.patch('/warehouses/default', route((req, res) => execute(req, res, services.warehouses, 'warehouse.update', req.body)));
   for (const [path, service, operation] of [
     ['orders/:id/transition', services.orders, 'order.transition'], ['orders/:id/refresh-customer', services.orders, 'order.refreshCustomer'],
     ['orders/:id/attachments/add', services.orders, 'order.attachment.add'], ['orders/:id/attachments/remove', services.orders, 'order.attachment.remove'],

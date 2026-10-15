@@ -12,11 +12,11 @@
 
 **Files:** create `backend/modules/partners/service.js`、`backend/modules/warehouses/service.js`、`tests/backend/erp-master-data.test.cjs`；modify `backend/modules/adapters/services.js`、`http.js`、`tests/ops/erp-02a-postgres.verify.ps1`。
 
-- [ ] 先写实际 PG16 验证。客户/供应商 code 唯一、同名可并存；姓名和编号必填，联系人/邮箱/电话/地址/备注可清空。未知字段、伪造版本或 actor 拒绝。
-- [ ] 注册 `customer|supplier.create/update/setActive/delete`。Owner/Staff 可写，Viewer 可读；ID 服务端生成。创建默认 active，更新携带 version，停用单独命令；未传值保留，未知旧 JSON 数字不重写。无引用删除，有引用返回 409，不级联删业务。
-- [ ] 仓库只提供默认仓库查询和 Owner 名称编辑；不能通过本包增删仓库或修改 code/is_default/active，缺少默认仓库时明确报错，不能隐式创建/迁移。初始化由 02D 统一处理。
-- [ ] 独立关系 Router 接 `/customers`、`/suppliers` CRUD/active、`/warehouses/default` 查询/编辑。复用业务版本头、JWT 当前角色、回执与错误处理；保留正式 server 未挂载状态。
-- [ ] 验证同版本并发只有一次成功、同键重试、唯一/外键保护、审计或回执失败整体回滚；改客户资料不回写旧订单快照，停用客户不能用于新订单但旧订单仍可读。通过 master-data、adapters 和关联领域回归后提交。
+- [x] 先写实际 PG16 验证。客户/供应商 code 唯一、同名可并存；姓名和编号必填，联系人/邮箱/电话/地址/备注可清空。未知字段、伪造版本或 actor 拒绝。
+- [x] 注册 `customer|supplier.create/update/setActive/delete`。Owner/Staff 可写，Viewer 可读；ID 服务端生成。创建默认 active，更新携带 version，停用单独命令；未传值保留，未知旧 JSON 数字不重写。无引用删除，有引用返回 409，不级联删业务。
+- [x] 仓库只提供默认仓库查询和 Owner 名称编辑；不能通过本包增删仓库或修改 code/is_default/active，缺少默认仓库时明确报错，不能隐式创建/迁移。初始化由 02D 统一处理。
+- [x] 独立关系 Router 接 `/customers`、`/suppliers` CRUD/active、`/warehouses/default` 查询/编辑。复用业务版本头、JWT 当前角色、回执与错误处理；保留正式 server 未挂载状态。
+- [x] 验证同版本并发只有一次成功、同键重试、唯一/外键保护、审计或回执失败整体回滚；改客户资料不回写旧订单快照，停用客户不能用于新订单但旧订单仍可读。通过 master-data、adapters 和关联领域回归后提交。
 
 ## Task 2：客户端能力与可靠提交
 
@@ -56,4 +56,4 @@
 
 ## 当前状态
 
-2026-10-15：已从 02B3 转入 02C；本计划已细化，开始 Task 1。尚无新增主数据页面上线，正式存储与账号保持原状。
+2026-10-15：Task 1 已完成。主数据实际 PG/HTTP 10/10，adapters 19/19、orders 15/15 复验通过，无跳过。当前下一步 Task 2 客户端能力与可靠提交，随后完成页面/订单客户选择/模拟器与 Web 验收；02C 整体尚未到推进门槛。正式存储和原账号未变。见[实施记录](../../rehearsals/2026-10-15-erp-02c-master-data.md)。
