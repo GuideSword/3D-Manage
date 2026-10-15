@@ -95,28 +95,35 @@ test('isolated PostgreSQL 16 foundation', { skip: !databaseUrl }, async t => {
   assert.ok(['127.0.0.1', 'localhost', '[::1]'].includes(target.hostname));
   const pool = await createBusinessPool({ connectionString: databaseUrl });
   t.after(() => closeBusinessPool(pool));
+  // Freeze the foundation contract at v1; core-schema tests cover the v1 -> latest upgrade.
+  const foundationDirectory = await temporaryMigrations(t, {
+    '0001_foundation.sql': await fs.readFile(path.join(migrationDirectory, '0001_foundation.sql'), 'utf8'),
+  });
+  const migrateFoundation = (targetPool, options = {}) => migrateBusinessDatabase(targetPool, {
+    migrationsDirectory: foundationDirectory, ...options,
+  });
   assert.equal((await pool.query("SELECT to_regnamespace('erp') AS name")).rows[0].name, null);
 
   await t.test('concurrent first migration runs apply the same SQL exactly once', async () => {
-    const results = await Promise.all([migrateBusinessDatabase(pool), migrateBusinessDatabase(pool)]);
+    const results = await Promise.all([migrateFoundation(pool), migrateFoundation(pool)]);
     assert.deepEqual(results.map(r => r.applied.length).sort(), [0, 1]);
     const files = await loadMigrations(migrationDirectory);
     const rows = (await pool.query('SELECT version, filename, sha256 FROM erp.schema_migrations')).rows;
     assert.deepEqual(rows, [{ version: 1, filename: files[0].filename, sha256: files[0].sha256 }]);
-    assert.deepEqual((await migrateBusinessDatabase(pool)).applied, []);
+    assert.deepEqual((await migrateFoundation(pool)).applied, []);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.installation')).rows[0].n, 0);
   });
 
   await t.test('changed applied SQL, unknown future versions, and broken history are rejected', async () => {
     const original = await fs.readFile(path.join(migrationDirectory, '0001_foundation.sql'), 'utf8');
     const changed = await temporaryMigrations(t, { '0001_foundation.sql': original + '\n-- modified\n' });
-    await assert.rejects(migrateBusinessDatabase(pool, { migrationsDirectory: changed }), { code: 'ERP_MIGRATION_CHANGED' });
+    await assert.rejects(migrateFoundation(pool, { migrationsDirectory: changed }), { code: 'ERP_MIGRATION_CHANGED' });
     await pool.query("INSERT INTO erp.schema_migrations(version,filename,sha256) VALUES(2,'0002_future.sql',$1)", ['0'.repeat(64)]);
-    await assert.rejects(migrateBusinessDatabase(pool), { code: 'ERP_MIGRATION_FUTURE' });
+    await assert.rejects(migrateFoundation(pool), { code: 'ERP_MIGRATION_FUTURE' });
     await pool.query('DELETE FROM erp.schema_migrations WHERE version=2');
     await pool.query("INSERT INTO erp.schema_migrations(version,filename,sha256) VALUES(3,'0003_gap.sql',$1)", ['0'.repeat(64)]);
     const three = await temporaryMigrations(t, { '0001_foundation.sql': original, '0002_next.sql': 'SELECT 1;', '0003_gap.sql': 'SELECT 1;' });
-    await assert.rejects(migrateBusinessDatabase(pool, { migrationsDirectory: three }), { code: 'ERP_MIGRATION_HISTORY_INVALID' });
+    await assert.rejects(migrateFoundation(pool, { migrationsDirectory: three }), { code: 'ERP_MIGRATION_HISTORY_INVALID' });
     await pool.query('DELETE FROM erp.schema_migrations WHERE version=3');
   });
 
@@ -127,7 +134,7 @@ test('isolated PostgreSQL 16 foundation', { skip: !databaseUrl }, async t => {
       '0002_probe.sql': 'CREATE TABLE erp.atomic_migration_probe(id text PRIMARY KEY);',
       '0003_failure.sql': 'THIS IS NOT SQL;',
     });
-    await assert.rejects(migrateBusinessDatabase(pool, { migrationsDirectory: directory }));
+    await assert.rejects(migrateFoundation(pool, { migrationsDirectory: directory }));
     assert.equal((await pool.query("SELECT to_regclass('erp.atomic_migration_probe') AS name")).rows[0].name, null);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM erp.schema_migrations')).rows[0].n, 1);
   });

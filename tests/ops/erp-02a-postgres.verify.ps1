@@ -1,4 +1,4 @@
-param([ValidateSet('foundation', 'preflight')][string]$Suite = 'foundation')
+param([ValidateSet('foundation', 'preflight', 'core', 'import')][string]$Suite = 'foundation')
 $ErrorActionPreference = 'Stop'
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'PowerShell 7 or newer is required.' }
 $erpWorkspace = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
@@ -29,9 +29,11 @@ try {
   $erpPort = (docker port $erpCreatedId 5432/tcp).Trim().Split(':')[-1]
   if ($LASTEXITCODE -ne 0 -or $erpPort -notmatch '^\d+$') { throw 'Unable to read isolated database port.' }
   $env:ERP_BUSINESS_TEST_DATABASE_URL = "postgresql://postgres:$($env:POSTGRES_PASSWORD)@127.0.0.1:${erpPort}/erp_02a_verify"
-  $erpTests = if ($Suite -eq 'preflight') {
+  $erpTests = @(if ($Suite -eq 'preflight') {
     @('tests/backend/erp-preflight.test.cjs', 'tests/backend/erp-preflight-postgres.test.cjs')
-  } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') }
+  } elseif ($Suite -eq 'core') { @('tests/backend/erp-core-schema.test.cjs')
+  } elseif ($Suite -eq 'import') { @('tests/backend/erp-import.test.cjs')
+  } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
   $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE
   $erpOutput | Write-Output
@@ -52,7 +54,7 @@ try {
     skipped = $erpSkipped
     migrationSha256 = (Get-FileHash backend/business-db/migrations/0001_foundation.sql -Algorithm SHA256).Hash.ToLowerInvariant()
   }
-  $erpEvidenceName = if ($Suite -eq 'preflight') { 'preflight-verification' } else { 'verification' }
+  $erpEvidenceName = if ($Suite -ne 'foundation') { "$Suite-verification" } else { 'verification' }
   $erpOutput | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.log") -Encoding utf8
   $erpEvidence | ConvertTo-Json | Set-Content (Join-Path $erpEvidenceDirectory "$erpEvidenceName.json") -Encoding utf8
 } finally {
