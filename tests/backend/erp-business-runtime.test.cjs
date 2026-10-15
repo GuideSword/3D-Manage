@@ -6,7 +6,7 @@ const bcrypt = require('../../backend/node_modules/bcryptjs');
 const { createBusinessPool } = require('../../backend/business-db/connection');
 const { migrateBusinessDatabase } = require('../../backend/business-db/migrator');
 const { createRelationalRouter } = require('../../backend/modules/adapters/http');
-const { createBusinessRuntime } = require('../../backend/runtime/businessRuntime');
+const { createBusinessRuntime } = require('../../backend/application/businessRuntime');
 const databaseUrl = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
 
 test('file runtime selects one lazy factory and closes it exactly once', async () => {
