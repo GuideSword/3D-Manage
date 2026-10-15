@@ -40,6 +40,25 @@ async function main() {
     });
   }
   const app = express();
+  // Local acceptance-only fault: lose one already-committed Android response.
+  // Requires an explicit one-shot file and an ANDROID-RETRY fixture code.
+  app.use((req, res, next) => {
+    const json = res.json.bind(res);
+    res.json = body => {
+      if (req.method === 'POST' && req.originalUrl.split('?')[0] === '/api/customers' && res.statusCode === 201
+        && typeof req.body?.code === 'string' && req.body.code.startsWith('ANDROID-RETRY-')) {
+        const flag = path.join(directory, 'drop-next-android-response');
+        const syncFs = require('node:fs');
+        if (syncFs.existsSync(flag)) {
+          syncFs.unlinkSync(flag);
+          syncFs.writeFileSync(path.join(directory, 'android-response-dropped.json'), JSON.stringify({ code: req.body.code, utcTimestamp: new Date().toISOString(), committed: true }));
+          res.destroy(); return res;
+        }
+      }
+      return json(body);
+    };
+    next();
+  });
   app.use('/api', createRelationalRouter(pool, { jwtSecret, uploadDirectory }));
   app.use(express.static(path.join(workspace, '.tmp/erp-02c-web')));
   app.get('/{*path}', (_req, res) => res.sendFile(path.join(workspace, '.tmp/erp-02c-web/index.html')));

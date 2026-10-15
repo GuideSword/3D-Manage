@@ -114,6 +114,14 @@ test('master data shares transactions, versions, roles and historical snapshots'
         const id = created.body.id;
         assert.equal((await request(`/${kind}/${id}`, 'GET', undefined, 'viewer')).body.name, 'HTTP资料');
         assert.equal((await request(`/${kind}?search=HTTP`, 'GET')).body.total, 1);
+        // React Native's fetch polyfill adds this cache-buster for no-store GETs.
+        const nativePage = await request(`/${kind}?search=HTTP&active=true&limit=50&offset=0&_=1792080896260`);
+        assert.equal(nativePage.status, 200);
+        assert.equal(nativePage.body.total, 1);
+        assert.equal(nativePage.body.items[0].id, id);
+        assert.equal((await request(`/${kind}?_=arbitrary`)).status, 400);
+        assert.equal((await request(`/${kind}?_=1792080896260&_=1792080896261`)).status, 400);
+        assert.equal((await request(`/${kind}?unrecognized=true`)).status, 400);
         const payload = { version: created.body.version, changes: { notes: '' } };
         const updated = await request(`/${kind}/${id}`, 'PATCH', payload, 'staff', `http-${kind}-edit`);
         assert.equal(updated.status, 200);

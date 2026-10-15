@@ -53,3 +53,15 @@ CreateOrderScreen 根据当前服务器能力选择关系表单或原表单，�
 客户端关系订单 8 项测试通过，实际 PG orders 15/15，0 跳过。Web 订单 8 组场景通过，涵盖同名选择、无客户拒绝、精确逐行取整、已提交响应丢失重试、确认刷新/换客户、停用旧客户、执行中说明、历史大金额/删除模型/未知规格/附件实物保留、409 与窄屏、已有库存恢复草稿后仍受保护；页面异常 0。主数据 Web12组也再次通过。证据 `.tmp/erp-02c/order-web-verification.json`、`order-exact-details.png`、`order-edit-narrow.png`。
 
 当前进入 Task 5。ADB 尚未连接设备；已发现本地三个 AVD 配置，但 SDK 缺少 emulator 和 system-images 运行组件，尚不能把配置文件当作运行中的安卓。正在补齐安卓构建/调试环境；未覆盖安装或宣称原生验收完成。正式后台仍未部署本包。
+
+## Task 5 安卓环境与实际发现（2026-10-16 更新，验收进行中）
+
+已补齐项目局部 JDK17 和 SDK emulator/API35 运行组件；JDK 下载后核对官方 SHA-256。原有三个 AVD 配置未修改。新建专用 ERP_02C_API_35，运行在 emulator-5580，无窗口模式；每次设备操作显式指定该序列号并核对 AVD 身份，未使用 Computer Use 或用户桌面。测试后台使用原隔离 PG，安卓经 10.0.2.2:5823 访问；原账号和正式后台不参与测试。
+
+构建首先在键盘控制器的自动生成 C++ 对象路径触发 Windows Ninja 260 字符限制。实际 Ninja 单目标可复现；仅缩小 CMAKE_OBJECT_PATH_MAX 仍失败。增加 withWindowsCxxPaths Expo 插件，在 Windows 将构建暂存放至项目 .tmp 并设置对象路径上限 255；保留架构和原生模块。修复后该目标 14/14、其余 appmodules/screens/safeareacontext 60/60 实际编译通过，最长对象路径 253。插件重复执行结果一致，Expo prebuild 配置确认已注册；未提交忽略的 android 生成文件。构建过程中一次资源压缩报错，单任务复验通过，随后完整 assembleRelease 成功，未据此添加未证实的资源修复。
+
+APK 1.0.0/versionCode 1，x86_64，SHA-256 `c52f2f0c629d0ac011ab92171afb8a88e6d336f367b14c0ecedbad273d2434ab`；2026-10-15T16:09:55Z 实际安装返回 Success，随后成功打开应用、配置隔离服务器及 Owner 登录。安装元数据 `.tmp/erp-02c/android-install.json`。该 APK 从当前工作区构建，包含此前尚未提交的聊天等工作，不宣称是干净 Git 提交生成的正式发布包，也不宣称覆盖了用户 ARM 手机。
+
+原生验收发现列表在保存返回后返回 400。已用 HTTP/PG 回归重现：whatwg-fetch 为 cache:no-store 的 GET 自动附加 `_` 毫秒时间戳，领域查询白名单拒绝该传输参数；Web 原生 fetch 不附加，因此此前 Web 验收未暴露。关系 HTTP 边界仅剥离合法的单一 1–16 位数字时间戳，仍拒绝任意值、重复参数及未知业务筛选。新增断言先失败（预期200，实际400），修复后 master-data 10/10、adapters19/19，无跳过；模拟器客户查询和保存返回刷新恢复正常，无需改变正式服务或客户端。
+
+隔离验收服务增加仅用于 ANDROID-RETRY- 前缀 fixture、须显式本地一次性标记文件的已提交响应丢失模拟，业务提交之后才断开连接。安卓实际验证表单锁定原内容、顶部返回和系统返回均保留表单并提示重试；随后使用原键成功返回列表。数据库读取确认该编号只有一条，未重复建档。当前 Android 上该返回保护通过，未因导航库的风险提示自行改写业务 hook；尚不推断其他平台返回行为已验收。证据 `.tmp/erp-02c/android-response-dropped.json`、android-pending-before-back.png、android-pending-after-header-back.png、android-pending-after-system-back.png、android-customer-refreshed.png。后续继续验证编辑、权限、仓库和订单，本段不代表 Task 5 全部通过。

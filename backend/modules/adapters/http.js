@@ -9,6 +9,12 @@ const v = require('../catalog/validation');
 
 function listQuery(query) {
   const result = { ...query };
+  // whatwg-fetch (React Native) adds a millisecond timestamp for no-store GETs.
+  // Strip only that transport parameter; domain filters remain strictly checked.
+  if (Object.hasOwn(result, '_')) {
+    if (typeof result._ !== 'string' || !/^\d{1,16}$/.test(result._)) v.fail('缓存请求参数无效');
+    delete result._;
+  }
   for (const key of ['limit', 'offset', 'page', 'pageSize']) {
     if (result[key] === undefined) continue;
     if (typeof result[key] !== 'string' || !/^\d{1,10}$/.test(result[key])) v.fail('分页参数无效');
