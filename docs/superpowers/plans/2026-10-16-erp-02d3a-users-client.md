@@ -32,12 +32,12 @@ Files: screens/ChangePasswordScreen.js、screens/SettingsScreen.js、navigation/
 
 ## Task4 验收推进
 
-- [ ] 专项Node/实际PG、旧文件服务器与关系Web验收通过，独立安卓QA包验收并记录来源/安装；正式摘要只读比对，不更新正式Docker。
-- [ ] 清理自有隔离进程/容器/QA包/私有配置，保留日常app与用户模拟器；主要功能约95%再推进A4 CSV。整个阶段02和02D2 Task6继续待集成。
+- [x] 专项Node/实际PG、旧文件服务器与关系Web验收通过，独立安卓QA包验收并记录来源/安装；正式摘要只读比对，不更新正式Docker。
+- [x] 清理自有隔离进程/容器/QA包/私有配置，保留日常app与用户模拟器；主要功能约95%再推进A4 CSV。整个阶段02和02D2 Task6继续待集成。
 
 ## 当前状态
 
-库存A2已达约95%，当前Task1。HTTP本人改密已有向旧客户端兼容的缺版本/键fallback，本子项客户端始终显式提供，不借此次UI接入任意修改后端兼容政策。02D3整体验收继续追踪既有通用订单UI smoke遮挡与A1延迟保存切会话用例。
+库存A2已达约95%；本A3现已完成Tasks1–4并达约95%，下一项为A4 CSV。HTTP本人改密已有向旧客户端兼容的缺版本/键fallback，本子项客户端始终显式提供，不借此次UI接入任意修改后端兼容政策。02D3整体验收继续追踪既有通用订单UI smoke遮挡与A1延迟保存切会话用例。
 
 ## Task1结果（2026-10-16）
 
@@ -48,3 +48,13 @@ Files: screens/ChangePasswordScreen.js、screens/SettingsScreen.js、navigation/
 关系Web13组、旧文件服务器Web3组通过，均pageErrors为空；客户端53项、实际PG users18/adapters16/maintenance9/runtime9共52项，总105项Node检查通过、0跳过。Owner/Staff/Viewer本人改密及新密码登录、Owner维护拒写/丢响应重试401恢复均已实测。刷新登录红→绿定位到关系auth/me返回直接DTO，AuthContext原只取result.user；新增纯authUserCore兼容两种结构，服务端协议不改。
 
 当前Task4独立安卓验收及最终正式摘要/清理；A3尚未宣称约95%，未进入CSV。初次创建密码清空断言抢在React更新前读取，已改为等待实际清空状态，再核对；未删除首次合法测试用户。Web fixture保留真实历史，不用重置数据库抹平已提交命令。
+
+## Task4最终结果（2026-10-16）
+
+独立安卓包com.anonymous.x3DManage.erp02d3ausers、名称“培根造物·账号验收”、版本1.0.0/code1、ABI x86_64，安装Success；源码fe6108d及已有未提交修改，不是正式包。emulator-5558原生6组通过：QA包强制结束重启恢复登录；创建成功丢响应和返回保护、同键同内容重试仅一个用户；姓名回填保存及启停最终版本4/审计4；错误当前密码可纠正；本人改密丢响应后原键重试401、新密码实际登录及重启恢复；改密仅一次version/tokenVersion增长，各成功键一回执、失败密码无回执，代理记录/审计/回执无明文密码。
+
+补充当前构建390px Web2组：编辑已有用户保留未提交的新建草稿，表单/列表窄屏可操作；模态淡出结束后截图已检查。原生角色权限覆盖为Owner，Staff/Viewer本人改密及拒绝管理沿用实际Web，不夸大为三角色原生。
+
+formal-after-users.json与库存formal-after-native.json完全一致，正式业务/AI未变且无erp schema。自有API/代理经进程归属核验、容器经runId标签核验后清理，私有配置/5837反向端口/独立QA包移除，日常应用与模拟器保留。
+
+A3达到约95%推进门槛，转A4 CSV。02D3整体验收的订单旧smoke遮挡/A1延迟写切会话、文件/OSS/AI及02D4仍未完成，不能算整个阶段02完成。证据见验收记录。
