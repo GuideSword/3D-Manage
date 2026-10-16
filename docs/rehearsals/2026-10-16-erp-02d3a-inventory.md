@@ -65,3 +65,22 @@ Task1达到约95%，当前Task2库存写协议及选择器分页。Task3再做We
 额外实测旧Web发现：入库已成功提交500.002g/2条流水，但只用Alert按钮返回，Web停在已完成表单。已为三个旧交易页面增加Web成功直接返回，原生保留原Alert。legacy-write-red.log到legacy-write-green.log验证实际旧文件server的入库/出库/零盘点正常返回，最终余额0、流水4条；兼容专项4组、pageErrors为空，不是mock接口。原通用smoke的订单点击遮挡问题仍单独跟踪，未冒称已修复。
 
 formal-after-write.json与formal-after-read.json全部字段一致。Task2约95%后进入Task3原生和最终对账；不宣称库存整体或阶段02完成。
+
+## Task3 安卓与最终对账
+
+使用用户已启动的emulator-5558（2160×3840，x86_64）及独立package com.anonymous.x3DManage.erp02d3ainventory，名称“培根造物·库存验收”。最终APK基于5a578ac和既有未提交工作区内容，sourceHasUncommittedChanges=true；版本1.0.0/code1、ABI x86_64。SHA和构建时间记录在inventory-android-verification.json，不能当作正式覆盖安装。所有输入通过ADB直填ASCII测试资料，不使用桌面或输入法。
+
+6组原生检查通过：
+
+- 首次POST创建1.001g后代理断开响应；表单冻结及返回保护可用，重试两个请求key/body/rules完全一致，只有一批次、一次初始流水和一回执。
+- 同一批次补充入库2.002g、出库0.001g、盘点0g，表单成功返回并刷新；四条before/after/delta链一致。
+- 编辑库位Native-A、空备注、停用及恢复：最终版本7，余额0，流水仍4条，7条审计。所有命令各一成功回执。
+- Hermes实际选中INV-204完整显示9007199254740.993g，出库0.001g后SQL从9007199254740993mg到9007199254740992mg；不是浮点近似。
+- 全库库存与流水合计同为9007199254945196mg，相比native-before.json仅少1mg；原生新增批次四段净变动0mg。
+- formal-after-native.json与formal-after-write.json全部字段一致，正式原始app_store摘要保持fdfc1fe167994afa8f06bb24df3aa11830b85686b526019e311cb9ad3634d078，正式无erp schema。
+
+已检查inventory-android-exact-before.png：完整数量可见，选择器文本可省略但下方当前库存完整展示。原生角色权限/维护/401没有重复做三角色验收，其实际Web11组证据沿用Task2，不夸大为原生覆盖。
+
+证据：inventory-android-verification.json、android-proxy-commands.json（仅业务请求，不含认证头）、native-before.json、inventory-android-unknown.png、inventory-android-info-active.png、inventory-android-exact-before.png、verification-apk-final-build.log、formal-after-native.json和cleanup.json，均在.tmp/erp-02d3a-inventory。自有代理/API进程经命令行归属核验后停止，容器经runId标签核验后移除，反向端口5827与独立QA包移除，私有配置删除。原日常package仍存在，模拟器保持online。
+
+库存A2达到约95%推进线，进入02D3A3用户/本人改密；整个阶段02、02D2 Task6继续未完成。
