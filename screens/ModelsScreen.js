@@ -32,6 +32,11 @@ import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { canWrite } from '../utils/permissions';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { relationalModelsAPI } from '../utils/relationalCatalogApi';
+import { useRelationalPage } from '../utils/useRelationalPage';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import PaginationControls from '../components/PaginationControls';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -50,18 +55,25 @@ const getPreferredImage = (model) => {
 
 const ModelsScreen = ({ navigation }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
   const { isDark } = useAppTheme();
   const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
   const styles = React.useMemo(() => createStyles(t), [t]);
-  const [models, setModels] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [legacyModels, setModels] = useState([]);
+  const [legacyRefreshing, setRefreshing] = useState(false);
+  const [legacyLoading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState('grid');
   const [searchQuery, setSearchQuery] = useState('');
   const [sourceFilter, setSourceFilter] = useState('all');
   const [authToken, setAuthToken] = useState(null);
+  const page = useRelationalPage(relationalModelsAPI.getPage, { search: searchQuery.trim(), ...(sourceFilter === 'all' ? {} : { source: sourceFilter }) }, relational);
+  const models = relational ? page.items : legacyModels;
+  const refreshing = relational ? page.loading : legacyRefreshing;
+  const loading = relational ? page.initializing : legacyLoading;
 
   const fetchModels = async () => {
+    if (relational) { setAuthToken(await authAPI.getToken()); await page.refresh(); return; }
     try {
       setLoading(true);
       setAuthToken(await authAPI.getToken());
@@ -94,13 +106,13 @@ const ModelsScreen = ({ navigation }) => {
   };
 
   useEffect(() => {
-    fetchModels();
-  }, [searchQuery, sourceFilter]);
+    if (!relational) fetchModels();
+  }, [searchQuery, sourceFilter, relational]);
 
   useFocusEffect(
     useCallback(() => {
       fetchModels();
-    }, [searchQuery, sourceFilter])
+    }, [searchQuery, sourceFilter, relational, server?.serverKey])
   );
 
   return (
@@ -148,7 +160,7 @@ const ModelsScreen = ({ navigation }) => {
           onPress={() => setViewMode(viewMode === 'list' ? 'grid' : 'list')}
         />
       </View>
-      <CyberSectionHeading title="模型资产" hint={`共 ${models.length} 个模型`} />
+      <CyberSectionHeading title="模型资产" hint={`共 ${relational ? page.total ?? '—' : models.length} 个模型`} />
 
       {loading && !refreshing ? (
         <View style={styles.loadingContainer}>
@@ -182,7 +194,8 @@ const ModelsScreen = ({ navigation }) => {
             styles.listContainer,
             models.length === 0 && styles.emptyListContainer,
           ]}
-          ListEmptyComponent={(
+          ListFooterComponent={relational ? <PaginationControls page={page} /> : null}
+          ListEmptyComponent={relational && page.error ? null : (
             <CyberEmptyState
               title={searchQuery ? '图鉴里没有这一款' : '模型图鉴还是空的'}
               description="上传 STL、OBJ 或 3MF 文件后，小鲤会替你整齐收好。"

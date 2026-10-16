@@ -51,6 +51,15 @@ function createRelationalCatalogApi(dependencies) {
   return Object.freeze(Object.fromEntries(Object.keys(FIELDS).map(kind => {
     const root = '/' + kind;
     return [kind, Object.freeze({
+      getPage: (input = {}) => {
+        const allowed = ['search', 'active', 'limit', 'offset', kind === 'models' ? 'source' : 'type'];
+        if (!input || Object.keys(input).some(key => !allowed.includes(key))) fail('资料分页字段无效');
+        if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200)
+          || input.offset !== undefined && (!Number.isSafeInteger(input.offset) || input.offset < 0)) fail('资料分页参数无效');
+        const query = Object.entries(input).filter(([, value]) => value !== undefined && value !== null && value !== '')
+          .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`).join('&');
+        return call(root + (query ? '?' + query : ''));
+      },
       getById: id => call(`${root}/${identifier(id)}`),
       create: (input, key) => call(root, 'POST', catalogChanges(kind, input, { creating: true }), key),
       update: (id, input, key) => {

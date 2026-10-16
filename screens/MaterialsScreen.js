@@ -38,6 +38,11 @@ import masterDataCore from '../utils/masterDataCore.cjs';
 import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
 import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
 import { confirmDeletion } from '../utils/confirmAction';
+import { relationalInventoryAPI } from '../utils/relationalInventoryApi';
+import inventoryCore from '../utils/relationalInventoryCore.cjs';
+import { useRelationalPage } from '../utils/useRelationalPage';
+import { useInventorySummary } from '../utils/useInventorySummary';
+import PaginationControls from '../components/PaginationControls';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { canManage, canWrite } from '../utils/permissions';
@@ -51,16 +56,27 @@ const MaterialsScreen = ({ navigation, route }) => {
   const submitCommand = useInventoryCommand({ reusable: true });
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
-  const [materials, setMaterials] = useState([]);
-  const [stockLots, setStockLots] = useState([]);
-  const [refreshing, setRefreshing] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [legacyMaterials, setMaterials] = useState([]);
+  const [legacyStockLots, setStockLots] = useState([]);
+  const [legacyRefreshing, setRefreshing] = useState(false);
+  const [legacyLoading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('materials');
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingId, setDeletingId] = useState(null);
   const [pendingLotChange, setPendingLotChange] = useState(null);
+  const materialsPage = useRelationalPage(relationalMaterialsAPI.getPage, { search: searchQuery.trim() }, relational);
+  const lotsPage = useRelationalPage(relationalInventoryAPI.getLotsPage, {}, relational);
+  const summaryRead = useInventorySummary({}, relational);
+  const materials = relational ? materialsPage.items : legacyMaterials;
+  const stockLots = relational ? lotsPage.items : legacyStockLots;
+  const loading = relational ? materialsPage.initializing : legacyLoading;
+  const refreshing = relational ? materialsPage.loading || lotsPage.loading || summaryRead.loading : legacyRefreshing;
+  const summaries = React.useMemo(() => new Map((summaryRead.rows || []).map(row => [row.materialId, row])), [summaryRead.rows]);
+  const aggregate = summaryRead.rows === null ? null : inventoryCore.summarizeInventory(summaryRead.rows);
+
 
   const fetchMaterials = async () => {
+    if (relational) { await Promise.all([materialsPage.refresh(), summaryRead.refresh()]); catalogMutation.resetAfterLoad(); return; }
     try {
       setLoading(true);
       const params = {};
@@ -96,6 +112,7 @@ const MaterialsScreen = ({ navigation, route }) => {
   };
 
   const fetchStockLots = async () => {
+    if (relational) { await Promise.all([lotsPage.refresh(), summaryRead.refresh()]); return; }
     try {
       const data = await stockAPI.getLots();
       setStockLots(data || []);
@@ -110,6 +127,7 @@ const MaterialsScreen = ({ navigation, route }) => {
   };
 
   const loadData = async () => {
+    if (relational) { await Promise.all([materialsPage.refresh(), lotsPage.refresh(), summaryRead.refresh()]); return; }
     await Promise.all([fetchMaterials(), fetchStockLots()]);
   };
 
@@ -119,8 +137,8 @@ const MaterialsScreen = ({ navigation, route }) => {
   };
 
   useEffect(() => {
-    loadData();
-  }, [searchQuery]);
+    if (!relational) loadData();
+  }, [searchQuery, relational]);
 
   useEffect(() => {
     if (route?.params?.activeTab) {
@@ -131,7 +149,7 @@ const MaterialsScreen = ({ navigation, route }) => {
   useFocusEffect(
     React.useCallback(() => {
       loadData();
-    }, [])
+    }, [relational, server?.serverKey, searchQuery])
   );
 
   const handleDeleteMaterial = async (materialId) => {
@@ -191,11 +209,11 @@ const MaterialsScreen = ({ navigation, route }) => {
   );
 
   const getMaterialTotalQty = (materialId) => (
-    getMaterialLots(materialId).reduce((sum, lot) => sum + (lot.qty || 0), 0)
+    relational ? summaries.get(materialId)?.totalQty ?? null : getMaterialLots(materialId).reduce((sum, lot) => sum + (lot.qty || 0), 0)
   );
 
   const findMaterial = (materialId) => (
-    materials.find((material) => material.id === materialId || String(material.id) === String(materialId))
+    materials.find((material) => material.id === materialId || String(material.id) === String(materialId)) || (relational ? summaries.get(materialId) : undefined)
   );
 
   return (
@@ -238,7 +256,9 @@ const MaterialsScreen = ({ navigation, route }) => {
         />
       </View>
 
-      <WarehouseSummary materials={materials} stockLots={stockLots} />
+      <WarehouseSummary materials={materials} stockLots={stockLots} aggregate={aggregate} relational={relational} />
+      {relational && summaryRead.error ? <View><Text style={{ color: colors.danger }}>{summaryRead.error}</Text><Button title="重试库存汇总" onPress={summaryRead.refresh} variant="outline" /></View> : null}
+      {relational && aggregate?.balanceIncomplete ? <Text style={{ color: colors.warning }}>部分历史余额待核对，当前合计不包含无效余额。</Text> : relational && aggregate?.legacyUnverified ? <Text style={{ color: colors.warning }}>存在未核对的历史批次余额。</Text> : null}
 
       {activeTab === 'materials' ? (
         renderMaterialsList({
@@ -250,6 +270,8 @@ const MaterialsScreen = ({ navigation, route }) => {
           deletingId,
           handleDeleteMaterial,
           getMaterialLots,
+          getMaterialSummary: relational ? id => summaries.get(id) : null,
+          page: relational ? materialsPage : null,
           getMaterialTotalQty,
           searchQuery,
           colors,
@@ -259,6 +281,8 @@ const MaterialsScreen = ({ navigation, route }) => {
       ) : (
         renderInventoryList({
           stockLots,
+          page: relational ? lotsPage : null,
+          relational,
           materials,
           refreshing,
           onRefresh,
@@ -287,6 +311,8 @@ const renderMaterialsList = ({
   deletingId,
   handleDeleteMaterial,
   getMaterialLots,
+  getMaterialSummary,
+  page,
   getMaterialTotalQty,
   searchQuery,
   colors,
@@ -310,7 +336,8 @@ const renderMaterialsList = ({
         <MaterialCard
           material={item}
           totalQty={getMaterialTotalQty(item.id)}
-          lotCount={getMaterialLots(item.id).length}
+          lotCount={getMaterialSummary ? getMaterialSummary(item.id)?.lotCount ?? null : getMaterialLots(item.id).length}
+          summary={getMaterialSummary?.(item.id)}
           deletingId={deletingId}
           onDelete={handleDeleteMaterial}
           onPress={() => navigation.navigate(ROUTES.MATERIAL_DETAIL, { materialId: item.id })}
@@ -329,7 +356,8 @@ const renderMaterialsList = ({
         styles.listContainer,
         materials.length === 0 && styles.emptyListContainer,
       ]}
-      ListEmptyComponent={(
+      ListFooterComponent={page ? <PaginationControls page={page} /> : null}
+      ListEmptyComponent={page?.error ? null : (
         <EmptyState
           icon="layers-outline"
           title={searchQuery ? '没有找到这卷耗材' : '仓库还是空的'}
@@ -343,6 +371,8 @@ const renderMaterialsList = ({
 
 const renderInventoryList = ({
   stockLots,
+  page,
+  relational,
   materials,
   refreshing,
   onRefresh,
@@ -373,6 +403,7 @@ const renderInventoryList = ({
       <LotCard
         key={lot.id}
         lot={lot}
+        relational={relational}
         material={findMaterial(lot.materialId || lot.material_id) || {}}
         deletingId={deletingId}
         onDelete={handleDeleteLot}
@@ -380,7 +411,7 @@ const renderInventoryList = ({
         onEdit={() => navigation.navigate(ROUTES.EDIT_STOCK_LOT, { lotId: lot.id })}
         editable={editable}
       />
-    )) : (
+    )) : page?.error || page?.initializing ? null : (
       <EmptyState
         icon="archive-outline"
         title="还没有库存批次"
@@ -388,17 +419,18 @@ const renderInventoryList = ({
         style={styles.emptyContainer}
       />
     )}
+    {page ? <PaginationControls page={page} /> : null}
   </ScrollView>
 );
 
-const WarehouseSummary = ({ materials, stockLots }) => {
+const WarehouseSummary = ({ materials, stockLots, aggregate, relational }) => {
   const { styles } = useMaterialTheme();
-  const totalQty = stockLots.reduce((sum, lot) => sum + Number(lot.qty || 0), 0);
+  const totalQty = relational ? aggregate?.totalQty ?? null : stockLots.reduce((sum, lot) => sum + Number(lot.qty || 0), 0);
   return (
     <View style={styles.warehouseSummary}>
-      <SummaryItem label="材料种类" value={`${materials.length}`} />
-      <SummaryItem label="库存批次" value={`${stockLots.length}`} />
-      <SummaryItem label="库存总量" value={`${totalQty}g`} />
+      <SummaryItem label="材料种类" value={relational ? aggregate?.materialCount ?? '—' : `${materials.length}`} />
+      <SummaryItem label="库存批次" value={relational ? aggregate?.lotCount ?? '—' : `${stockLots.length}`} />
+      <SummaryItem label="库存总量" value={totalQty == null ? '暂不可用' : `${totalQty}g`} />
     </View>
   );
 };
@@ -417,7 +449,7 @@ const SegmentButton = ({ label, icon, active, onPress }) => {
   );
 };
 
-const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPress, editable }) => {
+const MaterialCard = ({ material, totalQty, lotCount, summary, deletingId, onDelete, onPress, editable }) => {
   const { colors, styles } = useMaterialTheme();
   const materialType = material.type || material.materialType || '未知材质';
 
@@ -456,11 +488,12 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
         </View>
 
         <View style={styles.stockSummary}>
-          <SummaryItem label="总库存" value={`${totalQty}g`} />
-          <SummaryItem label="批次" value={`${lotCount} 个`} />
+          <SummaryItem label="总库存" value={totalQty == null ? '暂不可用' : `${totalQty}g`} />
+          <SummaryItem label="批次" value={lotCount == null ? '暂不可用' : `${lotCount} 个`} />
           <SummaryItem label="单价" value={(material.unitPrice || material.unit_price) ? `${material.unitPrice || material.unit_price} CNY/${material.unit || 'kg'}` : '未设置'} />
         </View>
 
+        {summary?.balanceIncomplete ? <Text style={styles.materialNotes}>部分余额待核对</Text> : summary?.legacyUnverified ? <Text style={styles.materialNotes}>历史余额待核对</Text> : null}
         {material.notes ? (
           <Text style={styles.materialNotes} numberOfLines={2}>{material.notes}</Text>
         ) : null}
@@ -469,7 +502,7 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
   );
 };
 
-const LotCard = ({ lot, material, deletingId, onDelete, onEdit, editable, retryPending }) => {
+const LotCard = ({ lot, material, relational, deletingId, onDelete, onEdit, editable, retryPending }) => {
   const { colors, styles } = useMaterialTheme();
   const state = lot.state || lot.status;
   const statusColor = getStockStatusColor(state, colors);
@@ -509,7 +542,7 @@ const LotCard = ({ lot, material, deletingId, onDelete, onEdit, editable, retryP
         <Text style={styles.materialNotes}>{lot.balanceStatus === 'legacy_invalid' ? '历史余额无效，需人工核对后迁移' : '历史余额待核对，旧流水不能用于重建余额'}</Text>
       ) : null}
       <View style={styles.stockSummary}>
-        <SummaryItem label="数量" value={`${lot.qty || 0}g`} />
+        <SummaryItem label="数量" value={relational ? lot.balanceStatus === 'legacy_invalid' || lot.qty == null ? '待核对' : `${lot.qty}g` : `${lot.qty || 0}g`} />
         <SummaryItem label="序列号" value={lot.serialNo || lot.serial_no || '未设置'} />
         <SummaryItem label="入库" value={lot.createdAt ? new Date(lot.createdAt).toLocaleDateString('zh-CN') : '未知'} />
       </View>
@@ -573,7 +606,7 @@ const SummaryItem = ({ label, value }) => {
   return (
   <View style={styles.summaryItem}>
     <Text style={styles.summaryLabel}>{label}</Text>
-    <Text style={styles.summaryValue} numberOfLines={1}>{value}</Text>
+    <Text style={styles.summaryValue}>{value}</Text>
   </View>
   );
 };
