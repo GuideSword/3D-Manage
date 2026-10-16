@@ -99,4 +99,19 @@ function createRelationalInventoryApi(dependencies) {
   };
   return Object.freeze(api);
 }
-module.exports = { parseGrams, formatGrams, compareGrams, validateSummary, summarizeInventory, createRelationalInventoryApi };
+function inventoryTransactionPayload(kind, form, lot) {
+  if (!['in', 'out', 'adjust'].includes(kind) || !form || typeof form !== 'object') fail('库存操作类型无效');
+  const qty = quantity(form.qty, kind === 'adjust');
+  const notes = text(form.notes).trim();
+  if (kind === 'in' && form.mode === 'new') {
+    identifier(form.materialId);
+    const lotNo = text(form.lotNo).trim();
+    if (!lotNo) fail('请输入批次号');
+    return { materialId: form.materialId, lotNo, location: text(form.location).trim(), notes, qty, unit: 'g' };
+  }
+  if (!lot || lot.id !== form.lotId) fail('请选择库存批次');
+  if (!lot.active || lot.state !== 'in_stock' || lot.balanceStatus === 'legacy_invalid' || lot.qty == null) fail('批次已停用、冻结、报废或余额待核对，请重新选择');
+  if (kind === 'out' && compareGrams(qty, lot.qty) > 0) fail(`库存不足，当前库存：${lot.qty}g`);
+  return { lotId: lot.id, version: version(lot.version), type: kind, qty, unit: 'g', notes: notes || (kind === 'adjust' ? '库存盘点调整' : '') };
+}
+module.exports = { parseGrams, formatGrams, compareGrams, validateSummary, summarizeInventory, createRelationalInventoryApi, inventoryTransactionPayload };

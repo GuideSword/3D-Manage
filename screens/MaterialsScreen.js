@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -37,12 +37,13 @@ import { useMasterDataMutation } from '../utils/useMasterDataMutation';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
 import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
-import { confirmDeletion } from '../utils/confirmAction';
+import { confirmAction, confirmDeletion } from '../utils/confirmAction';
 import { relationalInventoryAPI } from '../utils/relationalInventoryApi';
 import inventoryCore from '../utils/relationalInventoryCore.cjs';
 import { useRelationalPage } from '../utils/useRelationalPage';
 import { useInventorySummary } from '../utils/useInventorySummary';
 import PaginationControls from '../components/PaginationControls';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { canManage, canWrite } from '../utils/permissions';
@@ -63,7 +64,18 @@ const MaterialsScreen = ({ navigation, route }) => {
   const [activeTab, setActiveTab] = useState('materials');
   const [searchQuery, setSearchQuery] = useState('');
   const [deletingId, setDeletingId] = useState(null);
-  const [pendingLotChange, setPendingLotChange] = useState(null);
+  const [pendingLotChange, setPendingLotState] = useState(null);
+  const [lotError, setLotError] = useState('');
+  const pendingLotRef = useRef(null), pendingLotRuntime = useRef(null);
+  const setPendingLotChange = payload => {
+    if (!pendingLotRef.current && payload) pendingLotRuntime.current = getServerRuntime();
+    if (!payload) pendingLotRuntime.current = null;
+    pendingLotRef.current = payload; setPendingLotState(payload);
+  };
+  useEffect(() => navigation.addListener('beforeRemove', event => {
+    if (!relational || !pendingLotRef.current || !isCurrentRuntime(pendingLotRuntime.current)) return;
+    event.preventDefault(); setLotError('请先重试确认上次批次操作结果，再离开此页。');
+  }), [navigation, relational]);
   const materialsPage = useRelationalPage(relationalMaterialsAPI.getPage, { search: searchQuery.trim() }, relational);
   const lotsPage = useRelationalPage(relationalInventoryAPI.getLotsPage, {}, relational);
   const summaryRead = useInventorySummary({}, relational);
@@ -173,35 +185,26 @@ const MaterialsScreen = ({ navigation, route }) => {
   };
 
   const handleDeleteLot = async (lotId) => {
-    const lot = stockLots.find((item) => item.id === lotId);
+    const lot = stockLots.find(item => item.id === lotId) || (pendingLotChange?.id === lotId ? { id: lotId } : null);
     if (!lot || deletingId) return;
-    if (pendingLotChange && pendingLotChange.id !== lotId) {
-      Alert.alert('请先确认上次操作', '上次批次操作结果未知，请点击原批次的重试按钮。');
-      return;
-    }
+    if (pendingLotChange && pendingLotChange.id !== lotId) { setLotError('请先重试确认上次批次操作结果'); return; }
     const payload = pendingLotChange || { id: lotId, changes: { active: lot.active === false, version: lot.version } };
     const activate = payload.changes.active;
-    Alert.alert(pendingLotChange ? '重试原批次操作' : activate ? '恢复批次' : '停用批次',
-      activate ? '恢复后在库批次可继续执行库存操作。' : '停用后不能再过账，余额和历史流水会保留。', [
-        { text: '取消', style: 'cancel' },
-        { text: activate ? '恢复' : '停用', onPress: async () => {
-          try {
-            setDeletingId(lotId);
-            setPendingLotChange(payload);
-            const result = await submitCommand('lot.update', payload,
-              (body, key) => stockAPI.updateLot(body.id, body.changes, key));
-            if (result === null) return;
-            setPendingLotChange(null);
-            await fetchStockLots();
-            Alert.alert('成功', activate ? '批次已恢复' : '批次已停用');
-          } catch (error) {
-            if (isAuthRequiredError(error)) return;
-            if (error.status >= 400 && error.status < 500) setPendingLotChange(null);
-            Alert.alert('错误', error.message || '批次操作失败，请点击原批次重试');
-            if (error.status === 409) await fetchStockLots();
-          } finally { setDeletingId(null); }
-        } },
-      ]);
+    if (!await confirmAction(pendingLotChange ? '重试原批次操作' : activate ? '恢复批次' : '停用批次',
+      activate ? '恢复后在库批次可继续执行库存操作。' : '停用后不能再过账，余额和历史流水会保留。', activate ? '恢复' : '停用')) return;
+    try {
+      setDeletingId(lotId); setLotError(''); setPendingLotChange(payload);
+      const result = await submitCommand('lot.update', payload,
+        (body, key) => relational ? relationalInventoryAPI.updateLot(body.id, { version: body.changes.version, changes: { active: body.changes.active } }, key)
+          : stockAPI.updateLot(body.id, body.changes, key));
+      if (result === null) return;
+      setPendingLotChange(null); await fetchStockLots();
+    } catch (error) {
+      if (isAuthRequiredError(error) || error.staleSession) return;
+      if (error.status >= 400 && error.status < 500) setPendingLotChange(null);
+      setLotError(error.message || '批次操作失败，请重试原操作');
+      if (error.status === 409) await fetchStockLots();
+    } finally { setDeletingId(null); }
   };
 
   const getMaterialLots = (materialId) => (
@@ -220,6 +223,8 @@ const MaterialsScreen = ({ navigation, route }) => {
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <View style={styles.page}>
       <CatalogMutationFeedback mutation={catalogMutation} onReload={fetchMaterials} onSuccess={fetchMaterials} />
+      {lotError ? <Text style={{ color: colors.danger }}>{lotError}</Text> : null}
+      {pendingLotChange && !deletingId ? <Button title="重试原批次操作" onPress={() => handleDeleteLot(pendingLotChange.id)} /> : null}
       <CyberPageHeader
         eyebrow="MATERIAL STOCK"
         title="耗材仓库"
@@ -582,7 +587,7 @@ const InventoryActions = ({ navigation, countAllowed }) => {
 const InventoryAction = ({ title, icon, color, onPress }) => {
   const { styles } = useMaterialTheme();
   return (
-  <TouchableOpacity activeOpacity={0.82} style={styles.inventoryAction} onPress={onPress}>
+  <TouchableOpacity activeOpacity={0.82} accessibilityRole="button" accessibilityLabel={title} style={styles.inventoryAction} onPress={onPress}>
     <View style={[styles.inventoryActionIcon, { backgroundColor: `${color}18` }]}>
       <Ionicons name={icon} size={20} color={color} />
     </View>

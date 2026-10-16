@@ -32,10 +32,10 @@
 
 ## Task2：写协议与重试
 
-- [ ] 测试createLot、资料update、启停、state/archive/delete、库存post的地址/业务头/幂等/版本/克单位；不由客户端更改余额、基线、ledger或金额。
-- [ ] 关系模式资料编辑走version+changes；新批次和补充入库、出库、盘点保持字符串，选批次时保留version，0盘点允许；关联订单标识按领域规则传递。
-- [ ] 复用已验证的mutation/controller：同一未知结果保持内容、已读version及键，禁改/禁离开，409展示核对并可重新加载。Web成功有明确导航，原生Alert返回正常。
-- [ ] Owner可盘点，Staff仅允许入/出库与资料维护，Viewer只读；冻结/停用/报废/无效余额及不足库存均由后端拒绝，前端不擅自修正。
+- [x] 测试createLot、资料update、启停、state/archive/delete、库存post的地址/业务头/幂等/版本/克单位；不由客户端更改余额、基线、ledger或金额。
+- [x] 关系模式资料编辑走version+changes；新批次和补充入库、出库、盘点保持字符串，选批次时保留version，0盘点允许；关联订单标识按领域规则传递。
+- [x] 复用已验证的mutation/controller：同一未知结果保持内容、已读version及键，禁改/禁离开，409展示核对并可重新加载。Web成功有明确导航，原生Alert返回正常。
+- [x] Owner可盘点，Staff仅允许入/出库与资料维护，Viewer只读；冻结/停用/报废/无效余额及不足库存均由后端拒绝，前端不擅自修正。
 
 ## Task3：集成、对账和推进
 
@@ -48,3 +48,9 @@
 Task1读取达到约95%推进线：客户端相关36项、PG相关44项，共80项Node检查通过、0跳过；关系Web9组、实际旧文件服务器Web3组通过。真实领域创建205批次/205入库流水、205模型、206耗材，全量9007199254945.197g和末页记录可达。正式摘要不变。
 
 当前Task2库存写协议及选择器分页。A2完整原生验收归Task3，本轮未安装库存APK。原通用edit-forms smoke在订单点击被其它场景遮挡处失败，尚未定位，留02D3整体验收，不计通过；实际旧服务器库存专项已通过。证据见 ../../rehearsals/2026-10-16-erp-02d3a-inventory.md。
+
+## Task2实现细化（读取完成后）
+
+新增RelationalInventoryTransactionScreen复用三类交易表单字段；三个原页面仅按能力选择该组件，旧服务器保留原组件。Picker追加可选搜索、选中标签和分页footer参数，默认行为不改，解决批次/耗材超过一页时无法选择。纯函数inventoryTransactionPayload负责精确量、已读version和批次可用校验，先测试再接UI。EditStockLot和Materials批次启停改用关系API；pending导航保护按当前runtime判定，失效会话不能阻止退出登录。
+
+Task2已达到推进门槛：关系Web11组、实际旧文件服务器Web4组、客户端相关50项及PG相关53项（总103项Node检查，0跳过）通过；旧Web过账成功只依赖手机Alert返回的问题已实测修复。当前Task3原生完整验收及最后对账，尚不把整个A2算完成。

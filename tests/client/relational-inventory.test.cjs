@@ -26,9 +26,31 @@ test('inventory writes require explicit keys/read versions and preserve quantity
   await api.createLot({ materialId: 'm', lotNo: 'LOT', qty: '9007199254740.993' }, 'create');
   await api.updateLot('lot/a', { version: '9007199254740993', changes: { notes: '', active: false } }, 'edit');
   await api.post({ lotId: 'lot/a', version: '2', type: 'adjust', qty: '0', notes: '盘点' }, 'count'); await api.deleteLot('empty', '3', 'delete');
+  await api.setState('frozen', { version: '8', state: 'frozen' }, 'state'); await api.archiveLot('archive', '9', 'archive');
   assert.equal(JSON.parse(calls[0].body).qty, '9007199254740.993'); assert.equal(calls[1].path, '/inventory/lots/lot%2Fa'); assert.deepEqual(JSON.parse(calls[1].body), { version: '9007199254740993', changes: { notes: '', active: false } });
   assert.deepEqual(JSON.parse(calls[3].body), { version: '3' }); assert.equal(JSON.parse(calls[2].body).qty, '0'); assert.equal(JSON.parse(calls[2].body).unit, 'g');
-  for (let i = 0; i < calls.length; i++) assert.deepEqual(calls[i].headers, { 'X-Business-Rules-Version': '2', 'Idempotency-Key': ['create', 'edit', 'count', 'delete'][i] });
+  for (let i = 0; i < calls.length; i++) assert.deepEqual(calls[i].headers, { 'X-Business-Rules-Version': '2', 'Idempotency-Key': ['create', 'edit', 'count', 'delete', 'state', 'archive'][i] });
+  assert.equal(calls[4].path, '/inventory/lots/frozen/state'); assert.deepEqual(JSON.parse(calls[4].body), { version: '8', state: 'frozen' }); assert.equal(calls[5].path, '/inventory/lots/archive/archive'); assert.deepEqual(JSON.parse(calls[5].body), { version: '9' });
+  assert.throws(() => api.setState('lot', { version: '1', state: 'unknown' }, 'bad'));
   assert.throws(() => api.post({ lotId: 'lot', type: 'out', qty: '1' }, 'bad')); assert.throws(() => api.updateLot('lot', { version: '1', changes: { qty: '1' } }, 'bad'));
   assert.throws(() => api.createLot({ materialId: 'm', qty: '1' }));
+});
+
+test('transaction forms preserve selected lot versions and compare exact available stock', () => {
+  const { inventoryTransactionPayload } = require('../../utils/relationalInventoryCore.cjs');
+  const lot = { id: 'lot', version: '9007199254740993', qty: '9007199254740.993', active: true, state: 'in_stock', balanceStatus: 'tracked' };
+  const form = { mode: 'existing', lotId: 'lot', qty: '9007199254740.993', notes: '' };
+  assert.deepEqual(inventoryTransactionPayload('out', form, lot), { lotId: 'lot', version: '9007199254740993', type: 'out', qty: '9007199254740.993', unit: 'g', notes: '' });
+  assert.throws(() => inventoryTransactionPayload('out', { ...form, qty: '9007199254740.994' }, lot), /库存不足/);
+  assert.equal(inventoryTransactionPayload('adjust', { ...form, qty: '0' }, lot).qty, '0');
+  assert.throws(() => inventoryTransactionPayload('in', { ...form, qty: '0' }, lot));
+  assert.throws(() => inventoryTransactionPayload('out', form, { ...lot, state: 'frozen' }));
+  assert.throws(() => inventoryTransactionPayload('out', form, { ...lot, active: false }));
+  assert.throws(() => inventoryTransactionPayload('out', form, { ...lot, id: 'other' }));
+});
+test('new-lot forms send only material metadata and exact grams without inventing balance or ledger fields', () => {
+  const { inventoryTransactionPayload } = require('../../utils/relationalInventoryCore.cjs');
+  const result = inventoryTransactionPayload('in', { mode: 'new', materialId: 'm', lotNo: ' LOT ', location: '', notes: '', qty: '1.001' });
+  assert.deepEqual(result, { materialId: 'm', lotNo: 'LOT', location: '', notes: '', qty: '1.001', unit: 'g' });
+  assert.throws(() => inventoryTransactionPayload('in', { mode: 'new', materialId: 'm', lotNo: '', qty: '1' }));
 });

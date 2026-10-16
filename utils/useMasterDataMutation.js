@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { isAuthRequiredError } from './api';
 import { useBusinessCommand } from './useBusinessCommand';
+import { getServerRuntime, isCurrentRuntime } from './serverRuntime';
 
 export const useMasterDataMutation = navigation => {
   const submit = useBusinessCommand({ reusable: true });
@@ -11,14 +12,14 @@ export const useMasterDataMutation = navigation => {
   const [conflict, setConflict] = useState(false);
   const [error, setError] = useState('');
   useEffect(() => navigation.addListener('beforeRemove', event => {
-    if (!pendingRef.current) return;
+    if (!pendingRef.current || !isCurrentRuntime(pendingRef.current.runtime)) return;
     event.preventDefault();
     setError('请先重试确认上次操作结果，再离开此页。');
   }), [navigation]);
   const resetAfterLoad = useCallback(() => { setConflict(false); setError(''); }, []);
   const run = async (operation, payload, send) => {
     if (busy.current || conflict) return null;
-    const command = pendingRef.current || { operation, payload, send };
+    const command = pendingRef.current || { operation, payload, send, runtime: getServerRuntime() };
     busy.current = true; setLoading(true); setError('');
     pendingRef.current = command; setPending(command);
     try {
