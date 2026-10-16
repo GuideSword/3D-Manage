@@ -23,6 +23,11 @@ import { isAuthRequiredError, materialsAPI } from '../utils/api';
 import { useEditRecord } from '../utils/useEditRecord';
 import { isPositiveNumber } from '../utils/editFormCore.cjs';
 import EditLoadState from '../components/EditLoadState';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import catalogCore from '../utils/relationalCatalogCore.cjs';
+import { relationalMaterialsAPI } from '../utils/relationalCatalogApi';
 
 const MATERIAL_TYPE_OPTIONS = Object.values(MATERIAL_TYPES).map((type) => ({
   value: type,
@@ -38,10 +43,15 @@ const CreateMaterialScreen = ({ navigation, route }) => {
   const materialId = route.params?.materialId;
   const isEditing = Boolean(materialId);
   const submitting = useRef(false);
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const mutation = useMasterDataMutation(navigation);
+  const recordAPI = relational ? relationalMaterialsAPI : materialsAPI;
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const locked = loading || (relational && (mutation.loading || Boolean(mutation.pending) || mutation.conflict));
   const [customMaterialType, setCustomMaterialType] = useState('');
   const [formData, setFormData] = useState({
     type: '',
@@ -52,17 +62,23 @@ const CreateMaterialScreen = ({ navigation, route }) => {
     unit: UNITS.KILOGRAM,
     notes: '',
   });
-  const { record, loadingRecord, loadError, reload } = useEditRecord(materialId, materialsAPI, (material) => {
+  const { record, loadingRecord, loadError, reload } = useEditRecord(materialId, recordAPI, (material) => {
+    if (relational) { mutation.resetAfterLoad(); setSaveError(''); }
     const type = material.type || material.materialType || '';
     const custom = !MATERIAL_TYPE_OPTIONS.some((option) => option.value === type);
     setCustomMaterialType(custom ? type : '');
     setFormData({ type: custom ? MATERIAL_TYPES.OTHER : type, brand: material.brand || '',
-      diameter: String(material.diameter ?? '1.75'), color: material.color || '',
+      diameter: material.diameter == null && relational ? '' : String(material.diameter ?? '1.75'), color: material.color || '',
       unitPrice: String(material.unitPrice ?? material.unit_price ?? ''), unit: material.unit || UNITS.KILOGRAM,
       notes: material.notes || '' });
   });
 
+  const relationalForm = () => ({ ...formData, type: formData.type === MATERIAL_TYPES.OTHER ? customMaterialType.trim() : formData.type });
   const validateForm = () => {
+    if (relational) {
+      try { catalogCore.catalogChanges('materials', relationalForm(), { creating: !isEditing }); return true; }
+      catch (error) { setSaveError(error.message); return false; }
+    }
     if (!formData.type) {
       setSaveError('请选择材质类型');
       Alert.alert('验证失败', '请选择材质类型');
@@ -105,7 +121,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
       submitting.current = true;
       setSaveError('');
       setLoading(true);
-      const materialData = {
+      const materialData = relational ? null : {
         type: formData.type === MATERIAL_TYPES.OTHER ? customMaterialType.trim() : formData.type,
         brand: formData.brand.trim(),
         diameter: Number(formData.diameter) || 1.75,
@@ -115,7 +131,12 @@ const CreateMaterialScreen = ({ navigation, route }) => {
         notes: formData.notes.trim(),
       };
 
-      const newMaterial = isEditing ? await materialsAPI.update(materialId, materialData) : await materialsAPI.create(materialData);
+      const payload = relational ? catalogCore.catalogPayload('materials', relationalForm(), record) : materialData;
+      const newMaterial = relational ? await mutation.run(isEditing ? 'material.update' : 'material.create', payload,
+        (body, key) => isEditing ? relationalMaterialsAPI.update(body.id, { version: body.version, changes: body.changes }, key)
+          : relationalMaterialsAPI.create(body, key))
+        : isEditing ? await materialsAPI.update(materialId, materialData) : await materialsAPI.create(materialData);
+      if (newMaterial === null) return;
       if (isEditing) { navigation.goBack(); return; }
 
       if (Platform.OS === 'web') {
@@ -175,6 +196,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
           <Picker
+            disabled={locked}
             label="材质类型 *"
             placeholder="请选择材质类型"
             value={formData.type}
@@ -188,6 +210,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
           />
           {formData.type === MATERIAL_TYPES.OTHER ? (
             <Input
+            editable={!locked}
               label="自定义材质类型 *"
               placeholder="请输入材质类型"
               value={customMaterialType}
@@ -195,6 +218,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
             />
           ) : null}
           <Input
+            editable={!locked}
             label="品牌 *"
             placeholder="请输入品牌名称"
             value={formData.brand}
@@ -203,6 +227,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
           <View style={styles.rowInputs}>
             <View style={styles.halfInput}>
               <Input
+            editable={!locked}
                 label="直径 (mm)"
                 placeholder="默认 1.75"
                 value={formData.diameter}
@@ -212,6 +237,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.halfInput}>
               <Input
+            editable={!locked}
                 label="颜色 *"
                 placeholder="请输入颜色"
                 value={formData.color}
@@ -226,6 +252,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
           <View style={styles.rowInputs}>
             <View style={styles.halfInput}>
               <Input
+            editable={!locked}
                 label="单价 *"
                 placeholder="单价"
                 value={formData.unitPrice}
@@ -235,6 +262,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
             </View>
             <View style={styles.halfInput}>
               <Picker
+            disabled={locked}
                 label="计量单位 *"
                 placeholder="请选择单位"
                 value={formData.unit}
@@ -248,6 +276,7 @@ const CreateMaterialScreen = ({ navigation, route }) => {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>备注</Text>
           <Input
+            editable={!locked}
             label="备注"
             placeholder="耗材备注信息"
             value={formData.notes}
@@ -258,19 +287,21 @@ const CreateMaterialScreen = ({ navigation, route }) => {
         </Card>
 
         <View style={styles.buttonContainer}>
-          {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
+          {(saveError || mutation.error) ? <Text style={{ color: colors.danger }}>{saveError || mutation.error}</Text> : null}
+          {relational && mutation.pending && !mutation.loading ? <Text>上次操作结果尚未确认，请重试原操作。</Text> : null}
+          {relational && mutation.conflict ? <Button title="重新加载原记录" variant="outline" onPress={reload} /> : null}
           <Button
-            title={loading ? '保存中...' : isEditing ? '保存修改' : '创建耗材'}
+            title={loading ? '保存中...' : relational && mutation.pending ? '重试原操作' : isEditing ? '保存修改' : '创建耗材'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={loading || (relational && mutation.conflict)}
             loading={loading}
             fullWidth
             style={styles.submitButton}
           />
           <Button
             title="取消"
-            disabled={loading}
+            disabled={locked && !mutation.conflict}
             onPress={() => navigation.goBack()}
             variant="outline"
             fullWidth

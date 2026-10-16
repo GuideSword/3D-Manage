@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -23,11 +24,20 @@ import {
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
+import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
+import { confirmDeletion } from '../utils/confirmAction';
 import { canManage, canWrite } from '../utils/permissions';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const catalogMutation = useMasterDataMutation(navigation);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { materialId } = route.params || {};
@@ -86,6 +96,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
 
       if (materialData) {
         setMaterial(materialData);
+        catalogMutation.resetAfterLoad();
         setStockLots(lotsData);
       } else {
         Alert.alert('错误', '耗材不存在', [
@@ -106,34 +117,20 @@ const MaterialDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除这个耗材吗？此操作不可恢复。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await materialsAPI.delete(materialId);
-              Alert.alert('成功', '耗材已删除', [
-                { text: '确定', onPress: () => navigation.goBack() },
-              ]);
-            } catch (error) {
-              if (isAuthRequiredError(error)) {
-                return;
-              }
-              Alert.alert('错误', error.message || '删除耗材失败');
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleDelete = async () => {
+    if (deleting || !material || !await confirmDeletion('确定要删除这个耗材吗？此操作不可恢复。')) return;
+    try {
+      setDeleting(true);
+      if (relational) {
+        const result = await catalogMutation.run('material.delete', { id: material.id, version: material.version },
+          (body, key) => relationalMaterialsAPI.delete(body.id, body.version, key));
+        if (result === null) return;
+      } else await materialsAPI.delete(materialId);
+      if (Platform.OS === 'web') navigation.goBack();
+      else Alert.alert('成功', '耗材已删除', [{ text: '确定', onPress: () => navigation.goBack() }]);
+    } catch (error) {
+      if (!isAuthRequiredError(error)) Alert.alert('错误', error.message || '删除耗材失败');
+    } finally { setDeleting(false); }
   };
 
   useFocusEffect(useCallback(() => {
@@ -172,6 +169,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
+        <CatalogMutationFeedback mutation={catalogMutation} onReload={fetchMaterialDetail} onSuccess={() => navigation.goBack()} />
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
             <Ionicons name="layers-outline" size={24} color={colors.accent} />

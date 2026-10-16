@@ -18,6 +18,11 @@ import { RADIUS, ROUTES, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card, ProtectedImage } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
+import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
 import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
@@ -47,6 +52,9 @@ const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp'];
 
 const ModelDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const catalogMutation = useMasterDataMutation(navigation);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { modelId } = route.params || {};
@@ -72,6 +80,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       setAuthToken(await authAPI.getToken());
       const modelData = await modelsAPI.getById(modelId);
       setModel(modelData);
+      catalogMutation.resetAfterLoad();
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -98,7 +107,12 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const deleteModel = async () => {
     try {
       setDeleting(true);
-      await modelsAPI.delete(modelId);
+      if (relational) {
+        if (!model) return;
+        const result = await catalogMutation.run('model.delete', { id: model.id, version: model.version },
+          (body, key) => relationalModelsAPI.delete(body.id, body.version, key));
+        if (result === null) return;
+      } else await modelsAPI.delete(modelId);
       if (Platform.OS === 'web') {
         window.alert('模型已删除');
         navigation.goBack();
@@ -240,6 +254,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
+        <CatalogMutationFeedback mutation={catalogMutation} onReload={fetchModelDetail} onSuccess={() => navigation.goBack()} />
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
             <Ionicons name="cube-outline" size={24} color={colors.primary} />

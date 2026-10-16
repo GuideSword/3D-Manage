@@ -32,12 +32,21 @@ import {
 } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
+import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
+import { confirmDeletion } from '../utils/confirmAction';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { canManage, canWrite } from '../utils/permissions';
 
 const MaterialsScreen = ({ navigation, route }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const catalogMutation = useMasterDataMutation(navigation);
   const editable = canWrite(user);
   const submitCommand = useInventoryCommand({ reusable: true });
   const { colors } = useAppTheme();
@@ -72,6 +81,7 @@ const MaterialsScreen = ({ navigation, route }) => {
         });
       }
       setMaterials(filteredData);
+      catalogMutation.resetAfterLoad();
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -125,32 +135,23 @@ const MaterialsScreen = ({ navigation, route }) => {
   );
 
   const handleDeleteMaterial = async (materialId) => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除这个耗材吗？',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeletingId(materialId);
-              await materialsAPI.delete(materialId);
-              Alert.alert('成功', '耗材已删除');
-              await fetchMaterials();
-            } catch (error) {
-              if (isAuthRequiredError(error)) {
-                return;
-              }
-              Alert.alert('错误', error.message || '删除耗材失败');
-            } finally {
-              setDeletingId(null);
-            }
-          },
-        },
-      ]
-    );
+    if (relational && catalogMutation.pending) {
+      catalogMutation.setError('请先重试确认上次删除结果');
+      return;
+    }
+    const material = materials.find(item => item.id === materialId);
+    if (deletingId || !material || !await confirmDeletion('确定要删除这个耗材吗？')) return;
+    try {
+      setDeletingId(materialId);
+      if (relational) {
+        const result = await catalogMutation.run('material.delete', { id: material.id, version: material.version },
+          (body, key) => relationalMaterialsAPI.delete(body.id, body.version, key));
+        if (result === null) return;
+      } else await materialsAPI.delete(materialId);
+      await fetchMaterials();
+    } catch (error) {
+      if (!isAuthRequiredError(error)) Alert.alert('错误', error.message || '删除耗材失败');
+    } finally { setDeletingId(null); }
   };
 
   const handleDeleteLot = async (lotId) => {
@@ -200,6 +201,7 @@ const MaterialsScreen = ({ navigation, route }) => {
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={styles.container}>
       <View style={styles.page}>
+      <CatalogMutationFeedback mutation={catalogMutation} onReload={fetchMaterials} onSuccess={fetchMaterials} />
       <CyberPageHeader
         eyebrow="MATERIAL STOCK"
         title="耗材仓库"
@@ -432,6 +434,8 @@ const MaterialCard = ({ material, totalQty, lotCount, deletingId, onDelete, onPr
           </View>
           {editable ? <TouchableOpacity
             style={styles.deleteButton}
+            accessibilityRole="button"
+            accessibilityLabel={`删除耗材${material.brand || materialType}`}
             onPress={(event) => {
               event.stopPropagation?.();
               onDelete(material.id);

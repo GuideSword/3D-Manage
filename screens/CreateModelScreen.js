@@ -19,6 +19,11 @@ import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
 import { useEditRecord } from '../utils/useEditRecord';
 import EditLoadState from '../components/EditLoadState';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import catalogCore from '../utils/relationalCatalogCore.cjs';
+import { relationalModelsAPI } from '../utils/relationalCatalogApi';
 
 const SOURCE_OPTIONS = [
   { value: 'original', label: '原创' },
@@ -39,10 +44,15 @@ const CreateModelScreen = ({ navigation, route }) => {
   const modelId = route.params?.modelId;
   const isEditing = Boolean(modelId);
   const submitting = useRef(false);
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const mutation = useMasterDataMutation(navigation);
+  const recordAPI = relational ? relationalModelsAPI : modelsAPI;
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const locked = loading || (relational && (mutation.loading || Boolean(mutation.pending) || mutation.conflict));
   const [selectedModelFile, setSelectedModelFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageType, setImageType] = useState('cover');
@@ -51,7 +61,8 @@ const CreateModelScreen = ({ navigation, route }) => {
     description: '',
     source: 'original',
   });
-  const { record, loadingRecord, loadError, reload } = useEditRecord(modelId, modelsAPI, (model) => {
+  const { record, loadingRecord, loadError, reload } = useEditRecord(modelId, recordAPI, (model) => {
+    if (relational) { mutation.resetAfterLoad(); setSaveError(''); }
     setFormData({ name: model.name || '', description: model.description || '', source: model.source || 'original' });
   });
 
@@ -100,6 +111,10 @@ const CreateModelScreen = ({ navigation, route }) => {
   };
 
   const validateForm = () => {
+    if (relational) {
+      try { catalogCore.catalogChanges('models', formData, { creating: !isEditing }); return true; }
+      catch (error) { setSaveError(error.message); return false; }
+    }
     if (!formData.name.trim()) {
       setSaveError('请输入模型名称');
       Alert.alert('验证失败', '请输入模型名称');
@@ -127,12 +142,17 @@ const CreateModelScreen = ({ navigation, route }) => {
       submitting.current = true;
       setSaveError('');
       setLoading(true);
-      const payload = {
-        name: formData.name.trim(),
-        description: formData.description.trim(),
-        source: formData.source,
+      if (relational && (selectedModelFile || selectedImage)) {
+        throw new Error('当前服务器暂不支持附件上传，请稍后重试');
+      }
+      const payload = relational ? catalogCore.catalogPayload('models', formData, record) : {
+        name: formData.name.trim(), description: formData.description.trim(), source: formData.source,
       };
-      const newModel = isEditing ? await modelsAPI.update(modelId, payload) : await modelsAPI.create(payload);
+      const newModel = relational ? await mutation.run(isEditing ? 'model.update' : 'model.create', payload,
+        (body, key) => isEditing ? relationalModelsAPI.update(body.id, { version: body.version, changes: body.changes }, key)
+          : relationalModelsAPI.create(body, key))
+        : isEditing ? await modelsAPI.update(modelId, payload) : await modelsAPI.create(payload);
+      if (newModel === null) return;
       if (isEditing) { navigation.goBack(); return; }
 
       if (selectedModelFile) {
@@ -190,13 +210,15 @@ const CreateModelScreen = ({ navigation, route }) => {
         <Card style={styles.section}>
           <Text style={styles.sectionTitle}>基本信息</Text>
           <Input
+            editable={!locked}
             label="模型名称 *"
             placeholder="请输入模型名称"
             value={formData.name}
             onChangeText={(text) => setFormData({ ...formData, name: text })}
           />
           <Input
-            label="模型描述 *"
+            editable={!locked}
+            label={relational ? '模型描述' : '模型描述 *'}
             placeholder="请输入模型用途、特点或打印说明"
             value={formData.description}
             onChangeText={(text) => setFormData({ ...formData, description: text })}
@@ -210,7 +232,7 @@ const CreateModelScreen = ({ navigation, route }) => {
                 key={option.value}
                 label={option.label}
                 active={formData.source === option.value}
-                onPress={() => setFormData({ ...formData, source: option.value })}
+                onPress={() => { if (!locked) setFormData({ ...formData, source: option.value }); }}
               />
             ))}
           </View>
@@ -225,6 +247,7 @@ const CreateModelScreen = ({ navigation, route }) => {
           <Button
             title={selectedModelFile ? '重新选择模型文件' : '选择模型文件'}
             iconLeft="document-attach-outline"
+            disabled={locked}
             onPress={pickModelFile}
             variant="outline"
             fullWidth
@@ -243,7 +266,7 @@ const CreateModelScreen = ({ navigation, route }) => {
                 key={option.value}
                 label={option.label}
                 active={imageType === option.value}
-                onPress={() => setImageType(option.value)}
+                onPress={() => { if (!locked) setImageType(option.value); }}
               />
             ))}
           </View>
@@ -251,6 +274,7 @@ const CreateModelScreen = ({ navigation, route }) => {
           <Button
             title={selectedImage ? '重新选择图片' : '选择图片'}
             iconLeft="image-outline"
+            disabled={locked}
             onPress={pickImage}
             variant="outline"
             fullWidth
@@ -258,19 +282,21 @@ const CreateModelScreen = ({ navigation, route }) => {
         </Card> : null}
 
         <View style={styles.buttonContainer}>
-          {saveError ? <Text style={{ color: colors.danger }}>{saveError}</Text> : null}
+          {(saveError || mutation.error) ? <Text style={{ color: colors.danger }}>{saveError || mutation.error}</Text> : null}
+          {relational && mutation.pending && !mutation.loading ? <Text>上次操作结果尚未确认，请重试原操作。</Text> : null}
+          {relational && mutation.conflict ? <Button title="重新加载原记录" variant="outline" onPress={reload} /> : null}
           <Button
-            title={loading ? '保存中...' : isEditing ? '保存修改' : '创建模型'}
+            title={loading ? '保存中...' : relational && mutation.pending ? '重试原操作' : isEditing ? '保存修改' : '创建模型'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
-            disabled={loading}
+            disabled={loading || (relational && mutation.conflict)}
             loading={loading}
             fullWidth
             style={styles.submitButton}
           />
           <Button
             title="取消"
-            disabled={loading}
+            disabled={locked && !mutation.conflict}
             onPress={() => navigation.goBack()}
             variant="outline"
             fullWidth
