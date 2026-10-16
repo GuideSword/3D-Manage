@@ -21,6 +21,7 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import DataImportScreen from '../screens/DataImportScreen';
 import UsersScreen from '../screens/UsersScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import PartnersScreen from '../screens/PartnersScreen';
 import PartnerDetailScreen from '../screens/PartnerDetailScreen';
 import EditPartnerScreen from '../screens/EditPartnerScreen';
@@ -165,6 +166,7 @@ const AppNavigator = () => {
               component={DataImportScreen}
               options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
             /> : null}
+            <Stack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} options={{ title: SCREEN_TITLES[ROUTES.CHANGE_PASSWORD] }} />
             {canManage(user) ? <Stack.Screen
               name={ROUTES.USERS}
               component={UsersScreen}

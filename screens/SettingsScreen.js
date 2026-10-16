@@ -87,6 +87,8 @@ const SettingsScreen = () => {
             label="角色"
             value={ROLE_LABELS[user?.role] || user?.role || '未知'}
           />
+          <ActionRow styles={styles} colors={colors} icon="key-outline" label="修改本人密码"
+            hint="修改后使用新密码重新登录" onPress={() => navigation.navigate(ROUTES.CHANGE_PASSWORD)} />
           {user?.role === ROLES.OWNER ? (
             <ActionRow
               styles={styles}

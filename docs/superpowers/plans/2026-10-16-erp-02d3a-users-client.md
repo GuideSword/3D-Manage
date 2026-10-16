@@ -18,17 +18,17 @@ Files: utils/relationalUsersCore.cjs、utils/relationalUsersApi.js、tests/clien
 
 Files: screens/RelationalUsersScreen.js、screens/UsersScreen.js。
 
-- [ ] 关系Owner分页/搜索和错误重试；创建Staff/Viewer、编辑姓名（含Owner）、调整非Owner角色、确认启停/删除及重置非Owner密码。Owner保持受保护，后端末位Owner/当前用户/历史引用规则照常生效。
-- [ ] 共用mutation固定key/version/body；未知结果禁改/禁关闭，并可重试原命令。409重新读取目标后核对再提交，不能默默换version；重置成功以返回user更新版本。刷新失败保留明确错误。
-- [ ] 真实Web验收创建/编辑/角色/启停/重置/删除、丢响应重试及冲突；非Owner伪造管理请求仍403。
+- [x] 关系Owner分页/搜索和错误重试；创建Staff/Viewer、编辑姓名（含Owner）、调整非Owner角色、确认启停/删除及重置非Owner密码。Owner保持受保护，后端末位Owner/当前用户/历史引用规则照常生效。
+- [x] 共用mutation固定key/version/body；未知结果禁改/禁关闭，并可重试原命令。409重新读取目标后核对再提交，不能默默换version；重置成功以返回user更新版本。刷新失败保留明确错误。
+- [x] 真实Web验收创建/编辑/角色/启停/重置/删除、丢响应重试及冲突；非Owner伪造管理请求仍403。
 
 ## Task3 本人改密
 
 Files: screens/ChangePasswordScreen.js、screens/SettingsScreen.js、navigation/AppNavigator.js、constants/index.js。
 
-- [ ] 所有角色设置入口；当前密码、新密码、确认密码。先读本人版本，固定payload/key，密码不写日志/本地存储/文档。
-- [ ] 改密成功清理会话重新登录；错误旧密码不退出，冲突需重载本人资料；结果未知可重试或显式退出以新密码登录。旧服务器走原authAPI且未知结果不自动重复提交。
-- [ ] 实际Web验证旧密码失效、新密码有效、跨角色、维护/401及丢响应恢复，检查无密码出现在审计/回执正文。
+- [x] 所有角色设置入口；当前密码、新密码、确认密码。先读本人版本，固定payload/key，密码不写日志/本地存储/文档。
+- [x] 改密成功清理会话重新登录；错误旧密码不退出，冲突需重载本人资料；结果未知可重试或显式退出以新密码登录。旧服务器走原authAPI且未知结果不自动重复提交。
+- [x] 实际Web验证旧密码失效、新密码有效、跨角色、维护/401及丢响应恢复，检查无密码出现在审计/回执正文。
 
 ## Task4 验收推进
 
@@ -42,3 +42,9 @@ Files: screens/ChangePasswordScreen.js、screens/SettingsScreen.js、navigation/
 ## Task1结果（2026-10-16）
 
 独立账号纯函数8项及库存/catalog/分页/主数据/command相关28项，共36项通过、0跳过。失败起点为模块缺失，证据.tmp/erp-02d3a-users/client-red.log和client-green.log。显式版本/key/业务头、严格字段、密码UTF-8长度及保留空格均通过；仅封装契约，不当作页面或真实HTTP验收。当前Task2用户页面，Task3本人改密页面和Task4集成仍待实施。正式没有更新。
+
+## Tasks2–3结果（2026-10-16）
+
+关系Web13组、旧文件服务器Web3组通过，均pageErrors为空；客户端53项、实际PG users18/adapters16/maintenance9/runtime9共52项，总105项Node检查通过、0跳过。Owner/Staff/Viewer本人改密及新密码登录、Owner维护拒写/丢响应重试401恢复均已实测。刷新登录红→绿定位到关系auth/me返回直接DTO，AuthContext原只取result.user；新增纯authUserCore兼容两种结构，服务端协议不改。
+
+当前Task4独立安卓验收及最终正式摘要/清理；A3尚未宣称约95%，未进入CSV。初次创建密码清空断言抢在React更新前读取，已改为等待实际清空状态，再核对；未删除首次合法测试用户。Web fixture保留真实历史，不用重置数据库抹平已提交命令。
