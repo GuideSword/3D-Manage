@@ -21,6 +21,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import RelationalDataTransferScreen from './RelationalDataTransferScreen';
+import assetCore from '../utils/csvAssetCore.cjs';
 
 const IMPORT_OPTIONS = [
   { value: 'orders', label: '订单' },
@@ -59,7 +60,7 @@ const DataImportScreen = ({ navigation }) => {
   const pickCsvFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'],
+        type: [...assetCore.CSV_MIME_TYPES],
         copyToCacheDirectory: true,
       });
       if (result.canceled) {

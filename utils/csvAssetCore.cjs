@@ -1,5 +1,7 @@
 'use strict';
 const { csvImportPayload } = require('./relationalCsvCore.cjs');
+// Android DocumentsProvider commonly reports .csv as text/comma-separated-values.
+const CSV_MIME_TYPES = Object.freeze(['text/csv', 'text/comma-separated-values', 'application/csv', 'text/plain', 'application/vnd.ms-excel']);
 function createScopedCsvReader({ pick, isCurrent, staleError, isOwned, read, track, remove }) {
   return async captured => {
     let asset;
@@ -18,4 +20,4 @@ function createScopedCsvReader({ pick, isCurrent, staleError, isOwned, read, tra
     }
   };
 }
-module.exports = { createScopedCsvReader };
+module.exports = { createScopedCsvReader, CSV_MIME_TYPES };

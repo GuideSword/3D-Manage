@@ -30,7 +30,7 @@ export default function RelationalDataTransferScreen({ navigation }) {
     }
   }), [navigation]);
   const reader = useMemo(() => assetCore.createScopedCsvReader({
-    pick: () => DocumentPicker.getDocumentAsync({ type: ['text/csv', 'text/plain', 'application/vnd.ms-excel'], copyToCacheDirectory: true }),
+    pick: () => DocumentPicker.getDocumentAsync({ type: [...assetCore.CSV_MIME_TYPES], copyToCacheDirectory: true }),
     isCurrent: captured => mounted.current && isCurrentRuntime(captured), staleError: () => new StaleSessionError(),
     isOwned: isAppCacheFile,
     read: asset => asset.file && typeof asset.file.text === 'function' ? asset.file.text()
