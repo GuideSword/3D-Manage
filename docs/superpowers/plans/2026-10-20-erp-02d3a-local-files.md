@@ -20,7 +20,7 @@
 Files: backend/modules/adapters/files.js、backend/modules/files/service.js、backend/modules/files/localStorage.js；tests/backend/erp-local-files.test.cjs。
 
 - [ ] 核对现有file/image/attachment字段、预览生成、上传大小和并发限制，明确multipart→上传结果→领域关联的DTO，记录实体已读version和原key。先运行关系实际HTTP上传/下载失败用例，证明当前503/缺路由。
-- [ ] 设计单一显式存储接口：流式暂存、校验/hash、发布已验证字节、读取/Range、清理本任务暂存；不靠全局UPLOAD_DIR猜测测试根目录，不读取旧store/SQLite或启动AI桥。
+- [x] 设计单一显式存储接口：流式暂存、校验/hash、发布已验证字节、读取/Range、清理本任务暂存；不靠全局UPLOAD_DIR猜测测试根目录，不读取旧store/SQLite或启动AI桥。
 - [ ] 确定丢响应、重复上传、实体版本冲突和登记失败时的结果：重试复用原key，不重复关联/回执；已确认模型/订单不能重复新建；无法安全认定无人引用的正式字节不删，暂存单独清理。记录剩余可回收上传，不以静默丢文件补偿。
 
 ## Task2 服务端上传与登记
@@ -57,4 +57,20 @@ Files: utils/relationalFilesCore.cjs、relationalFilesApi.js；screens/CreateMod
 
 ## 当前状态（2026-10-20）
 
-A4 CSV已达到约95%，当前A5 Task1；本文件为下一项实施范围，尚未新增文件业务代码。现有503仍为发布阻断，02D2 Task6和02D4不能关闭。
+A4 CSV已达到约95%，当前A5 Task1契约与物理存储；localStorage已通过13项实际文件系统检查，上传HTTP、PG上传记录/回执和页面尚未接入。现有503仍为发布阻断，本项未达95%，02D2 Task6和02D4不能关闭。
+
+## Task1物理存储结果（2026-10-20）
+
+新增backend/modules/files/localStorage.js，不加载全局config/storage、旧store或AI。显式绝对uploadDirectory，先固定其真实根目录；下属暂存/发布目录不允许符号链接替换。
+
+接口已经实际实现：
+
+- stage(readable,{namespace,originalName,maxBytes,signal})返回只用于服务端内部的token、size字符串、SHA-256和原名；流式hash/计数，超限413、空文件/读失败/中断只清理本次暂存，不将500MB整块读入内存。
+- publish(token)校验暂存完整内容后，以namespace/SHA256.ext原子硬链接发布；并发相同内容只保留一个物理文件，已存在内容不一致409且不覆盖。每次关联仍应由领域生成独立业务文件ID，不将内容键当成模型/附件身份。
+- discard(token)只接受本实例创建的内部token，清理相应暂存并释放登记；已发布字节不删，避免其他关联/历史被误删。成功publish后及业务回执重放的请求finally均应discard自己的暂存副本。
+- open(relativeKey)返回size、modifiedAt、一次性createReadStream(range)和close，支持旧相对键及解析后仍在根目录内的历史目录链接；禁止agent、暂存、编码路径、绝对路径、穿越、越界链接。HTTP调用者负责每次PG身份检查及关闭句柄，不在本层伪造认证。
+- parseByteRange支持完整/起止/开放结束/后缀/越大结束截断，无效单段、多段或空文件Range返回416；HTTP头/状态仍待下一步接线。
+
+从缺模块失败到13项真实文件系统检查通过、0跳过：完整chunk/hash/发布、并发去重、空/超限/中断/源错误清理、无效token和类型、真实旧文件与范围字节、已存在坏内容保护、越界目录链接保护、合法根内链接兼容、暂存被改动拒绝、32MiB实际生成/发布/两端范围读取、超限时提前停止源读取。测试清理只针对已核验在系统临时根目录下的本次随机前缀目录。
+
+证据.tmp/erp-02d3a-files/local-storage-red.log、local-storage-green.log。本结果没有PG/HTTP/Web或安卓验收，不可冒称文件模块已可用。当前继续Task1明确上传→PG上传事实→领域关联的DTO和实际HTTP失败测试，然后Task2接入；正式环境未变。
