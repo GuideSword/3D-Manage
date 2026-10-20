@@ -86,3 +86,13 @@ GET/HEAD /api/files/*已接新PG身份、私有无缓存及单段Range；合法2
 真实PG/HTTP与物理文件共27项通过、0跳过，涵盖三类上传、模型文件/图片引用保护、订单附件登记移除且字节保留、回执重复/冲突、请求字段/超限/坏签名、维护拒写可读、私有目录和越界路径、上传中途停用账号后401且无上传业务事实/残留暂存。启动9项、现有适配19项回归通过。证据http-red.log、content-red.log、http-green.log、runtime-regression.log、adapters-regression.log均在.tmp/erp-02d3a-files。
 
 27项不证明页面可用、完整图片/PDF解码、自动3D预览、500MiB完整压力或安卓选择器；这些仍需Task4–5。正式Docker和所有模拟器未操作。
+
+## Task4 客户端协议结果（2026-10-20）
+
+新增utils/relationalFilesCore.cjs和relationalFilesApi.js：关系能力检查、multipart单file字段、固定业务头与key、10分钟上传超时；浏览器Blob显式保留中文原名，原生uri对象保持React Native FormData格式。按用途验证扩展名及已知大小，供应商未提供size时保留服务端最终校验。
+
+上传响应校验namespace/hash/size/fileKey/fileUrl/原名的一致性，拒绝外部URL或客户端伪造业务id。模型file/image与订单attachment的add/remove携带页面已读version，不抓取最新版本覆盖冲突；移除订单按服务器position，模型按服务器childId。现有api.js未编辑，新入口单独封装。
+
+客户端7项加目录协议6项共13通过；其中真实FormData验证保留文件名/字节。另将新客户端封装接入真实PG/Express验收，模拟服务器提交后上传响应丢失、关联响应丢失，原文件/原key重试后仅一个上传事实、一个关联，审计和回执各新增2条。文件专项更新为28通过0跳过，证据client-http-green.log；客户端证据client-red.log、client-green.log。
+
+本次只完成客户端协议层，尚未挂到页面，也未验证UI自动维持原key、分步新建主体恢复、选择器、预览与分享；Task4复选项保持待完成，A5仍未达95%。下一步将流程状态接入模型/订单页面，明确上传成功但登记失败时的提示及恢复。

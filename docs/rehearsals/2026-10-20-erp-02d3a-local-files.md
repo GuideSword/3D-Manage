@@ -25,3 +25,9 @@ GET/HEAD /files支持真实字节、mime、长度、私有无缓存、合法单�
 先运行http-red.log证明确实缺路由，再运行content-red.log证明伪图片曾被接受，修正后http-green.log为27通过0跳过；runtime-regression.log为9通过，adapters-regression.log为19通过。上传中途停用账号实际HTTP请求最终401，未产生上传记录/审计/回执，暂存为空；测试仅使用自有PG验证容器和核验路径后的临时目录。
 
 不修改既有SQL迁移，不部署正式容器。发布文件与PG不是跨系统原子提交，PG失败可留未关联内容；不误删共享发布字节。未验证页面、平台预览、完整大文件压力；A5未达95%，继续客户端，02D2 Task6/正式切换保持待办。
+
+## 客户端封装与真实丢响应重试
+
+独立relationalFilesCore/Api已交付；multipart不强制JSON头，Blob显式携带文件名，原生uri对象保留。校验文件用途、扩展名/已知size及服务器返回SHA/路径/原名；JSON关联带已读version，移除用childId或position。客户端7项及目录协议6项共13通过。
+
+新客户端实际请求隔离Express/PG，先真实提交上传并模拟丢响应，再以相同key/字节重试；关联同样在服务器提交后丢响应并原key重试。中文原名及下载字节一致，只新增1上传、1关联，审计和回执各2条，暂存为空。文件专项28通过0跳过，日志client-http-green.log。尚非UI验收，不证明页面已保持重试状态；页面及平台仍待完成。

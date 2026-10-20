@@ -43,5 +43,29 @@ test('relational file upload records, identity, replay, and protected HTTP bytes
  await createUserService(pool,{jwtSecret:secret}).execute({...session,key:'revoke-stream-actor',operation:'user.update',payload:{id:'late_staff',version:'1',changes:{active:false}}});const before=await facts();request.end('remaining\r\n--'+boundary+'--\r\n');assert.equal((await response).status,401);assert.deepEqual(await facts(),before);assert.deepEqual(await fs.readdir(path.join(root,'.staging')),[]);
  });
  await t.test('revoked token cannot upload or start a fresh download',async()=>{const before=await facts();await pool.query("UPDATE erp.users SET token_version=token_version+1 WHERE id='staff'");assert.equal((await upload('models','x','revoked.stl','revoked','staff')).status,401);assert.equal((await send('/files/'+metadata.fileKey,{role:'staff'})).status,401);assert.deepEqual(await facts(),before)});
+ await t.test('client multipart and registration cross real HTTP, retaining original key after lost responses',async()=>{
+ const {createRelationalFilesApi}=require('../../utils/relationalFilesCore.cjs');
+ const parent=(await modelService.execute({...session,key:'client-file-model',operation:'model.create',payload:{name:'客户端文件模型'}})).body;
+ const before=await facts();let loseUpload=true,loseRegistration=true;const seen=[];
+ const api=createRelationalFilesApi({getRuntime:()=>({serverKey:serverId,apiBaseUrl:base,capabilities:{businessRulesVersion:2,relationalBusiness:true}}),request:async(endpoint,options)=>{
+  seen.push({endpoint,key:options.headers['Idempotency-Key']});
+  const response=await fetch(base+endpoint,{method:options.method,headers:{Authorization:'Bearer '+token('owner'),...(options.body instanceof FormData?{}:{'Content-Type':'application/json'}),...options.headers},body:options.body});
+  const data=await response.json();if(!response.ok)throw Object.assign(new Error(data.error),{status:response.status,code:data.code});
+  if(endpoint.startsWith('/uploads/')&&loseUpload){loseUpload=false;throw new Error('simulated lost upload response after server commit')}
+  if(endpoint.endsWith('/files/add')&&loseRegistration){loseRegistration=false;throw new Error('simulated lost registration response after server commit')}
+  return data;
+ }});
+ const bytes='solid client\nendsolid',file=Object.assign(new Blob([bytes]),{name:'客户端零件.stl'});
+ await assert.rejects(api.upload('models',file,'client-upload-key'));
+ const uploaded=await api.upload('models',file,'client-upload-key');assert.equal(uploaded.originalName,file.name);
+ const input={version:parent.version,file:uploaded};
+ await assert.rejects(api.add('models',parent.id,'files',input,'client-register-key'));
+ const result=await api.add('models',parent.id,'files',input,'client-register-key');
+ assert.equal(result.files.length,1);assert.equal(result.files[0].originalName,file.name);assert.equal(result.version,'2');
+ assert.equal((await send(uploaded.fileUrl.slice(4))).bytes.toString(),bytes);
+ const after=await facts();assert.equal(after.uploads-before.uploads,1);assert.equal(after.receipts-before.receipts,2);assert.equal(after.audits-before.audits,2);
+ assert.deepEqual(seen.map(item=>item.key),['client-upload-key','client-upload-key','client-register-key','client-register-key']);
+ assert.deepEqual(await fs.readdir(path.join(root,'.staging')),[]);
+ });
  await t.test('relation file layer never loads legacy JSONB store or AI bridge',()=>{const loaded=Object.keys(require.cache).map(x=>x.replaceAll('\\','/'));for(const suffix of ['/backend/utils/store.js','/backend/db/agent.js','/backend/agent/dbBridge.js'])assert.equal(loaded.some(x=>x.endsWith(suffix)),false)});
 });
