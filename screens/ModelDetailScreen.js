@@ -451,6 +451,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
                 <Text style={styles.fileMeta}>
                   {String(file.fileType || file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
                 </Text>
+                {file.previewWarning ? <Text style={styles.fileMeta}>{file.previewWarning}</Text> : null}
               </View>
               <Button
                 title="下载"

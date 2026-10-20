@@ -67,5 +67,34 @@ test('relational file upload records, identity, replay, and protected HTTP bytes
  assert.deepEqual(seen.map(item=>item.key),['client-upload-key','client-upload-key','client-register-key','client-register-key']);
  assert.deepEqual(await fs.readdir(path.join(root,'.staging')),[]);
  });
+ let previewSource;
+ await t.test('3MF registration creates one protected source-linked preview and receipt replay creates no second facts',async()=>{
+ const fixture=path.join(directory,'zip-fixtures');require('node:child_process').execFileSync('python',[path.resolve('tests/fixtures/3mf/generate.py'),fixture],{stdio:'pipe'});
+ const bytes=await fs.readFile(path.join(fixture,'deflated.3mf'));assert.ok(bytes.length<=1024);const png=await fs.readFile(path.join(fixture,'expected.png'));
+ const parent=(await modelService.execute({...session,key:'preview-model',operation:'model.create',payload:{name:'自动预览模型'}})).body;
+ const uploaded=await upload('models',bytes,'装配.3mf','upload-preview-model');assert.equal(uploaded.status,201);previewSource=uploaded.body;
+ const before=await facts(),body=JSON.stringify({version:parent.version,file:uploaded.body});
+ const added=await send('/models/'+parent.id+'/files/add',{method:'POST',key:'register-preview-model',headers:{'Content-Type':'application/json'},body});assert.equal(added.status,201);assert.equal(added.body.version,'2');assert.equal(added.body.files.length,1);assert.equal(added.body.images.length,1);
+ const image=added.body.images[0],source=added.body.files[0];assert.equal(image.type,'auto_preview');assert.equal(image.sourceFileId,source.id);assert.equal(image.previewSource,'3mf_thumbnail');assert.equal(image.fileType,'png');assert.deepEqual((await send(image.fileUrl.slice(4),{role:'viewer'})).bytes,png);
+ const after=await facts();assert.equal(after.uploads-before.uploads,1);assert.equal(after.receipts-before.receipts,1);assert.equal(after.audits-before.audits,2);
+ const replay=await send('/models/'+parent.id+'/files/add',{method:'POST',key:'register-preview-model',headers:{'Content-Type':'application/json'},body});assert.deepEqual(replay.body,added.body);assert.deepEqual(await facts(),after);
+ const remove=async(child,version,childId,key)=>send('/models/'+parent.id+'/'+child+'/remove',{method:'POST',key,headers:{'Content-Type':'application/json'},body:JSON.stringify({version,childId})});
+ const denied=await remove('files','2',source.id,'remove-preview-source-too-early');assert.equal(denied.status,409);assert.equal(denied.body.code,'ENTITY_REFERENCED');assert.deepEqual(await facts(),after);
+ const removedImage=await remove('images','2',image.id,'remove-generated-preview');assert.equal(removedImage.status,200);assert.equal(removedImage.body.version,'3');assert.deepEqual(removedImage.body.images,[]);assert.deepEqual((await send(image.fileUrl.slice(4))).bytes,png);
+ const removedSource=await remove('files','3',source.id,'remove-preview-source');assert.equal(removedSource.status,200);assert.deepEqual(removedSource.body.files,[]);assert.deepEqual((await send(source.fileUrl.slice(4))).bytes,bytes);
+ assert.deepEqual(await fs.readdir(path.join(root,'.staging')),[]);
+ });
+ await t.test('malformed optional 3MF thumbnail never blocks saving the original file',async()=>{
+ const parent=(await modelService.execute({...session,key:'bad-preview-model',operation:'model.create',payload:{name:'无有效缩略图'}})).body;
+ const uploaded=await upload('models','not a zip','bad.3mf','upload-bad-preview');assert.equal(uploaded.status,201);
+ const added=await send('/models/'+parent.id+'/files/add',{method:'POST',key:'register-bad-preview',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:parent.version,file:uploaded.body})});assert.equal(added.status,201);assert.equal(added.body.files.length,1);assert.deepEqual(added.body.images,[]);
+ });
+ await t.test('preview metadata SQL failure rolls back source association, preview facts, parent version, audit and receipt',async()=>{
+ const parent=(await modelService.execute({...session,key:'atomic-preview-model',operation:'model.create',payload:{name:'预览原子登记'}})).body;
+ await pool.query(`CREATE FUNCTION erp.reject_preview_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.metadata->>'type'='auto_preview' THEN RAISE EXCEPTION 'owned preview fixture failure' USING ERRCODE='23514'; END IF; RETURN NEW; END $$; CREATE TRIGGER reject_preview_fixture BEFORE INSERT ON erp.object_uploads FOR EACH ROW EXECUTE FUNCTION erp.reject_preview_fixture()`);
+ const before=await facts();try{
+ const result=await send('/models/'+parent.id+'/files/add',{method:'POST',key:'preview-atomic-rollback',headers:{'Content-Type':'application/json'},body:JSON.stringify({version:parent.version,file:previewSource})});assert.ok(result.status>=400);assert.deepEqual(await facts(),before);const current=await modelService.get(session,parent.id);assert.equal(current.version,'1');assert.deepEqual(current.files,[]);assert.deepEqual(current.images,[]);assert.deepEqual(await fs.readdir(path.join(root,'.staging')),[]);
+ }finally{await pool.query('DROP TRIGGER reject_preview_fixture ON erp.object_uploads; DROP FUNCTION erp.reject_preview_fixture()')}
+ });
  await t.test('relation file layer never loads legacy JSONB store or AI bridge',()=>{const loaded=Object.keys(require.cache).map(x=>x.replaceAll('\\','/'));for(const suffix of ['/backend/utils/store.js','/backend/db/agent.js','/backend/agent/dbBridge.js'])assert.equal(loaded.some(x=>x.endsWith(suffix)),false)});
 });

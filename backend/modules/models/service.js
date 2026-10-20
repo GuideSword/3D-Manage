@@ -5,6 +5,7 @@ const { withAuthenticatedRead } = require('../../business-db/reads');
 const { createVersionedUpdater, createVersionedDeleter } = require('../../business-db/versioned');
 const v = require('../catalog/validation');
 const { listChildren, addChild, removeChild } = require('./files');
+const { createAutoPreviewPublisher } = require('./preview');
 const COLUMNS = 'id,name,description,source,active,version,created_at,updated_at,legacy_payload::text AS legacy_raw';
 const WRITABLE = ['name', 'description', 'source'];
 const update = createVersionedUpdater({ 'erp.models': [...WRITABLE, 'active'] }, { touchUpdatedAt: true, allowEmptyChanges: true });
@@ -30,6 +31,7 @@ function normalize(input, creating = false) {
   return values;
 }
 function modelCommands({ uploadDirectory } = {}) {
+  const publishPreview = createAutoPreviewPublisher({ uploadDirectory });
   async function create(tx, { payload, audit }) {
     const values = { id: randomUUID(), description: '', source: 'original', ...normalize(payload, true) };
     const names = Object.keys(values);
@@ -73,15 +75,30 @@ function modelCommands({ uploadDirectory } = {}) {
   };
   for (const [kind, table] of [['file', 'model_files'], ['image', 'model_images']]) {
     for (const action of ['add', 'remove']) {
-      commands[`model.${kind}.${action}`] = { roles: ['owner', 'staff'], async handle(tx, { payload, audit }) {
+      commands[`model.${kind}.${action}`] = { roles: ['owner', 'staff'], async handle(tx, { payload, actor, audit }) {
         const extra = action === 'add' ? 'file' : 'childId';
         v.fields(payload, ['id', 'version', extra], ['id', 'version', extra]);
         // Parent row update serializes child positions and shares the edit version contract.
         await update(tx, { table: 'erp.models', id: payload.id, expectedVersion: payload.version, changes: {} });
         const child = action === 'add' ? await addChild(tx, payload.id, table, payload.file, uploadDirectory)
           : await removeChild(tx, payload.id, table, payload.childId);
+        let previewImage = null;
+        if (kind === 'file' && action === 'add') {
+          const preview = await publishPreview(child);
+          if (preview.file) {
+            // Generated upload facts and both associations share this command's transaction/receipt.
+            await tx.query('INSERT INTO erp.object_uploads(id,owner_id,file_key,metadata) VALUES($1,$2,$3,$4)',
+              [preview.file.uploadId, actor.id, preview.file.fileKey, JSON.stringify(preview.file)]);
+            await audit({ entity: 'objectUploads', entityId: preview.file.uploadId, action: 'generatePreview', diff: preview.file });
+            previewImage = await addChild(tx, payload.id, 'model_images', preview.file, uploadDirectory);
+          } else if (preview.warning) {
+            child.previewWarning = preview.warning;
+            await tx.query('UPDATE erp.model_files SET metadata=metadata || $3::jsonb WHERE model_id=$1 AND id=$2',
+              [payload.id, child.id, JSON.stringify({ previewWarning: preview.warning })]);
+          }
+        }
         const item = await get(tx, payload.id);
-        await audit({ entity: 'models', entityId: item.id, action: `${kind}.${action}`, diff: child });
+        await audit({ entity: 'models', entityId: item.id, action: `${kind}.${action}`, diff: previewImage ? { ...child, previewImage } : child });
         return { status: action === 'add' ? 201 : 200, body: item };
       } };
     }

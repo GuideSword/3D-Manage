@@ -19,6 +19,7 @@ $erpContainerName = 'manage3d-erp-02a-verify'
 $erpCreatedId = $null
 $erpPreviousUrl = $env:ERP_BUSINESS_TEST_DATABASE_URL
 $erpPreviousPassword = $env:POSTGRES_PASSWORD
+$erpPreviousShellThumbnail = $env:SKIP_WINDOWS_SHELL_THUMBNAIL
 $erpPreviousRehearsalUrl = $env:ERP_IMPORT_REHEARSAL_DATABASE_URL
 $erpRunId = [guid]::NewGuid().ToString('N')
 $erpExit = 1
@@ -59,9 +60,11 @@ try {
   } elseif ($Suite -eq 'server-runtime') { @('tests/backend/erp-server-runtime.test.cjs')
   } elseif ($Suite -eq 'maintenance') { @('tests/backend/erp-maintenance.test.cjs')
   } elseif ($Suite -eq 'system') { @('tests/backend/erp-system.test.cjs')
-  } elseif ($Suite -eq 'local-files') { @('tests/backend/erp-local-files.test.cjs', 'tests/backend/erp-local-files-http.test.cjs')
+  } elseif ($Suite -eq 'local-files') { @('tests/backend/erp-local-files.test.cjs', 'tests/backend/erp-3mf-preview.test.cjs', 'tests/backend/erp-local-files-http.test.cjs')
   } elseif ($Suite -eq 'owner-recovery') { @('tests/backend/erp-owner-recovery.test.cjs')
   } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
+  # ZIP preview fixtures are portable; installed Windows thumbnail providers are not part of this deterministic suite.
+  $env:SKIP_WINDOWS_SHELL_THUMBNAIL = '1'
   $erpOutput = & node --test @erpTests 2>&1
   $erpExit = $LASTEXITCODE
   $erpOutput | Write-Output
@@ -121,6 +124,8 @@ try {
     else { $env:POSTGRES_PASSWORD = $erpPreviousPassword }
     if ($null -eq $erpPreviousRehearsalUrl) { Remove-Item Env:ERP_IMPORT_REHEARSAL_DATABASE_URL -ErrorAction SilentlyContinue }
     else { $env:ERP_IMPORT_REHEARSAL_DATABASE_URL = $erpPreviousRehearsalUrl }
+    if ($null -eq $erpPreviousShellThumbnail) { Remove-Item Env:SKIP_WINDOWS_SHELL_THUMBNAIL -ErrorAction SilentlyContinue }
+    else { $env:SKIP_WINDOWS_SHELL_THUMBNAIL = $erpPreviousShellThumbnail }
     Pop-Location
   }
 }

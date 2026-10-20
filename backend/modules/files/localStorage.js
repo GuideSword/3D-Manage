@@ -68,7 +68,7 @@ async function createLocalFileStorage({ uploadDirectory } = {}) {
       const current = await fs.stat(actual, { bigint: true });
       if (current.dev !== stat.dev || current.ino !== stat.ino) fail('FILE_CHANGED', '文件已变化，请重试', 409);
       if (stat.size > BigInt(Number.MAX_SAFE_INTEGER)) fail('FILE_SIZE_INVALID', '文件大小超出支持范围', 500);
-      return { handle, stat, size: Number(stat.size) };
+      return { handle, stat, size: Number(stat.size), filename };
     } catch (error) {
       if (handle) await handle.close().catch(() => {});
       if (error.code === 'ENOENT') fail('FILE_NOT_FOUND', '文件不存在', 404);
@@ -158,7 +158,23 @@ async function createLocalFileStorage({ uploadDirectory } = {}) {
     },
     async open(key) {
       const file = await openVerified(key); let streaming = false;
-      return { size: file.size, modifiedAt: new Date(Number(file.stat.mtimeMs)),
+      return { size: file.size, modifiedAt: new Date(Number(file.stat.mtimeMs)), fullPath: file.filename,
+        async readAt(position, length) {
+          if (!Number.isSafeInteger(position) || !Number.isSafeInteger(length) || position < 0 || length < 0
+              || length > 8 * 1024 * 1024 || position + length > file.size) fail('FILE_READ_RANGE_INVALID', '文件读取范围无效', 400);
+          const unchanged = async () => {
+            const stat = await file.handle.stat({ bigint: true });
+            if (stat.size !== file.stat.size || stat.mtimeNs !== file.stat.mtimeNs) fail('FILE_CHANGED', '文件读取期间内容变化', 409);
+          };
+          await unchanged();
+          const buffer = Buffer.alloc(length); let offset = 0;
+          while (offset < length) {
+            const { bytesRead } = await file.handle.read(buffer, offset, length - offset, position + offset);
+            if (!bytesRead) fail('FILE_CHANGED', '文件读取期间内容变化', 409);
+            offset += bytesRead;
+          }
+          await unchanged(); return buffer;
+        },
         createReadStream(range) {
           if (streaming) fail('FILE_STREAM_USED', '文件读取流已使用', 500);
           const parsed = parseByteRange(range, file.size); streaming = true;

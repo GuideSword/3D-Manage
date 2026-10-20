@@ -59,3 +59,13 @@ GET/HEAD /files支持真实字节、mime、长度、私有无缓存、合法单�
 file-forms-web-verification.json、file-forms-web.log、forms-web-build.log、forms-client-regression.log、model-form-pending-files.png为证据；截图已检查。共享组件变更后模型详情8组和订单详情6组回归通过，末次导航小修补由最终6组表单覆盖。仍含其他未提交工作，不是纯HEAD发布验收。
 
 后台浏览器/核对PID命令行后的服务器/核对runId标签后的PG容器与私有配置均已清理，file-forms-cleanup.json记录源SHA及结果。正式服务器、所有模拟器未操作。自动预览及源文件引用、emulator-5558原生选择/分享/缩放仍待，A5未达95%。
+
+## 自动预览与引用保护
+
+已接有界3MF内嵌缩略图提取、同命令生成object_uploads/图片关联/审计/回执，父版本只递增一次。图片保留服务器sourceFileId及previewSource，回放不重复；源被预览引用时409，先移除图后可移除源，物理字节保留。SQL生成事实失败实际注入后，源/图关联、父版本、上传事实、审计和回执全部回滚。无有效缩略图仍保存源；生成异常提示可手工添加。
+
+实际PG/HTTP+文件专项40通过0跳过；目录回归12、启动9另行通过。Python标准ZIP独立样本覆盖压缩/存储/CRC/头/范围/加密/ZIP64/解压炸弹/伪小size及80MiB有界提取；仅预览部分读不足70KiB，不含上传/关联hash的完整流式读取。无SQL迁移变动。
+
+Web4组通过实际3MF选择、自动图关联及PNG解码、源字节下载、删除顺序保护；无pageerror。截图已检查，内嵌图1×1，仅证明提取与实际字节解码，不是3D渲染。Windows沿用受控系统缩略图回退（测试进程显式禁用且恢复环境），没有声称实际Windows回退或Linux STL/STEP渲染通过。
+
+证据preview-http-red.log/green.log、preview-parser.log、preview-catalog-regression.log、preview-runtime-regression.log、auto-preview-web-verification.json、auto-preview-web.log、preview-web-build.log、auto-preview-owner.png。源含其他未提交工作，非纯HEAD发布验收。指定emulator-5558已只读核对身份一致并记录日常包路径，尚未写设备。当前开始Task5独立安卓QA，后台自有服务器/PG留作验收后再按所有权清理；正式服务器未更新。A5未达95%。

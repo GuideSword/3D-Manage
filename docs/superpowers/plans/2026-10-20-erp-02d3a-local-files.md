@@ -46,7 +46,7 @@ Files: utils/relationalFilesCore.cjs、relationalFilesApi.js；screens/CreateMod
 
 - [x] 独立关系API携带业务头、固定key、已读version，multipart不强制JSON Content-Type；FilePicker补齐平台MIME并按扩展名/作用域/文件大小验证。旧服务器走原路径，不编辑既有脏utils/api.js来隐式补最新版本。
 - [x] 新建主体→上传→登记的每一步保存明确结果；附件失败时展示主体已创建和剩余附件，重试不重复创建主体或已经成功的文件。冲突明确重载核对；未知结果锁定原文件/类型/版本/key及返回，401/换会话可退出。
-- [ ] 模型详情真实上传、图片类型/源文件/预览、删除关联和刷新；订单附件新建/编辑/移除/下载可用，保持现有编辑草稿，不把本地uri或附件名当已上传。
+- [x] 模型详情真实上传、图片类型/源文件/预览、删除关联和刷新；订单附件新建/编辑/移除/下载可用，保持现有编辑草稿，不把本地uri或附件名当已上传。
 - [ ] 下载/分享沿用已核实服务器作用域，失效作用域不能分享旧缓存；有实际文件才显示成功。检查既有ModelDetail未提交图片工作，分离本项改动进行提交。
 
 ## Task5 真实集成与推进
@@ -149,3 +149,26 @@ OrderDetailScreen关系分支接入独立文件流程：从实际选择器选择
 旧服务器路径保留。源码仍含其他未提交AI/会话改动，当前是实际工作树验收，不能称为纯HEAD发布验收。后台浏览器关闭，自有服务器按PID命令行核对后停止，自有PG按runId/标签核对后删除，私有配置删除；file-forms-cleanup.json保存清理及源码SHA。正式服务器和所有模拟器未操作。
 
 **下一步仍在A5：** 关系模式自动预览及源文件引用、指定emulator-5558选择/分享/原生布局与缩放，补齐相应集成边界。现有预览工具依赖3MF全buffer提取及Windows缩略图，不能直接挂回旧JSONB/AI路由或读取500MiB整块文件来伪称流式；需在现有领域/存储边界接入并核验。Task4其余及Task5保持待办，A5未达95%，不能关闭02D2 Task6或正式切换。
+
+## 自动预览执行细化（2026-10-20）
+
+沿用既有“尽量生成”边界：优先3MF内嵌PNG/JPEG，Windows保留受控系统缩略图回退；无缩略图/不支持格式仍能保存源文件，不把空白占位当作成功预览。不承诺新增Linux STL/STEP几何渲染器。
+
+1. localStorage.open增加有限readAt与服务器内部已核实fullPath。新的models/thumbnail3mf.js只读ZIP尾、有限中央目录及候选缩略图；目录2MiB、缩略图压缩/解压8MiB、候选3个、条目4096上限。验证真实读取边界、头/目录一致、CRC及解压上限；ZIP64/加密/跨磁盘/畸形明确不生成，绝不解压任意目录或整块读取500MiB源。
+2. models/preview.js通过同一本地存储stage/publish生成图片资料，不加载旧store/auth/AI。Windows回退调用现有纯预览工具且只传空buffer及已核实路径；图片仍走大小/头校验，不直接挂回旧路由。格式/生成失败保留源文件并给出提示，正式发布字节不自动删。
+3. model.file.add在已验证身份/维护/版本/回执的同一命令中生成预览及sourceFileId关联；沿用object_uploads写入生成事实和审计，不新增SQL迁移。PG错误必须整个命令回滚，不能吞掉SQL失败假装成功。重复命令回放不生成第二图片/事实；父版本只按原命令递增一次。
+4. Python标准zipfile独立生成实际3MF测试档，验证普通压缩/原样压缩、坏CRC/伪大小/路径/加密/不支持/过大、真实大档有限读。实际PG/HTTP验证自动预览字节、源ID、回执、引用保护及移除后可删源。再补Web真实3MF选择及图像解码，不以纯解析器用例替代页面验收。
+
+## 自动预览结果（2026-10-20）
+
+localStorage.open新增限8MiB的readAt及只供服务器内部使用的已核实fullPath；每段读取前后核对大小/mtime，HTTP不返回磁盘路径。thumbnail3mf独立实现有界尾部/目录/候选读取、CRC和本地头一致性核对、解压上限；不解压到任意路径。Python标准zipfile生成独立测试档。实际80MiB模型仅预览提取读取不足70KiB；上传/关联本身仍需完整流式hash，不把该数字冒称整个上传请求只读70KiB。
+
+同一model.file.add命令完成源文件关联、生成图片object_uploads事实、图片关联、审计与回执，父version只递增一次；自动图type=auto_preview、sourceFileId为服务器源文件ID、previewSource记录来源。复用既有source引用删除保护。生成异常保留源并记录previewWarning，详情可见；没有内嵌图或格式不支持不伪造图片。PG生成事实失败必须整个命令回滚，生成文件可能成为待核对的物理未关联内容，不自动删除共享字节。
+
+优先3MF内嵌PNG/JPEG，Windows保留原有受控系统缩略图回退，仅传空buffer与已核实路径；本轮不声称Windows实际系统回退通过，也不声称Linux新增STL/STEP几何渲染。验证脚本进程内显式禁用依赖宿主软件的Windows缩略图，结束后恢复原环境，不能将这种确定性隔离称为验证系统回退。
+
+实际从preview-http-red.log的缺自动图/无法触发生成事实回滚失败，推进到preview-http-green.log **40项通过0跳过**：含物理13项、独立预览解析9项（8个子用例+父项）和真实PG/HTTP18项。涵盖存储/压缩、坏CRC、本地头/名字/方法/范围错、加密/跨盘/ZIP64/过大目录、真实解压炸弹及伪小尺寸、80MiB有界读取、PG图片事实/源ID/单次version、回执不重复、Viewer原字节、引用保护与顺序移除、无图仍保存源、注入SQL失败回滚所有业务事实。目录回归12项、启动回归9项另行通过0跳过。既有迁移1–7未修改，无新SQL迁移；没有引入旧store/auth/AI。
+
+真实完整服务器+PG+Web源构建自动预览4组通过：实际选择3MF创建后解码受保护PNG/源ID/单次version；原3MF字节下载不变；页面不能先删被自动图引用的源；先移除自动图后可移除源且物理图片保留。无pageerror。截图auto-preview-owner.png已检查；测试内嵌图为1×1 PNG，仅证明实际提取/传输/解码，不是3D几何渲染或真实切片器画面验收。证据auto-preview-web-verification.json、auto-preview-web.log、preview-parser.log、preview-catalog-regression.log、preview-runtime-regression.log、preview-web-build.log在.tmp/erp-02d3a-files。源码仍含其他未提交工作，非纯HEAD发布验收。
+
+已只读确认emulator-5558在线，AndroidID与之前批准实例相同，日常包路径已重新记录于未提交的native-approved-before.json，未安装/写入任何设备。当前进入Task5指定模拟器独立QA包及真实选择/分享/缩放验收；后台本轮自有服务器/PG继续用于该验收，结束后核对所有权清理。A5仍未达95%，02D2 Task6、正式切换及后续A6不关闭。
