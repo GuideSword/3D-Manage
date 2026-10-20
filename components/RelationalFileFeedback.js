@@ -3,7 +3,7 @@ import { Text, View } from 'react-native';
 import Button from './Button';
 import { useAppTheme } from '../context/ThemeContext';
 
-export default function RelationalFileFeedback({ mutation, onSaved, onReload }) {
+export default function RelationalFileFeedback({ mutation, onSaved, onReload, allowCancel = true }) {
   const { colors } = useAppTheme();
   if (!mutation.error && !mutation.pending) return null;
   return <View style={{ gap: 8, paddingVertical: 12 }}>
@@ -15,7 +15,7 @@ export default function RelationalFileFeedback({ mutation, onSaved, onReload }) 
     {mutation.pending && !mutation.busy ? <>
       {mutation.phase === 'conflict' ? <Button title="重新加载并核对记录" variant="outline" onPress={onReload} />
         : <Button title="重试原文件操作" onPress={async () => { const result = await mutation.retry(); if (result) onSaved(result); }} />}
-      {!mutation.uncertain ? <Button title="取消本次文件操作" variant="outline" onPress={mutation.cancel} /> : null}
+      {allowCancel && !mutation.uncertain ? <Button title="取消本次文件操作" variant="outline" onPress={mutation.cancel} /> : null}
     </> : null}
   </View>;
 }

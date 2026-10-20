@@ -49,3 +49,13 @@ GET/HEAD /files支持真实字节、mime、长度、私有无缓存、合法单�
 初版脚本误选底层首页客户同名文案造成点击等待，命中栈后改用当前列表唯一订单编号正常点击；没有force/脚本派发点击。另将Viewer就绪判断从无权限的编辑按钮改为订单总额。不是产品遮挡修复，原有通用订单全量smoke余项未据此关闭。
 
 证据order-file-web-verification.json、order-file-web.log、order-file-staff-narrow.png、order-file-client-regression.log和order-web-build.log在.tmp/erp-02d3a-files；源码仍含既有未提交工作。后台浏览器、核对PID命令行后的本轮服务器及核对标签/runId后的PG容器已清理，私有配置删除，order-file-cleanup.json留摘要。未操作正式服务器或任何模拟器。新建/编辑表单的主体→附件恢复、自动预览与安卓仍待，A5未达95%。
+
+## 新建/编辑表单分步恢复
+
+主体结果确认后由savedRecordFilesCore队列接管；每次使用上一个已确认版本，重试只处理未完成文件。主体响应ID/版本不合约则按未知保留原key。模型新增/编辑可带文件和图片；订单新增/编辑可追加附件，仅加附件无字段修改时不发空PATCH。主体保存后冻结输入并明确显示剩余附件；未知必须确认，明确拒绝可进已保存主体稍后补附件。编辑时回原详情而非再叠一页。
+
+纯队列6项、相关Node回归合计45项通过0跳过。实际构建+PG+完整服务器+后台Web表单6组通过：模型主体/第二文件上传/第二文件登记分别丢响应后恢复不重复；模型编辑追加保留原文件图片；编辑失败后稍后补附件正确返回路径；新建坏图片拒绝保留主体；新订单主体/附件登记丢响应后不重复且金额精确；编辑仅追加附件不空修改并在并发备注冲突时重载核对继续登记。无pageerror。首次脚本未等重载请求完成就读备注，改成等实际字段值，不是产品失败修复。
+
+file-forms-web-verification.json、file-forms-web.log、forms-web-build.log、forms-client-regression.log、model-form-pending-files.png为证据；截图已检查。共享组件变更后模型详情8组和订单详情6组回归通过，末次导航小修补由最终6组表单覆盖。仍含其他未提交工作，不是纯HEAD发布验收。
+
+后台浏览器/核对PID命令行后的服务器/核对runId标签后的PG容器与私有配置均已清理，file-forms-cleanup.json记录源SHA及结果。正式服务器、所有模拟器未操作。自动预览及源文件引用、emulator-5558原生选择/分享/缩放仍待，A5未达95%。

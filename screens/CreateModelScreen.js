@@ -24,6 +24,11 @@ import { useMasterDataMutation } from '../utils/useMasterDataMutation';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import catalogCore from '../utils/relationalCatalogCore.cjs';
 import { relationalModelsAPI } from '../utils/relationalCatalogApi';
+import { useSavedRecordFiles } from '../utils/useSavedRecordFiles';
+import queueCore from '../utils/savedRecordFilesCore.cjs';
+import filesCore from '../utils/relationalFilesCore.cjs';
+import RelationalFileFeedback from '../components/RelationalFileFeedback';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 
 const SOURCE_OPTIONS = [
   { value: 'original', label: '原创' },
@@ -47,12 +52,14 @@ const CreateModelScreen = ({ navigation, route }) => {
   const { server } = useServerConfig();
   const relational = masterDataCore.supportsMasterData(server);
   const mutation = useMasterDataMutation(navigation);
+  const savedFiles = useSavedRecordFiles(navigation, 'models', relationalModelsAPI);
+  const formRuntime = useRef(getServerRuntime());
   const recordAPI = relational ? relationalModelsAPI : modelsAPI;
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const [loading, setLoading] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const locked = loading || (relational && (mutation.loading || Boolean(mutation.pending) || mutation.conflict));
+  const locked = loading || (relational && (mutation.loading || Boolean(mutation.pending) || mutation.conflict || Boolean(savedFiles.savedRecord) || savedFiles.busy));
   const [selectedModelFile, setSelectedModelFile] = useState(null);
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageType, setImageType] = useState('cover');
@@ -67,45 +74,55 @@ const CreateModelScreen = ({ navigation, route }) => {
   });
 
   const pickModelFile = async () => {
+    if (locked || relational && !isCurrentRuntime(formRuntime.current)) return;
+    const captured = getServerRuntime();
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
       });
-      if (result.canceled) {
+      if (result.canceled || !isCurrentRuntime(captured)) {
         return;
       }
 
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
+      if (!isCurrentRuntime(captured)) return;
+      if (relational) filesCore.validateFileAsset('models', asset?.file || asset);
       if (!validateExtension(asset, MODEL_EXTENSIONS)) {
         Alert.alert('文件格式不支持', '请选择 STL、OBJ、3MF、STEP、STP 或 ZIP 模型文件');
         return;
       }
       setSelectedModelFile(asset);
     } catch (error) {
+      setSaveError(error.message || '选择文件失败');
       Alert.alert('错误', '选择模型文件失败');
     }
   };
 
   const pickImage = async () => {
+    if (locked || relational && !isCurrentRuntime(formRuntime.current)) return;
+    const captured = getServerRuntime();
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'image/*',
         copyToCacheDirectory: true,
       });
-      if (result.canceled) {
+      if (result.canceled || !isCurrentRuntime(captured)) {
         return;
       }
 
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
+      if (!isCurrentRuntime(captured)) return;
+      if (relational) filesCore.validateFileAsset('images', asset?.file || asset);
       if (!validateExtension(asset, IMAGE_EXTENSIONS)) {
         Alert.alert('图片格式不支持', '请选择 JPG、PNG 或 WEBP 图片');
         return;
       }
       setSelectedImage(asset);
     } catch (error) {
+      setSaveError(error.message || '选择文件失败');
       Alert.alert('错误', '选择图片失败');
     }
   };
@@ -133,8 +150,18 @@ const CreateModelScreen = ({ navigation, route }) => {
     return true;
   };
 
+  const finishSavedModel = result => {
+    if (!result) return;
+    if (isEditing) navigation.goBack();
+    else navigation.replace(ROUTES.MODEL_DETAIL, { modelId: result.id });
+  };
+  const reloadSavedModel = async () => {
+    const fresh = await savedFiles.reload();
+    if (fresh) setFormData({ name: fresh.name || '', description: fresh.description || '', source: fresh.source || 'original' });
+  };
+
   const handleSubmit = async () => {
-    if (submitting.current || (isEditing && !record) || !validateForm()) {
+    if (submitting.current || (relational && !isCurrentRuntime(formRuntime.current)) || (isEditing && !record) || (!savedFiles.savedRecord && !validateForm())) {
       return;
     }
 
@@ -142,16 +169,23 @@ const CreateModelScreen = ({ navigation, route }) => {
       submitting.current = true;
       setSaveError('');
       setLoading(true);
-      if (relational && (selectedModelFile || selectedImage)) {
-        throw new Error('当前服务器暂不支持附件上传，请稍后重试');
+      if (relational) {
+        if (savedFiles.savedRecord) { finishSavedModel(await savedFiles.retry()); return; }
+        const files = queueCore.validateFileQueue('models', [
+          ...(selectedModelFile ? [{ child: 'files', file: pickerAssetToFormFile(selectedModelFile) }] : []),
+          ...(selectedImage ? [{ child: 'images', file: pickerAssetToFormFile(selectedImage), metadata: { type: imageType } }] : []),
+        ]);
+        const body = catalogCore.catalogPayload('models', formData, record);
+        const result = await mutation.run(isEditing ? 'model.update' : 'model.create', body,
+          (input, key) => Promise.resolve(isEditing ? relationalModelsAPI.update(input.id, { version: input.version, changes: input.changes }, key)
+            : relationalModelsAPI.create(input, key)).then(saved => queueCore.validateSavedRecord(saved, isEditing ? { id: input.id, version: input.version } : {})));
+        if (result && isCurrentRuntime(formRuntime.current)) finishSavedModel(await savedFiles.start(result, files));
+        return;
       }
-      const payload = relational ? catalogCore.catalogPayload('models', formData, record) : {
+      const payload = {
         name: formData.name.trim(), description: formData.description.trim(), source: formData.source,
       };
-      const newModel = relational ? await mutation.run(isEditing ? 'model.update' : 'model.create', payload,
-        (body, key) => isEditing ? relationalModelsAPI.update(body.id, { version: body.version, changes: body.changes }, key)
-          : relationalModelsAPI.create(body, key))
-        : isEditing ? await modelsAPI.update(modelId, payload) : await modelsAPI.create(payload);
+      const newModel = isEditing ? await modelsAPI.update(modelId, payload) : await modelsAPI.create(payload);
       if (newModel === null) return;
       if (isEditing) { navigation.goBack(); return; }
 
@@ -203,7 +237,7 @@ const CreateModelScreen = ({ navigation, route }) => {
           <View style={styles.headerText}>
             <Text style={styles.eyebrow}>{isEditing ? 'EDIT MODEL' : 'NEW MODEL'}</Text>
             <Text style={styles.title}>{isEditing ? '编辑模型' : '新建模型'}</Text>
-            <Text style={styles.subtitle}>{isEditing ? '修改基础资料，文件和图片可在详情页管理。' : '录入模型信息，并可同时上传模型文件和图片。'}</Text>
+            <Text style={styles.subtitle}>{isEditing ? relational ? '修改模型资料，也可追加文件和图片。' : '修改基础资料，文件和图片可在详情页管理。' : '录入模型信息，并可同时上传模型文件和图片。'}</Text>
           </View>
         </View>
 
@@ -238,10 +272,10 @@ const CreateModelScreen = ({ navigation, route }) => {
           </View>
         </Card>
 
-        {!isEditing ? <Card style={styles.section}>
+        {!isEditing || relational ? <Card style={styles.section}>
           <Text style={styles.sectionTitle}>模型文件</Text>
           <Text style={styles.helperText}>
-            支持 STL、OBJ、3MF、STEP、STP、ZIP。上传后系统会尽量生成自动预览图。
+            支持 STL、OBJ、3MF、STEP、STP、ZIP。保存后可在详情页下载和管理。
           </Text>
           {selectedModelFile ? <SelectedFile asset={selectedModelFile} /> : null}
           <Button
@@ -254,7 +288,7 @@ const CreateModelScreen = ({ navigation, route }) => {
           />
         </Card> : null}
 
-        {!isEditing ? <Card style={styles.section}>
+        {!isEditing || relational ? <Card style={styles.section}>
           <Text style={styles.sectionTitle}>模型图片</Text>
           <Text style={styles.helperText}>
             可以先上传封面图或实物打印图，之后也可以在详情页继续添加。
@@ -282,14 +316,20 @@ const CreateModelScreen = ({ navigation, route }) => {
         </Card> : null}
 
         <View style={styles.buttonContainer}>
+          {relational && savedFiles.savedRecord ? <>
+            <Text>模型资料已保存，还有 {savedFiles.remaining} 个文件待完成。请继续完成剩余文件。</Text>
+            <RelationalFileFeedback mutation={savedFiles.feedback} onSaved={finishSavedModel} onReload={reloadSavedModel} allowCancel={false} />
+            {!savedFiles.feedback.uncertain ? <Button title="前往已保存模型，稍后补附件" variant="outline" disabled={savedFiles.busy}
+              onPress={async () => finishSavedModel(await savedFiles.finishLater())} /> : null}
+          </> : null}
           {(saveError || mutation.error) ? <Text style={{ color: colors.danger }}>{saveError || mutation.error}</Text> : null}
           {relational && mutation.pending && !mutation.loading ? <Text>上次操作结果尚未确认，请重试原操作。</Text> : null}
           {relational && mutation.conflict ? <Button title="重新加载原记录" variant="outline" onPress={reload} /> : null}
           <Button
-            title={loading ? '保存中...' : relational && mutation.pending ? '重试原操作' : isEditing ? '保存修改' : '创建模型'}
+            title={loading ? '保存中...' : relational && savedFiles.savedRecord ? '继续保存附件' : relational && mutation.pending ? '重试原操作' : isEditing ? '保存修改' : '创建模型'}
             iconLeft="checkmark-outline"
             onPress={handleSubmit}
-            disabled={loading || (relational && mutation.conflict)}
+            disabled={loading || (relational && (mutation.conflict || savedFiles.busy || savedFiles.feedback.pending))}
             loading={loading}
             fullWidth
             style={styles.submitButton}
