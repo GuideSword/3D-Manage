@@ -81,3 +81,12 @@ QA APK已成功构建但未安装；本机SDK会将非200响应写文件，旧�
 修复后APK43秒构建成功，仅在再次核对身份一致的emulator-5558独立安装com.anonymous.x3DManage.erp02d3afiles。设备base.apk哈希与产物一致（201e77991b5aa92dec8ddd51a34348f8cab473ebdaa896f2db98df7236e1fc8e），源提交40b421a、含其他未提交源；日常包路径未改。只创建本设备5850映射，连接自有隔离服务器并以测试Owner登录成功，无需用户密码。安装前缺包查询返回码1导致首个脚本保守停止，处理空结果后安装成功；没有覆盖未知包。
 
 证据native-install.json、native-progress.json、native-connected-dashboard.png、native-apk-final-build.log；会话回归14项另行通过（含既有未提交测试）。正式业务/AI新只读基线formal-before-native.json记录，仍无erp schema。没有更新正式服务器或触碰其他模拟器。PG/服务器、QA包与本设备5850映射暂保留供真实选择/分享/401/缩放验收；这些仍未完成，A5未达95%。
+
+
+## 2026-10-20：Bambu Studio 非预期启动排查
+
+用户反馈后只读查看进程：当前 `bambu-studio.exe` PID36300于15:05:23启动，参数为验收临时目录 `erp-local-http-4Jp6Dm/uploads/models/c1784888d5c9a1d7b62244e07b2ea406023de7953828653c494dd676feafe685.stl`。父进程34416已不存在，无法还原完整进程树，也不推断所有历史窗口的数量。临时目录命名与实际文件HTTP验收一致；自动预览中存在Windows Shell缩略图调用，关联处理器可启动本机切片器。
+
+已移除两条预览路径的Shell调用；保留3MF内嵌图。Windows生产环境回归使用隔离VM和拦截器，不调用实际PowerShell/Studio：修复前4项均检测到调用，修复后4项全通过。`pwsh -NoProfile -File tests/ops/erp-02a-postgres.verify.ps1 -Suite local-files` 共44通过、0失败、0跳过，包括真实PG/HTTP与内嵌预览回归。验证脚本移除旧禁用变量，防止以测试配置掩盖产品行为。未触发真实Studio打开、未关闭现有窗口、未改文件关联、未更新正式容器。
+
+此前关于“保留Windows受控缩略图回退”的描述为旧实现，现已被本节修复覆盖。新增手动交接仍处于方案确认阶段。

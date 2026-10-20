@@ -4,21 +4,19 @@ const { Readable } = require('node:stream');
 const { randomUUID } = require('node:crypto');
 const { createLocalFileStorage } = require('../files/localStorage');
 const { extract3mfThumbnail, imageExtension, MAX_IMAGE_BYTES } = require('./thumbnail3mf');
-const { createModelPreview } = require('../../utils/modelPreview');
 
 function createAutoPreviewPublisher({ uploadDirectory } = {}) {
   let pendingStorage;
   const storage = () => pendingStorage ||= createLocalFileStorage({ uploadDirectory });
   return async source => {
     const extension = path.extname(source.fileKey).toLowerCase();
-    if (extension !== '.3mf' && process.platform !== 'win32') return { file: null };
+    if (extension !== '.3mf') return { file: null };
     let local, token;
     try {
       local = await storage();
       const reader = await local.open(source.fileKey); let preview;
       try {
-        if (extension === '.3mf') preview = await extract3mfThumbnail(reader);
-        if (!preview && process.platform === 'win32') preview = await createModelPreview({ fileBuffer: Buffer.alloc(0), originalName: source.originalName || source.name || source.fileKey, fullPath: reader.fullPath });
+        preview = await extract3mfThumbnail(reader);
       } finally { await reader.close(); }
       if (!preview) return { file: null };
       if (!Buffer.isBuffer(preview.buffer) || !preview.buffer.length || preview.buffer.length > MAX_IMAGE_BYTES
