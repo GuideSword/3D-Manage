@@ -161,7 +161,7 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
   const { controller, release } = registerOperation(captured);
 
   try {
-    if (Platform.OS !== 'web') return downloadAndShareNative({
+    if (Platform.OS !== 'web') return await downloadAndShareNative({
       url,
       filename,
       token,
@@ -169,6 +169,11 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
       controller,
       isCurrent: isCurrentRuntime,
       staleError: () => new StaleSessionError(),
+      onUnauthorized: isApiOrigin ? async () => {
+        if (!isCurrentRuntime(captured)) return;
+        await clearToken(captured.serverKey);
+        if (isCurrentRuntime(captured)) unauthorizedHandler?.(captured);
+      } : undefined,
     });
 
     const response = await fetch(url, {
