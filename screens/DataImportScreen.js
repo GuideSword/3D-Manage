@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -10,13 +11,16 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import { trackPickedAsset } from '../utils/sessionStorage';
-import * as FileSystem from 'expo-file-system';
+import * as FileSystem from 'expo-file-system/legacy';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { isAuthRequiredError, materialsAPI, modelsAPI, ordersAPI, stockAPI } from '../utils/api';
 import { validateExtension } from '../utils/upload';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalDataTransferScreen from './RelationalDataTransferScreen';
 
 const IMPORT_OPTIONS = [
   { value: 'orders', label: '订单' },
@@ -95,6 +99,7 @@ const DataImportScreen = ({ navigation }) => {
         result = await submitCommand('lots.import', { csv: csvText }, (body, key) => stockAPI.importLots(body, key));
         if (result === null) return;
       }
+      if (Platform.OS === 'web') { navigation.goBack(); return; }
       Alert.alert('成功', `已导入 ${result.imported || 0} 条数据`, [
         { text: '确定', onPress: () => navigation.goBack() },
       ]);
@@ -292,4 +297,7 @@ const createStyles = (colors) => StyleSheet.create({
   },
 });
 
-export default DataImportScreen;
+export default function DataTransferRoute(props) {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server) ? <RelationalDataTransferScreen {...props} /> : <DataImportScreen {...props} />;
+}

@@ -164,7 +164,7 @@ const AppNavigator = () => {
             {canExport(user) ? <Stack.Screen
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
+              options={{ title: masterDataCore.supportsMasterData(server) ? 'CSV导入导出' : SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
             /> : null}
             <Stack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} options={{ title: SCREEN_TITLES[ROUTES.CHANGE_PASSWORD] }} />
             {canManage(user) ? <Stack.Screen

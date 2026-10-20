@@ -19,26 +19,26 @@
 
 Files: utils/relationalCsvCore.cjs、utils/relationalCsvApi.js、tests/client/relational-csv.test.cjs。
 
-- [ ] 失败测试覆盖四类导入kind映射、严格字段、固定key/业务版本2；正文不能被自动trim改写，不导入transactions；无效模块不请求。
-- [ ] 与服务端定义逐项核对模板，订单显示客户ID和行分组说明、库存使用qty_g；前端不parseFloat/推断编号。导出仅search/active合法过滤，transactions禁active。
-- [ ] JSON导出DTO校验，数量/filename/contentType不冒充下载成功；纯client核心不引入Buffer、pg或服务器validation。专项和现有controller/精度回归通过后提交。
+- [x] 失败测试覆盖四类导入kind映射、严格字段、固定key/业务版本2；正文不能被自动trim改写，不导入transactions；无效模块不请求。
+- [x] 与服务端定义逐项核对模板，订单显示客户ID和行分组说明、库存使用qty_g；前端不parseFloat/推断编号。导出仅search/active合法过滤，transactions禁active。
+- [x] JSON导出DTO校验，数量/filename/contentType不冒充下载成功；纯client核心不引入Buffer、pg或服务器validation。专项和现有controller/精度回归通过后提交。
 
 ## Task2 关系导入导出页面
 
 Files: screens/RelationalDataTransferScreen.js、screens/DataImportScreen.js、screens/SettingsScreen.js。
 
-- [ ] 复用现有模块选择、粘贴及文件选择；只接受csv/txt，使用legacy文件系统读取原生缓存。捕获读取开始的runtime并在读取完成核对，旧账号文件不能填入新账号页面。
-- [ ] 写入前验证非空CSV；mutation持有原模块/原正文/key，加载与结果未知时锁字段/选文件/切模块/返回。重试只发原命令，成功显示实际导入数量，Web能返回/刷新，原生有明确结果。
-- [ ] 字段/编码/引用/全批失败/维护错误显示在页面，不把Alert当作Web反馈；明确只新建及CSV备份边界。
-- [ ] 增加导出模式，支持订单、模型、耗材、批次、流水及search/active；设置入口在关系模式显示CSV导入导出，旧服务器标签/路径不误改。
+- [x] 复用现有模块选择、粘贴及文件选择；只接受csv/txt，使用legacy文件系统读取原生缓存。捕获读取开始的runtime并在读取完成核对，旧账号文件不能填入新账号页面。
+- [x] 写入前验证非空CSV；mutation持有原模块/原正文/key，加载与结果未知时锁字段/选文件/切模块/返回。重试只发原命令，成功显示实际导入数量，Web能返回/刷新，原生有明确结果。
+- [x] 字段/编码/引用/全批失败/维护错误显示在页面，不把Alert当作Web反馈；明确只新建及CSV备份边界。
+- [x] 增加导出模式，支持订单、模型、耗材、批次、流水及search/active；设置入口在关系模式显示CSV导入导出，旧服务器标签/路径不误改。
 
 ## Task3 文件保存与会话隔离
 
 Files: utils/csvFileExport.js、utils/csvFileExportCore.cjs、tests/client/csv-file-export.test.cjs（纯编排便于注入平台适配）。
 
-- [ ] Web以UTF-8 Blob/安全文件名下载并释放URL；原生用expo-file-system/legacy生成应用缓存文件，登记trackSessionFile再Sharing。返回成功须已完成实际下载触发/分享调用。
-- [ ] 导出开始捕获runtime/user作用域；请求后、写文件后、跟踪后、分享前均核对，切账号/服务器不分享旧数据；出错清理已生成缓存，不能把外部路径当作应用缓存删。
-- [ ] 测试不支持分享/写入失败/切换会话的明确错误和清理，不把产生CSV字符串当作手机分享验收。
+- [x] Web以UTF-8 Blob/安全文件名下载并释放URL；原生用expo-file-system/legacy生成应用缓存文件，登记trackSessionFile再Sharing。返回成功须已完成实际下载触发/分享调用。
+- [x] 导出开始捕获runtime/user作用域；请求后、写文件后、跟踪后、分享前均核对，切账号/服务器不分享旧数据；出错清理已生成缓存，不能把外部路径当作应用缓存删。
+- [x] 测试不支持分享/写入失败/切换会话的明确错误和清理，不把产生CSV字符串当作手机分享验收。
 
 ## Task4 真实集成与推进
 
@@ -49,4 +49,12 @@ Files: utils/csvFileExport.js、utils/csvFileExportCore.cjs、tests/client/csv-f
 
 ## 当前状态
 
-A3账号管理与本人改密已达约95%，当前A4 Task1；只完成现有调用点/协议盘点与本计划，尚未实施CSV业务代码，不把模板计划当作已交付功能。
+A3账号管理与本人改密已达约95%；当前A4 Tasks1–3代码和Web已接好，Task4原生文件选择/分享及最后核对尚待完成，A4尚未宣称95%。
+
+## Tasks1–3及Web结果（2026-10-20）
+
+关系Web13组通过并保存6个实际CSV下载，四类导入/同键丢响应重试/整批回滚/维护/401/权限/精确金额及毫克均有真实PG验证；另390px Web2组通过，验证成功返回及停用筛选、BOM文件下载。实际旧文件服务器Web3组通过。旧Web导入成功依赖原生Alert返回的问题已由红→绿修复；原生旧文件读取改用现有expo-file-system/legacy。
+
+客户端专项及相关75项、实际PG adapters16/inventory12/maintenance9/runtime9共46项，总121项Node检查通过，0跳过。新增csvAssetCore使选择文件期间切换服务器/账号或页面失效时拒绝回填，且只删除应用缓存副本。导出纯编排同样检查作用域、生成文件/跟踪/分享失败清理，不能把CSV字符串当作原生分享已验收。
+
+当前Task4：准备独立原生QA包，只允许emulator-5558；该实例daily package安装路径与上轮一致，未接触其他模拟器。完整平台验收与发布门槛仍保留。

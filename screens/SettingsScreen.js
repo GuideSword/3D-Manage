@@ -151,8 +151,8 @@ const SettingsScreen = () => {
             styles={styles}
             colors={colors}
             icon="document-attach-outline"
-            label="CSV 导入"
-            hint="批量导入订单、耗材或库存数据"
+            label={masterDataCore.supportsMasterData(server) ? "CSV 导入导出" : "CSV 导入"}
+            hint={masterDataCore.supportsMasterData(server) ? "批量导入资料或导出CSV文件" : "批量导入订单、耗材或库存数据"}
             onPress={() => navigation.navigate(ROUTES.DATA_IMPORT)}
           />
         </Card>
