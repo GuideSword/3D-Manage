@@ -1,8 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
+  Modal,
   Platform,
   RefreshControl,
   SafeAreaView,
@@ -14,8 +15,10 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { RADIUS, ROUTES, SPACING, TYPOGRAPHY } from '../constants';
 import { Badge, Button, Card, ProtectedImage } from '../components';
+import ZoomableProtectedImage from '../components/ZoomableProtectedImage';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useServerConfig } from '../context/ServerConfigContext';
@@ -23,6 +26,10 @@ import { useMasterDataMutation } from '../utils/useMasterDataMutation';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
 import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
+import RelationalFileFeedback from '../components/RelationalFileFeedback';
+import { useRelationalFileMutation } from '../utils/useRelationalFileMutation';
+import filesCore from '../utils/relationalFilesCore.cjs';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
@@ -55,6 +62,9 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const { server } = useServerConfig();
   const relational = masterDataCore.supportsMasterData(server);
   const catalogMutation = useMasterDataMutation(navigation);
+  const fileMutation = useRelationalFileMutation(navigation);
+  const modelRuntime = useRef(null);
+  const fileLocked = relational && (fileMutation.pending || fileMutation.busy || catalogMutation.pending || catalogMutation.loading);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { modelId } = route.params || {};
@@ -64,9 +74,11 @@ const ModelDetailScreen = ({ route, navigation }) => {
   const [deleting, setDeleting] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [deletingImageId, setDeletingImageId] = useState(null);
   const [downloadingFileId, setDownloadingFileId] = useState(null);
   const [imageType, setImageType] = useState('cover');
   const [authToken, setAuthToken] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
 
   const fetchModelDetail = async () => {
     if (!modelId) {
@@ -78,9 +90,13 @@ const ModelDetailScreen = ({ route, navigation }) => {
     try {
       setLoading(true);
       setAuthToken(await authAPI.getToken());
-      const modelData = await modelsAPI.getById(modelId);
+      const captured = getServerRuntime();
+      const modelData = await (relational ? relationalModelsAPI : modelsAPI).getById(modelId);
+      if (!isCurrentRuntime(captured)) return;
+      modelRuntime.current = captured;
       setModel(modelData);
       catalogMutation.resetAfterLoad();
+      return modelData;
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -151,6 +167,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
   };
 
   const handleUploadFile = async () => {
+    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -160,14 +177,22 @@ const ModelDetailScreen = ({ route, navigation }) => {
         return;
       }
 
+      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
+      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
       if (!validateExtension(asset, MODEL_EXTENSIONS)) {
         Alert.alert('文件格式不支持', '请选择 STL、OBJ、3MF、STEP、STP 或 ZIP 模型文件');
         return;
       }
 
       setUploadingFile(true);
+      if (relational) {
+        filesCore.validateFileAsset('models', asset.file || asset);
+        const result = await fileMutation.start({ entity: 'models', record: model, child: 'files', file: pickerAssetToFormFile(asset) });
+        if (result) setModel(result);
+        return;
+      }
       await modelsAPI.uploadModelFile(modelId, pickerAssetToFormFile(asset));
       Alert.alert('成功', '模型文件已上传');
       await fetchModelDetail();
@@ -175,6 +200,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
+      if (relational) fileMutation.setError(error.message || '上传模型文件失败');
       Alert.alert('错误', error.message || '上传模型文件失败');
     } finally {
       setUploadingFile(false);
@@ -182,6 +208,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
   };
 
   const handleUploadImage = async () => {
+    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'image/*',
@@ -191,14 +218,22 @@ const ModelDetailScreen = ({ route, navigation }) => {
         return;
       }
 
+      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
+      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
       if (!validateExtension(asset, IMAGE_EXTENSIONS)) {
         Alert.alert('图片格式不支持', '请选择 JPG、PNG 或 WEBP 图片');
         return;
       }
 
       setUploadingImage(true);
+      if (relational) {
+        filesCore.validateFileAsset('images', asset.file || asset);
+        const result = await fileMutation.start({ entity: 'models', record: model, child: 'images', file: pickerAssetToFormFile(asset), metadata: { type: imageType } });
+        if (result) setModel(result);
+        return;
+      }
       await modelsAPI.uploadImage(modelId, pickerAssetToFormFile(asset), imageType);
       Alert.alert('成功', '图片已上传');
       await fetchModelDetail();
@@ -206,10 +241,57 @@ const ModelDetailScreen = ({ route, navigation }) => {
       if (isAuthRequiredError(error)) {
         return;
       }
+      if (relational) fileMutation.setError(error.message || '上传图片失败');
       Alert.alert('错误', error.message || '上传图片失败');
     } finally {
       setUploadingImage(false);
     }
+  };
+
+  const deleteImage = async (image) => {
+    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
+    try {
+      setDeletingImageId(image.id);
+      if (relational) {
+        const result = await fileMutation.remove({ entity: 'models', record: model, child: 'images', childId: image.id });
+        if (result) { setModel(result); if (previewImage?.id === image.id) setPreviewImage(null); }
+        return;
+      }
+      await modelsAPI.deleteImage(modelId, image.id);
+      if (previewImage?.id === image.id) setPreviewImage(null);
+      await fetchModelDetail();
+    } catch (error) {
+      if (!isAuthRequiredError(error)) Alert.alert('错误', error.message || '删除图片失败');
+    } finally {
+      setDeletingImageId(null);
+    }
+  };
+
+  const confirmDeleteImage = (image) => {
+    const message = `确定删除“${image.name || IMAGE_TYPE_LABELS[image.type] || '这张图片'}”吗？删除后无法恢复。`;
+    if (Platform.OS === 'web') {
+      if (window.confirm(message)) deleteImage(image);
+      return;
+    }
+    Alert.alert('删除图片', message, [
+      { text: '取消', style: 'cancel' },
+      { text: '删除', style: 'destructive', onPress: () => deleteImage(image) },
+    ]);
+  };
+
+  const removeModelFile = async file => {
+    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
+    const result = await fileMutation.remove({ entity: 'models', record: model, child: 'files', childId: file.id });
+    if (result) setModel(result);
+  };
+  const confirmRemoveModelFile = file => {
+    const message = `确定从模型中移除“${file.name || file.originalName || '该文件'}”吗？`;
+    if (Platform.OS === 'web') { if (window.confirm(message)) removeModelFile(file); return; }
+    Alert.alert('移除模型文件', message, [{ text: '取消', style: 'cancel' }, { text: '移除', style: 'destructive', onPress: () => removeModelFile(file) }]);
+  };
+  const reloadFileConflict = async () => {
+    const current = await fetchModelDetail();
+    if (current) await fileMutation.rebase(current);
   };
 
   const handleDownloadFile = async (file) => {
@@ -281,31 +363,78 @@ const ModelDetailScreen = ({ route, navigation }) => {
         </Card>
 
         <Card style={styles.section}>
-          <SectionHeader title="图片" count={images.length} />
+          <View style={styles.imageSectionHeader}>
+            <SectionHeader title="图片" count={images.length} />
+            {canWrite(user) ? <Button
+              title={uploadingImage ? '添加中...' : '添加图片'}
+              iconLeft="add-outline"
+              size="small"
+              onPress={handleUploadImage}
+              disabled={uploadingImage || fileLocked}
+              loading={uploadingImage}
+            /> : null}
+          </View>
           {images.length > 0 ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gallery}>
               {images.map((image) => (
-                  <View key={image.id} style={styles.imageCard}>
+                <View key={image.id} style={styles.imageCard}>
+                  <TouchableOpacity
+                      activeOpacity={0.85}
+                      accessibilityRole="button"
+                      accessibilityLabel={`放大查看${IMAGE_TYPE_LABELS[image.type] || '模型图片'}`}
+                      onPress={() => setPreviewImage(image)}
+                  >
                     <ProtectedImage
                       fileUrl={image.fileUrl}
                       token={authToken}
                       style={styles.galleryImage}
                       resizeMode="cover"
                       fallback={(
-                      <View style={styles.galleryFallback}>
-                        <Ionicons name="image-outline" size={36} color={colors.textTertiary} />
-                      </View>
+                        <View style={styles.galleryFallback}>
+                          <Ionicons name="image-outline" size={36} color={colors.textTertiary} />
+                        </View>
                       )}
                     />
+                  </TouchableOpacity>
+                  <View style={styles.imageCardFooter}>
                     <Text style={styles.imageLabel} numberOfLines={1}>
                       {IMAGE_TYPE_LABELS[image.type] || image.type || '图片'}
                     </Text>
+                    {canWrite(user) ? <TouchableOpacity
+                        style={styles.imageDeleteButton}
+                        onPress={() => confirmDeleteImage(image)}
+                        disabled={deletingImageId != null || fileLocked}
+                        accessibilityRole="button"
+                        accessibilityLabel={`删除${image.name || '图片'}`}
+                    >
+                      {deletingImageId === image.id
+                        ? <ActivityIndicator size="small" color={colors.danger} />
+                        : <Ionicons name="trash-outline" size={18} color={colors.danger} />}
+                    </TouchableOpacity> : null}
                   </View>
+                </View>
               ))}
             </ScrollView>
           ) : (
             <EmptySection text="暂无图片" />
           )}
+          {canWrite(user) ? <View style={styles.imageTypeRow}>
+            {IMAGE_TYPE_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option.value}
+                activeOpacity={0.82}
+                style={[styles.optionButton, imageType === option.value && styles.optionButtonActive]}
+                onPress={() => setImageType(option.value)}
+                disabled={fileLocked}
+                accessibilityRole="button"
+                accessibilityState={{ selected: imageType === option.value }}
+              >
+                <Text style={[styles.optionText, imageType === option.value && styles.optionTextActive]}>
+                  {option.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View> : null}
         </Card>
 
         <Card style={styles.section}>
@@ -318,7 +447,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
               <View style={styles.fileInfo}>
                 <Text style={styles.fileName} numberOfLines={1}>{file.name}</Text>
                 <Text style={styles.fileMeta}>
-                  {String(file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
+                  {String(file.fileType || file.type || '').toUpperCase()} · {file.size ? `${Math.round(file.size / 1024)} KB` : '未知大小'}
                 </Text>
               </View>
               <Button
@@ -331,6 +460,8 @@ const ModelDetailScreen = ({ route, navigation }) => {
                 disabled={Boolean(downloadingFileId)}
                 style={styles.downloadButton}
               />
+              {relational && canWrite(user) ? <Button title="移除文件" size="small" variant="outline" disabled={fileLocked}
+                onPress={() => confirmRemoveModelFile(file)} /> : null}
             </View>
           )) : (
             <EmptySection text="暂无模型文件" />
@@ -339,47 +470,13 @@ const ModelDetailScreen = ({ route, navigation }) => {
 
         {canWrite(user) ? <>
         <Card style={styles.section}>
-          <SectionHeader title="上传图片" />
-          <View style={styles.optionRow}>
-            {IMAGE_TYPE_OPTIONS.map((option) => (
-              <TouchableOpacity
-                key={option.value}
-                activeOpacity={0.82}
-                style={[
-                  styles.optionButton,
-                  imageType === option.value && styles.optionButtonActive,
-                ]}
-                onPress={() => setImageType(option.value)}
-              >
-                <Text
-                  style={[
-                    styles.optionText,
-                    imageType === option.value && styles.optionTextActive,
-                  ]}
-                >
-                  {option.label}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Button
-            title={uploadingImage ? '上传图片中...' : '上传图片'}
-            iconLeft="image-outline"
-            onPress={handleUploadImage}
-            disabled={uploadingImage}
-            loading={uploadingImage}
-            fullWidth
-          />
-        </Card>
-
-        <Card style={styles.section}>
           <SectionHeader title="文件操作" />
           <View style={styles.actionStack}>
             <Button
               title={uploadingFile ? '上传文件中...' : '上传模型文件'}
               iconLeft="cloud-upload-outline"
               onPress={handleUploadFile}
-              disabled={uploadingFile}
+              disabled={uploadingFile || fileLocked}
               loading={uploadingFile}
               fullWidth
             />
@@ -387,8 +484,10 @@ const ModelDetailScreen = ({ route, navigation }) => {
         </Card>
         </> : null}
 
+        {relational ? <RelationalFileFeedback mutation={fileMutation} onSaved={result => { setModel(result); setPreviewImage(null); }} onReload={reloadFileConflict} /> : null}
+
         {canWrite(user) ? <Card style={styles.section}>
-          <Button title="编辑模型" iconLeft="create-outline" fullWidth
+          <Button title="编辑模型" disabled={fileLocked} iconLeft="create-outline" fullWidth
             onPress={() => navigation.navigate(ROUTES.CREATE_MODEL, { modelId })} />
         </Card> : null}
 
@@ -399,12 +498,36 @@ const ModelDetailScreen = ({ route, navigation }) => {
             iconLeft="trash-outline"
             onPress={handleDelete}
             variant="danger"
-            disabled={deleting}
+            disabled={deleting || fileLocked}
             loading={deleting}
             fullWidth
           />
         </Card> : null}
       </ScrollView>
+      <Modal
+        visible={Boolean(previewImage)}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setPreviewImage(null)}
+      >
+        <GestureHandlerRootView style={styles.previewOverlay}>
+          <TouchableOpacity
+            style={styles.previewClose}
+            onPress={() => setPreviewImage(null)}
+            accessibilityRole="button"
+            accessibilityLabel="关闭图片预览"
+          >
+            <Ionicons name="close" size={28} color="#fff" />
+          </TouchableOpacity>
+          {previewImage ? <ZoomableProtectedImage
+            key={previewImage.id}
+            fileUrl={previewImage.fileUrl}
+            token={authToken}
+            fallback={<ActivityIndicator color="#fff" size="large" />}
+          /> : null}
+          <Text style={styles.previewHint}>双指缩放 · 放大后拖动</Text>
+        </GestureHandlerRootView>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -574,6 +697,45 @@ const createStyles = (COLORS) => StyleSheet.create({
   },
   imageCard: {
     width: 168,
+  },
+  imageCardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  imageDeleteButton: {
+    padding: 8,
+  },
+  imageSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  imageTypeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  previewOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.94)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  previewClose: {
+    position: 'absolute',
+    top: 42,
+    right: 24,
+    zIndex: 1,
+    padding: 8,
+  },
+  previewHint: {
+    position: 'absolute',
+    bottom: 24,
+    color: '#fff',
+    fontSize: 13,
+    opacity: 0.8,
   },
   galleryImage: {
     width: 168,

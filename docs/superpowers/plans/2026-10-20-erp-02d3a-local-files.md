@@ -96,3 +96,19 @@ GET/HEAD /api/files/*已接新PG身份、私有无缓存及单段Range；合法2
 客户端7项加目录协议6项共13通过；其中真实FormData验证保留文件名/字节。另将新客户端封装接入真实PG/Express验收，模拟服务器提交后上传响应丢失、关联响应丢失，原文件/原key重试后仅一个上传事实、一个关联，审计和回执各新增2条。文件专项更新为28通过0跳过，证据client-http-green.log；客户端证据client-red.log、client-green.log。
 
 本次只完成客户端协议层，尚未挂到页面，也未验证UI自动维持原key、分步新建主体恢复、选择器、预览与分享；Task4复选项保持待完成，A5仍未达95%。下一步将流程状态接入模型/订单页面，明确上传成功但登记失败时的提示及恢复。
+
+## Task4 模型详情流程结果（2026-10-20）
+
+新增relationalFileCommandCore及useRelationalFileMutation，上传和关联分别保留固定key；未知上传结果保留原Blob或原生uri/name副本，已确认上传后的未知登记结果只重试登记。初始version不隐式刷新；VERSION_CONFLICT保留已上传资料，显式重载同一主体后更新登记version/key，等待用户再点击重试。删除保留原childId/position/version/key。未知结果阻止离页和取消；明确拒绝可取消；会话失效允许退出且不会继续提交。服务器成功响应缺少有效递增version时仍按未知处理。
+
+模型详情已接上传模型文件、图片类型、移除文件/图片、刷新、受保护下载和统一反馈。开始文件操作、文件选择器返回及登记边界检查所属会话；未解决操作期间冻结编辑、删除主体及其他文件操作。文件选择期间切会话的UI强制注入场景尚未实测，不将纯核心用例当作该UI证明。
+
+已审阅并衔接本次前已存在的ModelDetail图片大图/删除改动及ZoomableProtectedImage、GestureHandlerRootView、gesture-handler依赖和锁文件；没有覆盖这些已有工作，也没有合并其他未审阅AI/会话改动。大图打开/关闭及受保护PNG实际解码通过Web；双指缩放、拖动及原生布局仍留安卓验收。
+
+文件流程9项、文件协议7项、目录协议6项共22通过；加受保护图片及路由回归共31通过，0跳过。workflow-contract-red.log记录成功但旧version未被拒绝的失败，workflow-native-red.log记录原生uri/name被调用方修改后污染重试的失败，修正后workflow-green.log全部通过。首次workflow-red.log含测试语法错误，不作为缺功能的红灯证据。
+
+独立实际源构建通过。自有PG+实际完整服务器+后台Playwright共8组模型详情Web场景通过：登记提交后丢响应原键重试不重复上传/关联；下载字节一致；图片登记；PNG实际解码与大图开关；图片移除；并发修改后冲突、重载核对再只登记；按子ID移除；Viewer只读。无pageerror。见model-file-web-verification.json、model-file-web.log、model-file-owner.png和model-file-preview.png；本轮源仍包含其他未提交改动，不能将其称为纯HEAD发布验收。
+
+后台浏览器已关闭，自有服务器进程与带本轮标签的PG容器已停止/删除，私有配置已删除，截图与脱敏摘要留存model-file-cleanup.json。未操作正式服务器或任何模拟器。
+
+**当前下一步：** 新建/编辑模型表单的主体创建→文件登记分步恢复、订单新建/编辑/详情附件接线、自动预览生成及指定安卓选择/分享。A5未达95%，Task4–5保持未完成，不能推进A6或正式切换。
