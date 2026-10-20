@@ -120,6 +120,20 @@ async function createLocalFileStorage({ uploadDirectory } = {}) {
         throw error;
       }
     },
+    async inspectPrefix(token, length = 32) {
+      const item = entry(token);
+      if (!Number.isSafeInteger(length) || length < 1 || length > 512) fail('FILE_INSPECTION_INVALID', '文件检查长度无效');
+      const file = await openVerified(item.temporaryKey, true);
+      try {
+        const buffer = Buffer.alloc(Math.min(length, file.size));
+        const result = await file.handle.read(buffer, 0, buffer.length, 0);
+        return buffer.subarray(0, result.bytesRead);
+      } finally { await file.handle.close(); }
+    },
+    describe(token) {
+      const item = entry(token);
+      return Object.freeze({ token, namespace: item.namespace, originalName: item.originalName, size: item.size, sha256: item.sha256 });
+    },
     async publish(token) {
       const item = entry(token);
       if (item.result) return item.result;

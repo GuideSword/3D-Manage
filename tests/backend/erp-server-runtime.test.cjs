@@ -119,7 +119,9 @@ test('real PostgreSQL server selects one storage mode before importing initializ
       assert.equal(login.status, 200);
       assert.equal((await request(child.base, '/api/customers?_=1792080896260', 'GET', undefined, login.body.token)).status, 200);
       assert.equal((await request(child.base, '/api/system/dashboard?_=1792080896260', 'GET', undefined, login.body.token)).status, 200);
-      for (const endpoint of ['/api/agent/conversations', '/api/files/old.pdf', '/api/oss/download-url']) {
+      assert.equal((await request(child.base, '/api/files/old.pdf', 'GET', undefined, login.body.token)).status, 404);
+      assert.equal((await request(child.base, '/api/files/old.pdf')).status, 401);
+      for (const endpoint of ['/api/agent/conversations', '/api/oss/download-url']) {
         const response = await request(child.base, endpoint, 'GET', undefined, login.body.token);
         assert.equal(response.status, 503); assert.equal(response.body.code, 'FEATURE_MAINTENANCE');
       }
