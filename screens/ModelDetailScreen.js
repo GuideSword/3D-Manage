@@ -167,7 +167,8 @@ const ModelDetailScreen = ({ route, navigation }) => {
   };
 
   const handleUploadFile = async () => {
-    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
+    const pickerRuntime = modelRuntime.current;
+    if (fileLocked || relational && !isCurrentRuntime(pickerRuntime)) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -177,10 +178,10 @@ const ModelDetailScreen = ({ route, navigation }) => {
         return;
       }
 
-      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
+      if (relational && !isCurrentRuntime(pickerRuntime)) return;
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
-      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
+      if (relational && !isCurrentRuntime(pickerRuntime)) return;
       if (!validateExtension(asset, MODEL_EXTENSIONS)) {
         Alert.alert('文件格式不支持', '请选择 STL、OBJ、3MF、STEP、STP 或 ZIP 模型文件');
         return;
@@ -208,7 +209,8 @@ const ModelDetailScreen = ({ route, navigation }) => {
   };
 
   const handleUploadImage = async () => {
-    if (fileLocked || relational && !isCurrentRuntime(modelRuntime.current)) return;
+    const pickerRuntime = modelRuntime.current;
+    if (fileLocked || relational && !isCurrentRuntime(pickerRuntime)) return;
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'image/*',
@@ -218,10 +220,10 @@ const ModelDetailScreen = ({ route, navigation }) => {
         return;
       }
 
-      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
+      if (relational && !isCurrentRuntime(pickerRuntime)) return;
       const asset = result.assets?.[0];
       await trackPickedAsset(asset);
-      if (relational && !isCurrentRuntime(modelRuntime.current)) return;
+      if (relational && !isCurrentRuntime(pickerRuntime)) return;
       if (!validateExtension(asset, IMAGE_EXTENSIONS)) {
         Alert.alert('图片格式不支持', '请选择 JPG、PNG 或 WEBP 图片');
         return;
