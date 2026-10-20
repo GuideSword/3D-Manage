@@ -182,3 +182,11 @@ localStorage.open新增限8MiB的readAt及只供服务器内部使用的已核�
 nativeDownload现仅确认200、自己的下载URI及实际非空文件后跟踪并分享，关键await后复核作用域；失败删除本次目标。api.js原生分支await完整流程并以捕获作用域处理401，未把外部OSS401当成本地账号失效。仅提交本项两个API差异块，保留既有未提交deleteImage客户端增量；旧图片删除路由/对应客户端须在A5旧服务器回归前审阅处理，不得冒称纯HEAD旧服务已验收。
 
 当前APK来自修复前源，需要重新构建并核对包名/来源后才能安装。native-download-green.log、native-download-regression.log为行为及52项证据；不是安卓实际401/失效分享验收。A5保持Task5未完成。
+
+## Task5 原生包安装及连接检查（2026-10-20）
+
+包含原生下载修复的QA APK重新构建成功（native-apk-final-build.log，43秒），仅安装到重新核对AndroidID一致的emulator-5558；安装前确认独立包不存在，不覆盖未知包。包名com.anonymous.x3DManage.erp02d3afiles，设备安装base.apk SHA256与构建文件一致。源提交40b421a，APK SHA256为201e77991b5aa92dec8ddd51a34348f8cab473ebdaa896f2db98df7236e1fc8e；源码含其他既有未提交变更，仍非纯HEAD发布验收。日常com.anonymous.x3DManage安装路径前后相同，未动其他设备或模拟器。
+
+只为此设备创建tcp:5850到本机自有隔离服务器的映射，配置http://127.0.0.1:5850/api并用自有隔离Owner账号登录成功。未使用用户日常账号或正式服务器登录；native-connected-dashboard.png留存界面，native-install.json及native-progress.json留安装/来源/下一步。安装包查询“缺包”返回码1已按空结果处理，首次保守脚本因此停止在安装前，未误安装；补正后独立安装成功。
+
+正式容器只读业务/AI摘要新基线formal-before-native.json已记录，仍无erp schema；没有更新容器。新包安装/登录通过不等于文件功能原生验收，实际文件选择上传、分享接收字节、401不分享、缩放及旧文件接口回归仍待。会话回归另14通过0跳过（测试文件含既有未提交用例，仅运行未混入提交）。后台自有PG/服务器、QA包和本设备5850映射保留供后续验收，最终须核对所有权清理。A5仍未达95%。

@@ -75,3 +75,9 @@ Web4组通过实际3MF选择、自动图关联及PNG解码、源字节下载、�
 QA APK已成功构建但未安装；本机SDK会将非200响应写文件，旧代码未核对状态。同时原生API返回未await使取消登记提前释放，等待分享可用性后也缺少作用域复核。实际行为测试由5失败到7通过，连客户端回归52通过0跳过。现在拒绝HTTP错误/206及缺失/空/异常URI文件并清理，分享前再核对会话，保持取消登记到完成，仅当前API的401清除对应token。中文编码文件URI通过，外部结果路径不读不删。
 
 证据native-download-red.log、native-download-green.log及native-download-regression.log。不能以纯行为测试称为原生实际验收。修复前APK不安装，先重新构建。api.js仅提交此次差异块，其既有deleteImage方法及旧后端路由增量仍须A5旧服务器回归前处理。
+
+## 独立原生包已安装并连接
+
+修复后APK43秒构建成功，仅在再次核对身份一致的emulator-5558独立安装com.anonymous.x3DManage.erp02d3afiles。设备base.apk哈希与产物一致（201e77991b5aa92dec8ddd51a34348f8cab473ebdaa896f2db98df7236e1fc8e），源提交40b421a、含其他未提交源；日常包路径未改。只创建本设备5850映射，连接自有隔离服务器并以测试Owner登录成功，无需用户密码。安装前缺包查询返回码1导致首个脚本保守停止，处理空结果后安装成功；没有覆盖未知包。
+
+证据native-install.json、native-progress.json、native-connected-dashboard.png、native-apk-final-build.log；会话回归14项另行通过（含既有未提交测试）。正式业务/AI新只读基线formal-before-native.json记录，仍无erp schema。没有更新正式服务器或触碰其他模拟器。PG/服务器、QA包与本设备5850映射暂保留供真实选择/分享/401/缩放验收；这些仍未完成，A5未达95%。
