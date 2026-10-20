@@ -69,3 +69,9 @@ file-forms-web-verification.json、file-forms-web.log、forms-web-build.log、fo
 Web4组通过实际3MF选择、自动图关联及PNG解码、源字节下载、删除顺序保护；无pageerror。截图已检查，内嵌图1×1，仅证明提取与实际字节解码，不是3D渲染。Windows沿用受控系统缩略图回退（测试进程显式禁用且恢复环境），没有声称实际Windows回退或Linux STL/STEP渲染通过。
 
 证据preview-http-red.log/green.log、preview-parser.log、preview-catalog-regression.log、preview-runtime-regression.log、auto-preview-web-verification.json、auto-preview-web.log、preview-web-build.log、auto-preview-owner.png。源含其他未提交工作，非纯HEAD发布验收。指定emulator-5558已只读核对身份一致并记录日常包路径，尚未写设备。当前开始Task5独立安卓QA，后台自有服务器/PG留作验收后再按所有权清理；正式服务器未更新。A5未达95%。
+
+## 原生下载安装前问题
+
+QA APK已成功构建但未安装；本机SDK会将非200响应写文件，旧代码未核对状态。同时原生API返回未await使取消登记提前释放，等待分享可用性后也缺少作用域复核。实际行为测试由5失败到7通过，连客户端回归52通过0跳过。现在拒绝HTTP错误/206及缺失/空/异常URI文件并清理，分享前再核对会话，保持取消登记到完成，仅当前API的401清除对应token。中文编码文件URI通过，外部结果路径不读不删。
+
+证据native-download-red.log、native-download-green.log及native-download-regression.log。不能以纯行为测试称为原生实际验收。修复前APK不安装，先重新构建。api.js仅提交此次差异块，其既有deleteImage方法及旧后端路由增量仍须A5旧服务器回归前处理。

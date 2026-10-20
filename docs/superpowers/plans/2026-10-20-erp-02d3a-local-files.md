@@ -172,3 +172,13 @@ localStorage.open新增限8MiB的readAt及只供服务器内部使用的已核�
 真实完整服务器+PG+Web源构建自动预览4组通过：实际选择3MF创建后解码受保护PNG/源ID/单次version；原3MF字节下载不变；页面不能先删被自动图引用的源；先移除自动图后可移除源且物理图片保留。无pageerror。截图auto-preview-owner.png已检查；测试内嵌图为1×1 PNG，仅证明实际提取/传输/解码，不是3D几何渲染或真实切片器画面验收。证据auto-preview-web-verification.json、auto-preview-web.log、preview-parser.log、preview-catalog-regression.log、preview-runtime-regression.log、preview-web-build.log在.tmp/erp-02d3a-files。源码仍含其他未提交工作，非纯HEAD发布验收。
 
 已只读确认emulator-5558在线，AndroidID与之前批准实例相同，日常包路径已重新记录于未提交的native-approved-before.json，未安装/写入任何设备。当前进入Task5指定模拟器独立QA包及真实选择/分享/缩放验收；后台本轮自有服务器/PG继续用于该验收，结束后核对所有权清理。A5仍未达95%，02D2 Task6、正式切换及后续A6不关闭。
+
+## Task5 原生下载安装前修复（2026-10-20）
+
+独立QA APK构建成功（包com.anonymous.x3DManage.erp02d3afiles），尚未安装。核对本机Expo SDK实际downloadResumableTask代码，发现它会把非200响应体写到文件并返回status，旧nativeDownload未检查状态，可能把错误响应分享；另有API原生分支return未await导致取消登记提前释放，以及分享可用性检查await后缺少会话复核。
+
+先写实际函数行为检查，native-download-red.log为7项前的6项中5失败，修正后新增中文URI场景共7项通过：401/403/404/500/206不能分享并清理自有文件；未返回/不存在/目录/空文件拒绝；等待分享可用性期间失效不打开分享；正常文件一次分享；整个下载取消登记不提前释放；只有当前API来源401可清理该服务器token；中文编码URI兼容且不跟随/删除外部结果路径。与现有客户端回归合计52通过0跳过。
+
+nativeDownload现仅确认200、自己的下载URI及实际非空文件后跟踪并分享，关键await后复核作用域；失败删除本次目标。api.js原生分支await完整流程并以捕获作用域处理401，未把外部OSS401当成本地账号失效。仅提交本项两个API差异块，保留既有未提交deleteImage客户端增量；旧图片删除路由/对应客户端须在A5旧服务器回归前审阅处理，不得冒称纯HEAD旧服务已验收。
+
+当前APK来自修复前源，需要重新构建并核对包名/来源后才能安装。native-download-green.log、native-download-regression.log为行为及52项证据；不是安卓实际401/失效分享验收。A5保持Task5未完成。
