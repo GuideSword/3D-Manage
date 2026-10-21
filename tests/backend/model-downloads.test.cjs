@@ -78,3 +78,21 @@ test('handoff ticket redeems once; transfer token cannot serve as ordinary downl
   f.users.staff.active = false;
   await assert.rejects(f.service.transfer(transfer.token), code('AUTHENTICATION_REQUIRED'));
 });
+
+test('storage cutover cannot silently discard a configured model-download policy', async () => {
+  const { parseSource } = require('../../backend/business-db/preflight/source');
+  const { buildPreflightReport } = require('../../backend/business-db/preflight/report');
+  const { importLegacySnapshot } = require('../../backend/business-db/import/legacy');
+  for (const enabled of [true, false]) {
+    const snapshot = { schemaVersion: 3, system: { serverId: '02d3a500-0000-4000-8000-000000000004', modelDownloads: { policy: { enabled, passwordHash: 'private-policy-hash-fixture' } } } };
+    for (const collection of ['users', 'models', 'materials', 'orders', 'stockLots', 'inventoryTxns', 'auditLogs', 'objectUploads', 'commandReceipts']) snapshot[collection] = [];
+    snapshot.users.push({ id: 'owner', email: 'owner@migration.example.test', role: 'owner', active: true, tokenVersion: 1, passwordHash: 'fixture-hash' });
+    const source = parseSource(JSON.stringify(snapshot)), report = await buildPreflightReport(source);
+    assert.ok(report.issues.some(issue => issue.code === 'DOWNLOAD_POLICY_MIGRATION_REQUIRED'));
+    assert.deepEqual(report.issues.filter(issue => issue.severity === 'blocker').map(issue => issue.code), ['DOWNLOAD_POLICY_MIGRATION_REQUIRED']);
+    assert.equal(JSON.stringify(report).includes('private-policy-hash-fixture'), false);
+    let connected = false;
+    await assert.rejects(importLegacySnapshot({ connect: async () => { connected = true; throw Error('Must not connect'); } }, { source, decisions: {} }), { code: 'ERP_IMPORT_SOURCE_BLOCKED' });
+    assert.equal(connected, false);
+  }
+});

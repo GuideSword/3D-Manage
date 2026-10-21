@@ -15,6 +15,8 @@ async function buildPreflightReport(source, { uploadDirectory } = {}) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(report.serverId || '')) add('blocker', 'SERVER_ID_INVALID', 'system');
   if (!['1', '2', '3'].includes(report.schemaVersion)) add('blocker', 'SOURCE_SCHEMA_UNSUPPORTED', 'system', null, 'schemaVersion');
   if (report.schemaVersion !== '3') add('review', 'LEGACY_SCHEMA_REVIEW', 'system', null, 'schemaVersion');
+  const downloadPolicy = source.data.system?.modelDownloads?.policy;
+  if (downloadPolicy?.enabled || downloadPolicy?.passwordHash) add('blocker', 'DOWNLOAD_POLICY_MIGRATION_REQUIRED', 'system', null, 'modelDownloads.policy');
   const data = {};
   for (const name of COLLECTIONS) {
     const rows = source.data[name];
