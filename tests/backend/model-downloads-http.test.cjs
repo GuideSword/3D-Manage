@@ -19,7 +19,7 @@ test('real PostgreSQL and HTTP enforce model grants, one-use handoff and TLS', {
   for (const role of ['owner', 'staff', 'viewer']) await pool.query('INSERT INTO erp.users(id,email,name,role,password_hash) VALUES($1,$2,$1,$1,$3)', [role, role + '@download.example.test', 'fixture-only']);
   const bytes = Buffer.from('solid protected\nendsolid protected'), hash = require('node:crypto').createHash('sha256').update(bytes).digest('hex');
   await fs.mkdir(path.join(root, 'models')); await fs.writeFile(path.join(root, 'models/part.stl'), bytes);
-  await pool.query('INSERT INTO erp.object_uploads(id,owner_id,file_key,metadata) VALUES($1,$2,$3,$4)', ['file', 'owner', 'models/part.stl', JSON.stringify({ originalName: 'part.stl', size: bytes.length, sha256: hash })]);
+  await pool.query('INSERT INTO erp.object_uploads(id,owner_id,file_key,metadata) VALUES($1,$2,$3,$4)', ['file', 'owner', 'models/part.stl', JSON.stringify({ originalName: 'part.stl', size: String(bytes.length), sha256: hash })]);
   const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jM7sAAAAASUVORK5CYII=', 'base64');
   await fs.mkdir(path.join(root, 'images')); await fs.writeFile(path.join(root, 'images/preview.png'), png);
   await pool.query("INSERT INTO erp.models(id,name,source) VALUES('resource','资源分类测试','original')");

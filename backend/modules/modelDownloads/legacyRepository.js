@@ -27,7 +27,7 @@ function createLegacyDownloadRepository() {
           const file = source || upload || image || attachment;
           if (!file) return null;
           return { key, protected: Boolean(source) || key.startsWith('models/') || !((image && ['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(key).toLowerCase())) || (attachment && ['.pdf', '.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(key).toLowerCase()))),
-            name: file.originalName || file.name || path.basename(key), size: file.size, sha256: file.sha256 };
+            name: file.originalName || file.name || path.basename(key), size: typeof file.size === 'string' && /^\d{1,16}$/.test(file.size) ? Number(file.size) : file.size, sha256: file.sha256 };
         },
         grant: async hash => state.grants[hash],
         insertGrant: async g => { state.grants[g.hash] = g; },

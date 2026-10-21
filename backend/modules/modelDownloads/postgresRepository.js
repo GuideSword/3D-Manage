@@ -26,7 +26,7 @@ function createPostgresDownloadRepository(pool) {
         if (!source && !upload && !image && !attachment) return null;
         const metadata = { ...upload?.metadata, ...source?.metadata };
         return { key, protected: Boolean(source) || key.startsWith('models/') || !((image && ['.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(key).toLowerCase())) || (attachment && ['.pdf', '.png', '.jpg', '.jpeg', '.webp'].includes(path.extname(key).toLowerCase()))),
-          name: metadata.originalName || metadata.name || path.basename(key), size: metadata.size, sha256: metadata.sha256 };
+          name: metadata.originalName || metadata.name || path.basename(key), size: typeof metadata.size === 'string' && /^\d{1,16}$/.test(metadata.size) ? Number(metadata.size) : metadata.size, sha256: metadata.sha256 };
       },
       grant: async hash => {
         const row = (await tx.query('SELECT * FROM erp.model_download_grants WHERE hash=$1 FOR UPDATE', [hash])).rows[0];
