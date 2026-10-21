@@ -1,0 +1,44 @@
+'use strict';
+const test = require('node:test'), assert = require('node:assert/strict'), fs = require('node:fs/promises'), os = require('node:os'), path = require('node:path');
+test('legacy real HTTP protects existing model paths, OSS links and handoff without changing business records', async t => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'erp-download-legacy-')); assert.equal(path.dirname(root), os.tmpdir());
+  const previous = Object.fromEntries(['DATA_DIR', 'UPLOAD_DIR', 'JWT_SECRET', 'STORE_DRIVER', 'DATABASE_URL', 'STORE_TABLE'].map(k => [k, process.env[k]]));
+  const pgUrl = process.env.ERP_BUSINESS_TEST_DATABASE_URL;
+  if (pgUrl) { assert.equal(new URL(pgUrl).hostname, '127.0.0.1'); assert.equal(new URL(pgUrl).pathname, '/erp_02a_verify'); }
+  Object.assign(process.env, { STORE_DRIVER: pgUrl ? 'postgres' : 'file', STORE_TABLE: 'model_downloads_legacy_fixture', ...(pgUrl ? { DATABASE_URL: pgUrl } : {}) });
+  Object.assign(process.env, { DATA_DIR: path.join(root, 'data'), UPLOAD_DIR: path.join(root, 'uploads'), JWT_SECRET: 'legacy-download-isolated-secret-minimum-32-chars' });
+  const store = require('../../backend/utils/store'), express = require('../../backend/node_modules/express');
+  const { issueToken } = require('../../backend/utils/authTokens');
+  const legacy = require('../../backend/modules/modelDownloads/legacy');
+  const { createModelDownloadsRouter } = require('../../backend/modules/modelDownloads/http');
+  let server;
+  t.after(async () => { if (server) await new Promise(r => server.close(r)); await store.closeStore(); if (pgUrl) { const pool = new (require('../../backend/node_modules/pg').Pool)({ connectionString: pgUrl }); try { await pool.query('DROP TABLE IF EXISTS model_downloads_legacy_fixture'); } finally { await pool.end(); } } await fs.rm(root, { recursive: true, force: true }); for (const [key, value] of Object.entries(previous)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+  await store.initializeStore(); await fs.mkdir(path.join(root, 'uploads/models'), { recursive: true });
+  const content = Buffer.from('solid original\nendsolid original'); await fs.writeFile(path.join(root, 'uploads/models/existing.stl'), content);
+  const hash = require('node:crypto').createHash('sha256').update(content).digest('hex');
+  const serverId = 'legacy-download-fixture';
+  await store.withData(data => { data.system.serverId = serverId; data.system.initializedAt = '2026-10-22T00:00:00Z'; data.users = ['owner', 'staff', 'viewer'].map(role => ({ id: role, role, tokenVersion: 1, active: true, name: role, email: role + '@legacy.example.test' })); data.models.push({ id: 'original', name: 'Original model', files: [{ id: 'file', name: 'existing.stl', fileKey: 'models/existing.stl', size: content.length, sha256: hash }], images: [] }); data.orders.push({ id: 'original-order', number: 'KEEP-001' }); data.materials.push({ id: 'original-material', name: 'Original material' }); return true; });
+  const businessBefore = await store.withData(data => ({ models: data.models, orders: data.orders, materials: data.materials }), { write: false });
+  const app = express(); app.set('trust proxy', 'loopback'); app.use(express.json());
+  app.use('/api/model-downloads', createModelDownloadsRouter({ service: legacy.service, authenticate: legacy.authenticate, uploadDirectory: path.join(root, 'uploads') }));
+  app.use('/api/files', require('../../backend/routes/files')); app.use('/api/oss', require('../../backend/routes/oss'));
+  server = await new Promise(r => { const s = app.listen(0, '127.0.0.1', () => r(s)); });
+  const send = async (endpoint, { role = 'owner', method = 'GET', body, grant, secure = true } = {}) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api` + endpoint, { method, headers: { Authorization: 'Bearer ' + issueToken({ id: role, role, tokenVersion: 1 }, serverId), ...(secure ? { 'X-Forwarded-Proto': 'https' } : {}), ...(body ? { 'Content-Type': 'application/json' } : {}), ...(grant ? { 'X-Model-Download-Grant': grant } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
+    const bytes = Buffer.from(await response.arrayBuffer()); let json; try { json = JSON.parse(bytes); } catch (_) {} return { status: response.status, bytes, json };
+  };
+  const password = 'legacy-download-password-123';
+  assert.equal((await send('/model-downloads/policy', { method: 'PUT', body: { enabled: true, version: '1', password }, secure: false })).json.code, 'DOWNLOAD_HTTPS_REQUIRED');
+  assert.equal((await send('/model-downloads/policy', { method: 'PUT', body: { enabled: true, version: '1', password } })).status, 200);
+  for (const role of ['owner', 'staff', 'viewer']) assert.equal((await send('/files/models/existing.stl', { role })).status, 403);
+  const grant = (await send('/model-downloads/authorize', { role: 'staff', method: 'POST', body: { key: 'models/existing.stl', password, purpose: 'download', consent: true } })).json.token;
+  assert.deepEqual((await send('/files/models/existing.stl', { role: 'staff', grant })).bytes, content);
+  assert.equal((await send('/files/models/existing.stl', { role: 'staff', grant, secure: false })).json.code, 'DOWNLOAD_HTTPS_REQUIRED');
+  const direct = await send('/oss/download-url', { role: 'staff', method: 'POST', body: { objectKey: 'models/existing.stl' } });
+  assert.equal(direct.status, 403); assert.equal(direct.json.code, 'MODEL_DOWNLOAD_DIRECT_LINK_DISABLED');
+  assert.deepEqual(await store.withData(data => ({ models: data.models, orders: data.orders, materials: data.materials }), { write: false }), businessBefore);
+  const ticket = (await send('/model-downloads/authorize', { role: 'staff', method: 'POST', body: { key: 'models/existing.stl', password, purpose: 'handoff', consent: true } })).json.token;
+  assert.equal((await send('/model-downloads/handoff/redeem', { method: 'POST', body: { ticket } })).status, 200);
+  assert.equal((await send('/model-downloads/handoff/redeem', { method: 'POST', body: { ticket } })).status, 403);
+  const snapshot = await store.getData(); assert.equal(JSON.stringify(snapshot).includes(password), false); assert.equal(JSON.stringify(snapshot).includes(grant), false);
+});

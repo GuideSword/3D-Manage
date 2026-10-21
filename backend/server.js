@@ -122,7 +122,7 @@ const start = () => {
     const HOST = process.env.HOST || '0.0.0.0';
     try {
       httpServer = await new Promise((resolve, reject) => {
-        const listener = app.listen(PORT, HOST, error => error ? reject(error) : resolve(listener));
+        const listener = require('./config/httpTransport').createHttpTransport(app).listen(PORT, HOST, error => error ? reject(error) : resolve(listener));
         listener.once('error', reject);
       });
     } catch (failure) {

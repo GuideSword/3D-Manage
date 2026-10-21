@@ -1,5 +1,5 @@
 param(
-  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory', 'users', 'adapters', 'master-data', 'storage-mode', 'runtime', 'server-runtime', 'maintenance', 'system', 'owner-recovery', 'local-files')][string]$Suite = 'foundation',
+  [ValidateSet('foundation', 'preflight', 'core', 'import', 'commands', 'catalog', 'orders', 'inventory', 'users', 'adapters', 'master-data', 'storage-mode', 'runtime', 'server-runtime', 'maintenance', 'system', 'owner-recovery', 'local-files', 'model-downloads')][string]$Suite = 'foundation',
   [string]$RehearsalSource,
   [string]$RehearsalDecisions,
   [string]$UploadDirectory
@@ -60,6 +60,7 @@ try {
   } elseif ($Suite -eq 'maintenance') { @('tests/backend/erp-maintenance.test.cjs')
   } elseif ($Suite -eq 'system') { @('tests/backend/erp-system.test.cjs')
   } elseif ($Suite -eq 'local-files') { @('tests/backend/erp-local-files.test.cjs', 'tests/backend/erp-3mf-preview.test.cjs', 'tests/backend/model-preview-no-external-app.test.cjs', 'tests/backend/erp-local-files-http.test.cjs')
+  } elseif ($Suite -eq 'model-downloads') { @('tests/backend/model-downloads.test.cjs', 'tests/backend/model-downloads-http.test.cjs', 'tests/backend/model-downloads-legacy.test.cjs')
   } elseif ($Suite -eq 'owner-recovery') { @('tests/backend/erp-owner-recovery.test.cjs')
   } else { @('tests/backend/erp-decimal.test.cjs', 'tests/backend/erp-postgres.test.cjs') })
   $erpOutput = & node --test @erpTests 2>&1

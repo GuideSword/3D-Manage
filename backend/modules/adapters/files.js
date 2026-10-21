@@ -17,6 +17,7 @@ function originalFilename(value) {
   return value;
 }
 async function createRelationalFilesRouter(pool, options) {
+  options = { ...options, downloads: options?.downloads || require('../modelDownloads/service').createModelDownloadService(require('../modelDownloads/postgresRepository').createPostgresDownloadRepository(pool)) };
   const service = await createFileService(pool, options), authentication = createUserAuthentication(pool, options), router = express.Router();
   const route = action => (req, res, next) => Promise.resolve().then(() => action(req, res)).catch(next);
   const identity = async (req, _res, next) => {
@@ -69,7 +70,11 @@ async function createRelationalFilesRouter(pool, options) {
   });
   router.all('/files/*key', identity, route(async (req, res) => {
     if (!['GET', 'HEAD'].includes(req.method)) { res.set('Allow', 'GET, HEAD'); return res.status(405).json({ code: 'METHOD_NOT_ALLOWED', error: '文件仅支持读取' }); }
-    const key = req.params.key.join('/'), file = await service.open(req.fileSession, key);
+    const key = req.params.key.join('/');
+    if (options.downloads) {
+      if ((await options.downloads.status(req.fileSession, key)).requiresPassword) require('../modelDownloads/transport').assertDownloadTransport(req, options.allowInsecureTest === true);
+    }
+    const file = await service.open(req.fileSession, key, req.get('X-Model-Download-Grant'));
     try {
       let range;
       try { range = parseByteRange(req.get('Range'), file.size); }

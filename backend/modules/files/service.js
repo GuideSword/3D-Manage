@@ -7,9 +7,10 @@ const { withAuthenticatedRead } = require('../../business-db/reads');
 const { assertBusinessWritesAllowed } = require('../../business-db/maintenance');
 const fail = (code, message, status = 400) => { throw Object.assign(new Error(message), { code, status }); };
 const MIME = Object.freeze({ '.stl': 'application/sla', '.obj': 'model/obj', '.3mf': 'model/3mf', '.step': 'model/step', '.stp': 'model/step', '.zip': 'application/zip', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.pdf': 'application/pdf', '.csv': 'text/csv' });
-async function createFileService(pool, { uploadDirectory, maxModelBytes = Number(process.env.MAX_UPLOAD_BYTES || 500 * 1024 * 1024) } = {}) {
+async function createFileService(pool, { uploadDirectory, downloads, maxModelBytes = Number(process.env.MAX_UPLOAD_BYTES || 500 * 1024 * 1024) } = {}) {
   if (!Number.isSafeInteger(maxModelBytes) || maxModelBytes < 1) fail('FILE_CONFIGURATION_INVALID', '模型上传大小限制无效', 500);
   const storage = await createLocalFileStorage({ uploadDirectory });
+  const downloadGuard = downloads || require('../modelDownloads/service').createModelDownloadService(require('../modelDownloads/postgresRepository').createPostgresDownloadRepository(pool));
   const limit = namespace => {
     if (!['models', 'images', 'attachments'].includes(namespace)) fail('FILE_NAMESPACE_INVALID', '上传文件用途无效');
     return namespace === 'models' ? maxModelBytes : (namespace === 'images' ? 25 : 50) * 1024 * 1024;
@@ -48,8 +49,9 @@ async function createFileService(pool, { uploadDirectory, maxModelBytes = Number
       } });
       return execute({ actorId: session.actorId, tokenVersion: session.tokenVersion, key, operation: 'file.upload', payload });
     },
-    async open(session, key) {
+    async open(session, key, grant) {
       await withAuthenticatedRead(pool, session, async () => {});
+      await downloadGuard.check(session, key, grant);
       return storage.open(key);
     },
   });

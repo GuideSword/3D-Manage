@@ -14,6 +14,10 @@ async function createLegacyRuntime() {
     const cleanup = await retryPendingAttachmentCleanup({ limit: 25 });
     if (cleanup.failed) console.warn(`[agent-attachments] ${cleanup.failed} cleanup item(s) still pending`);
     const router = require('express').Router();
+    const downloads = require('../modules/modelDownloads/legacy');
+    router.use('/model-downloads', require('../modules/modelDownloads/http').createModelDownloadsRouter({
+      service: downloads.service, authenticate: downloads.authenticate, uploadDirectory: require('../config/storage').UPLOAD_DIR,
+    }));
     for (const name of ['system', 'auth', 'users', 'orders', 'models', 'materials', 'stock', 'files', 'oss', 'agent']) {
       router.use('/' + name, require('../routes/' + name));
     }
