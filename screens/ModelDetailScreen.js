@@ -30,7 +30,7 @@ import RelationalFileFeedback from '../components/RelationalFileFeedback';
 import { useRelationalFileMutation } from '../utils/useRelationalFileMutation';
 import filesCore from '../utils/relationalFilesCore.cjs';
 import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
-import { authAPI, isAuthRequiredError, modelsAPI } from '../utils/api';
+import { authAPI, isAuthRequiredError, modelsAPI, authorizeStudioHandoff } from '../utils/api';
 import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { trackPickedAsset } from '../utils/sessionStorage';
 import { canWrite } from '../utils/permissions';
@@ -301,6 +301,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
       setDownloadingFileId(file.id);
       await modelsAPI.downloadFile(file);
     } catch (error) {
+      if (error.code === 'MODEL_DOWNLOAD_CANCELLED') return;
       if (isAuthRequiredError(error)) {
         return;
       }
@@ -463,6 +464,16 @@ const ModelDetailScreen = ({ route, navigation }) => {
                 disabled={Boolean(downloadingFileId)}
                 style={styles.downloadButton}
               />
+              {Platform.OS === 'web' && typeof navigator !== 'undefined' && /Windows/i.test(navigator.userAgent)
+                && getServerRuntime().capabilities?.modelDownloadsVersion === 1
+                && ['stl', 'obj', '3mf', 'step', 'stp'].includes(String(file.fileType || file.type || (file.name || '').split('.').pop()).toLowerCase()) ? <Button
+                title="在 Bambu Studio 中打开" size="small" variant="outline" disabled={Boolean(downloadingFileId)}
+                onPress={async () => {
+                  setDownloadingFileId(file.id);
+                  try { await authorizeStudioHandoff(file); }
+                  catch (error) { if (error.code !== 'MODEL_DOWNLOAD_CANCELLED' && !isAuthRequiredError(error)) Alert.alert('模型交接失败', error.message); }
+                  finally { setDownloadingFileId(null); }
+                }} /> : null}
               {relational && canWrite(user) ? <Button title="移除文件" size="small" variant="outline" disabled={fileLocked}
                 onPress={() => confirmRemoveModelFile(file)} /> : null}
             </View>

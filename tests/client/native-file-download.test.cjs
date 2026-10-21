@@ -6,11 +6,32 @@ test('native HTTP401/403/404/500 and partial responses are rejected, deleted, an
 test('missing download result, missing file, directory and empty file cannot report share success',async()=>{for(const config of [{resumable:{downloadAsync:async()=>undefined}},{fs:{getInfoAsync:async()=>({exists:false})}},{fs:{getInfoAsync:async()=>({exists:true,isDirectory:true,size:64})}},{fs:{getInfoAsync:async()=>({exists:true,isDirectory:false,size:0})}}]){const f=nativeFixture(config);await assert.rejects(f.run());assert.equal(f.shared,0);assert.ok(f.deleted.includes(f.destination))}});
 test('scope invalidation while checking share availability cleans the downloaded bytes and never opens sharing',async()=>{let finish;const ready=new Promise(r=>{finish=r});const f=nativeFixture({sharing:{isAvailableAsync:()=>ready}});const operation=f.run();await new Promise(r=>setImmediate(r));f.invalidate();finish(true);await assert.rejects(operation,{staleSession:true});assert.equal(f.shared,0);assert.ok(f.deleted.includes(f.destination))});
 test('a complete current file is scoped, tracked and passed once to the native share sheet',async()=>{const f=nativeFixture();assert.equal(await f.run(),true);assert.equal(f.shared,1);assert.equal(f.tracked.length,1);assert.equal(f.tracked[0].key,'fixture');assert.equal(f.tracked[0].file,f.destination)});
-function apiFixture(native){let current=true,released=false,cleared=0;const snapshot={serverKey:'test-key',apiBaseUrl:'http://fixture/api',sessionEpoch:1};const result=evaluate('utils/api.js',{'react-native':{Platform:{OS:'android'}},'expo-crypto':{randomUUID:()=> 'key'},'./serverRuntime':{getServerRuntime:()=>snapshot,isCurrentRuntime:()=>current,registerOperation:()=>({controller:new AbortController(),release:()=>{released=true}}),StaleSessionError:class extends Error{}},'./sessionStorage':{getToken:async()=> 'test-token',clearToken:async()=>{cleared++},setTokenForSnapshot:async()=>{}},'./nativeDownload':{downloadAndShareNative:native},'./userErrorCore.cjs':{localizeTransportError:e=>e}});return{api:result,get released(){return released},get cleared(){return cleared},invalidate:()=>{current=false}}}
+function apiFixture(native,secured=false){let current=true,released=false,cleared=0;const snapshot={serverKey:'test-key',apiBaseUrl:'http://fixture/api',sessionEpoch:1,capabilities:secured?{modelDownloadsVersion:1}:{}};const result=evaluate('utils/api.js',{'react-native':{Platform:{OS:'android'}},'expo-crypto':{randomUUID:()=> 'key'},'./serverRuntime':{getServerRuntime:()=>snapshot,isCurrentRuntime:()=>current,registerOperation:()=>({controller:new AbortController(),release:()=>{released=true}}),StaleSessionError:class extends Error{}},'./sessionStorage':{getToken:async()=> 'test-token',clearToken:async()=>{cleared++},setTokenForSnapshot:async()=>{}},'./nativeDownload':{downloadAndShareNative:native},'./userErrorCore.cjs':{localizeTransportError:e=>e}});return{api:result,get released(){return released},get cleared(){return cleared},invalidate:()=>{current=false}}}
 test('native download stays registered for cancellation until its asynchronous transfer completes',async()=>{let finish,started=false;const pending=new Promise(r=>{finish=r});const f=apiFixture(async()=>{started=true;return pending});const operation=f.api.modelsAPI.downloadFile({fileUrl:'/api/files/a.stl',name:'a.stl'});await new Promise(r=>setImmediate(r));assert.equal(started,true);assert.equal(f.released,false);finish(true);await operation;assert.equal(f.released,true)});
 test('only a current API-origin native401 may clear that server token; old scope and outside origin cannot',async()=>{let options;const f=apiFixture(async value=>{options=value;return true});await f.api.modelsAPI.downloadFile({fileUrl:'/api/files/a.stl'});assert.equal(typeof options.onUnauthorized,'function');await options.onUnauthorized();assert.equal(f.cleared,1);f.invalidate();await options.onUnauthorized();assert.equal(f.cleared,1);const external=apiFixture(async value=>{assert.equal(value.onUnauthorized,undefined);assert.equal(value.token,null);return true});await external.api.modelsAPI.downloadFile({fileUrl:'https://oss.example.test/file.stl'});assert.equal(external.cleared,0)});
 
 test('native encoded Chinese filenames refer to the same owned file, while a foreign result URI is rejected',async()=>{
  let good;good=nativeFixture({resumable:{downloadAsync:async()=>({status:200,uri:encodeURI(good.destination)})}});assert.equal(await good.run('中文模型.stl'),true);assert.equal(good.shared,1);
  const foreign='file:///outside/secret';const bad=nativeFixture({resumable:{downloadAsync:async()=>({status:200,uri:foreign})}});await assert.rejects(bad.run(),{code:'FILE_DOWNLOAD_INVALID'});assert.equal(bad.shared,0);assert.ok(!bad.deleted.includes(foreign));assert.ok(bad.deleted.includes(bad.destination));
+});
+
+test('secured native download waits for explicit authorization and forwards only the file grant',async()=>{
+ let received,resolveAuthorization;
+ const f=apiFixture(async options=>{received=options;return true},true);
+ f.api.setFileDownloadAuthorizer(()=>new Promise(resolve=>{resolveAuthorization=resolve}));
+ const operation=f.api.modelsAPI.downloadFile({fileUrl:'/api/files/models/part.stl',name:'part.stl'});
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(received,undefined);
+ resolveAuthorization({'X-Model-Download-Grant':'opaque-file-grant'});await operation;
+ assert.deepEqual(JSON.parse(JSON.stringify(received.headers)),{'X-Model-Download-Grant':'opaque-file-grant'});
+});
+
+test('cancelled authorization and session changes never start native file transfer',async()=>{
+ let started=0;
+ const cancelled=apiFixture(async()=>{started++;return true},true);
+ cancelled.api.setFileDownloadAuthorizer(async()=>{throw Object.assign(new Error('cancelled'),{code:'MODEL_DOWNLOAD_CANCELLED'})});
+ await assert.rejects(cancelled.api.modelsAPI.downloadFile({fileUrl:'/api/files/models/part.stl'}),{code:'MODEL_DOWNLOAD_CANCELLED'});
+ const stale=apiFixture(async()=>{started++;return true},true);
+ stale.api.setFileDownloadAuthorizer(async()=>{stale.invalidate();return {'X-Model-Download-Grant':'old-grant'}});
+ await assert.rejects(stale.api.modelsAPI.downloadFile({fileUrl:'/api/files/models/part.stl'}));
+ assert.equal(started,0);
 });

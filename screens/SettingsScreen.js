@@ -17,6 +17,7 @@ import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { canExport } from '../utils/permissions';
 import masterDataCore from '../utils/masterDataCore.cjs';
+import ModelDownloadSettings from '../components/ModelDownloadSettings';
 
 const SettingsScreen = () => {
   const { colors, themeMode, setThemeMode } = useAppTheme();
@@ -158,6 +159,7 @@ const SettingsScreen = () => {
         </Card>
       </View> : null}
 
+      {user?.role === ROLES.OWNER && server?.capabilities?.modelDownloadsVersion === 1 ? <ModelDownloadSettings /> : null}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>会话</Text>
         <TouchableOpacity activeOpacity={0.82} style={styles.logoutButton} onPress={handleLogout}>

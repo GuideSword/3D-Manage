@@ -2,11 +2,11 @@ import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { trackSessionFile } from './sessionFiles';
 
-export const downloadAndShareNative = async ({ url, filename, token, captured, controller, isCurrent, staleError, onUnauthorized }) => {
+export const downloadAndShareNative = async ({ url, filename, token, headers = {}, captured, controller, isCurrent, staleError, onUnauthorized }) => {
   const safeName = String(filename || 'download').replace(/[^\p{L}\p{N}._-]+/gu, '_');
   const destination = `${FileSystem.cacheDirectory}3d-manage-${Date.now()}-${safeName}`;
   const resumable = FileSystem.createDownloadResumable(url, destination, {
-    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+    headers: { ...headers, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
   });
   const pause = () => resumable.pauseAsync().catch(() => undefined);
   const assertCurrent = () => {
