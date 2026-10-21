@@ -28,12 +28,13 @@ try {
     $result = Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer $readServer -Post $post -Download $download -ChooseDestination { return $true } -Launch $launch
     if ($result.Status -ne 'launched' -or $script:launches -ne 1) { throw 'Valid handoff failed' }
     $identityRejected = $false
-    try { Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer { return @{ serverId = 'different-server' } } -Post { throw 'Identity mismatch must not redeem' } -Download $download -ChooseDestination { return $true } -Launch $launch | Out-Null } catch { $identityRejected = $true }
-    if (-not $identityRejected -or $script:launches -ne 1) { throw 'Changed server identity was accepted' }
+    $script:identityPosts = 0
+    try { Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer { return @{ serverId = 'different-server' } } -Post { $script:identityPosts++; throw 'Identity mismatch must not redeem' } -Download $download -ChooseDestination { return $true } -Launch $launch | Out-Null } catch { $identityRejected = $true }
+    if (-not $identityRejected -or $script:launches -ne 1 -or $script:identityPosts -ne 0) { throw 'Changed server identity was accepted' }
     $cancelled = Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer $readServer -Post $post -Download { throw 'Cancel must not download' } -ChooseDestination { return $null } -Launch $launch
     if ($cancelled.Status -ne 'cancelled' -or $script:launches -ne 1) { throw 'Cancel launched a program' }
     $badHashRejected = $false
-    try { Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer $readServer -Post $post -Download { param($url, $token, $path) [IO.File]::WriteAllText($path, 'corrupt') } -ChooseDestination { return $true } -Launch $launch | Out-Null } catch { $badHashRejected = $true }
+    try { Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer $readServer -Post $post -Download { param($url, $token, $path) [IO.File]::WriteAllBytes($path, (New-Object byte[] $bytes.Length)) } -ChooseDestination { return $true } -Launch $launch | Out-Null } catch { $badHashRejected = $true }
     if (-not $badHashRejected -or $script:launches -ne 1) { throw 'Corrupt model launched a program' }
     $existing = Join-Path $root 'existing.stl'; [IO.File]::WriteAllText($existing, 'user-owned')
     $overwriteRejected = $false
