@@ -17,8 +17,8 @@ const tokenHash = value => typeof value === 'string' && /^[A-Za-z0-9_-]{43}$/.te
 // Repository transactions serialize policy changes, ticket redemption and grant validation.
 // Errors that must retain failure counters are returned from the transaction, then thrown.
 function createModelDownloadService(repository, { now = Date.now, grantMs = 300000, ticketMs = 60000 } = {}) {
-  const run = async fn => {
-    const result = await repository.transaction(fn);
+  const run = async (fn, options) => {
+    const result = await repository.transaction(fn, options);
     if (result?.failure) fail(...result.failure);
     return result;
   };
@@ -50,7 +50,7 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
       if (key === undefined) return publicPolicy(policy);
       const resource = await tx.resource(fileKey(key));
       return { ...publicPolicy(policy), protected: !resource || resource.protected, requiresPassword: policy.enabled && (!resource || resource.protected) };
-    }),
+    }, { readOnly: true }),
     configure: (session, input) => run(async tx => {
       fields(input, ['enabled', 'version', 'password']);
       const user = await actor(tx, session);
@@ -89,13 +89,17 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
       await tx.audit(user.id, 'authorization.issued', { key, purpose: input.purpose, policyVersion: policy.version });
       return { token, expiresIn: input.purpose === 'handoff' ? ticketMs / 1000 : grantMs / 1000 };
     }),
-    check: (session, key, token) => run(async tx => {
+    check: async (session, key, token) => {
+      const disabled = await run(async tx => { await actor(tx, session); fileKey(key); return !(await tx.policy()).enabled; }, { readOnly: true });
+      if (disabled) return true;
+      return run(async tx => {
       const user = await actor(tx, session), normalized = fileKey(key), resource = await tx.resource(normalized), policy = await tx.policy();
       // Unknown objects are protected too; old unregistered paths cannot bypass the policy.
       if (policy.enabled && (!resource || resource.protected)) await validGrant(tx, token, 'download', normalized, user);
       if (policy.enabled && resource?.protected) await tx.audit(user.id, 'download.requested', { key: normalized });
       return true;
-    }),
+      });
+    },
     redeem: ticket => run(async tx => {
       const { grant, current, policy } = await validGrant(tx, ticket, 'handoff');
       const resource = await tx.resource(grant.fileKey);

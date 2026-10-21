@@ -3,9 +3,10 @@ const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { withBusinessTransaction } = require('../../business-db/transaction');
 function createPostgresDownloadRepository(pool) {
-  return { transaction: fn => withBusinessTransaction(pool, async tx => {
+  return { transaction: (fn, { readOnly = false } = {}) => withBusinessTransaction(pool, async tx => {
+    if (readOnly) await tx.query('SET TRANSACTION READ ONLY');
     // Shared lock order: policy first, then grant. Rotation and redemption are atomic.
-    const policyRow = (await tx.query("SELECT enabled,password_hash,version FROM erp.model_download_policy WHERE id='default' FOR UPDATE")).rows[0];
+    const policyRow = (await tx.query("SELECT enabled,password_hash,version FROM erp.model_download_policy WHERE id='default'" + (readOnly ? '' : ' FOR UPDATE'))).rows[0];
     if (!policyRow) throw Object.assign(new Error('下载保护配置缺失'), { code: 'DOWNLOAD_POLICY_UNAVAILABLE', status: 503 });
     return fn({
       actor: async id => {

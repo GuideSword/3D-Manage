@@ -28,6 +28,10 @@ test('legacy real HTTP protects existing model paths, OSS links and handoff with
     const bytes = Buffer.from(await response.arrayBuffer()); let json; try { json = JSON.parse(bytes); } catch (_) {} return { status: response.status, bytes, json };
   };
   const password = 'legacy-download-password-123';
+  const beforeRead = await store.getData();
+  assert.deepEqual((await send('/files/models/existing.stl')).bytes, content);
+  assert.equal((await send('/model-downloads/policy')).json.enabled, false);
+  assert.deepEqual(await store.getData(), beforeRead, 'Protection-disabled reads must not rewrite the store or initialize security state');
   assert.equal((await send('/model-downloads/policy', { method: 'PUT', body: { enabled: true, version: '1', password }, secure: false })).json.code, 'DOWNLOAD_HTTPS_REQUIRED');
   assert.equal((await send('/model-downloads/policy', { method: 'PUT', body: { enabled: true, version: '1', password } })).status, 200);
   for (const role of ['owner', 'staff', 'viewer']) assert.equal((await send('/files/models/existing.stl', { role })).status, 403);

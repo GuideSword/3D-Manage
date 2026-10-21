@@ -8,8 +8,9 @@ function createLegacyDownloadRepository() {
       try { const payload = verifyToken(token, data.system.serverId); return { actorId: String(payload.sub), tokenVersion: payload.ver }; }
       catch (_) { return null; }
     }, { write: false }),
-    transaction: fn => withData(async data => {
-      const state = data.system.modelDownloads ||= { policy: { enabled: false, passwordHash: null, version: '1' }, grants: {}, attempts: {} };
+    transaction: (fn, { readOnly = false } = {}) => withData(async data => {
+      const state = data.system.modelDownloads || { policy: { enabled: false, passwordHash: null, version: '1' }, grants: {}, attempts: {} };
+      if (!readOnly) data.system.modelDownloads = state;
       return fn({
         actor: async id => { const user = data.users.find(u => u.id === id); return user && { id, role: user.role, active: user.active !== false, tokenVersion: user.tokenVersion }; },
         policy: async () => state.policy,
@@ -37,7 +38,7 @@ function createLegacyDownloadRepository() {
         prune: async time => { for (const [key, g] of Object.entries(state.grants)) if (g.expiresAt <= time) delete state.grants[key]; },
         audit: async (actorId, action, diff) => appendAudit(data, { actorId, entity: 'modelDownloads', entityId: 'default', action, diff }),
       });
-    }),
+    }, { write: !readOnly }),
   };
 }
 module.exports = { createLegacyDownloadRepository };
