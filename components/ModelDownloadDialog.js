@@ -3,6 +3,7 @@ import { Modal, View, Text, TextInput, Pressable, Linking, ScrollView } from 're
 import { apiRequest, setFileDownloadAuthorizer } from '../utils/api';
 import { isCurrentRuntime, subscribeServerRuntime, StaleSessionError } from '../utils/serverRuntime';
 import { useAppTheme } from '../context/ThemeContext';
+import ModelHandoffInstallCard from './ModelHandoffInstallCard';
 
 const repositoryUrl = 'https://github.com/GuideSword/3D-Manage/tree/master/tools/model-handoff';
 const cancelled = () => Object.assign(new Error('已取消本地模型拉取'), { code: 'MODEL_DOWNLOAD_CANCELLED' });
@@ -75,7 +76,7 @@ export default function ModelDownloadDialog() {
       <Text style={{ color: colors.text, fontSize: 20, fontWeight: '700' }}>{task?.purpose === 'handoff' ? '在 Bambu Studio 中打开' : '确认模型下载'}</Text>
       <Text style={{ color: colors.text, marginTop: 12 }}>{task?.filename || '模型源文件'}</Text>
       <Text style={{ color: colors.text, marginTop: 12 }}>此操作将从服务器拉取模型至当前设备。本地需要一份数据才能打开，临时文件和 Studio 缓存可能留存在本机。</Text>
-      {task?.purpose === 'handoff' && <><Text style={{ color: colors.text, marginTop: 12 }}>需要在当前电脑安装本地助手。首次使用请查看仓库内的源码、安装说明与可用安装包。安装完成后返回此处继续。参数调整和打印由你在 Studio 中操作。</Text>{action('查看助手源码与安装说明', () => Linking.openURL(repositoryUrl))}</>}
+      {task?.purpose === 'handoff' && <><Text style={{ color: colors.text, marginTop: 12 }}>需要在当前电脑安装本地助手。安装完成后返回此处继续。参数调整和打印由你在 Studio 中操作。</Text><ModelHandoffInstallCard onOpen={() => { if (!ready) setError('请先完成模型授权，再打开本地助手。'); else openStudio(); }} />{action('查看助手源码与安装说明', () => Linking.openURL(repositoryUrl))}</>}
       {action(consent ? '✓ 已同意将模型拉取至本地' : '同意将模型拉取至本地', () => setConsent(!consent), busy || Boolean(ready))}
       {task?.requirements.requiresPassword && !ready && <TextInput accessibilityLabel="模型下载密码" placeholder="请输入管理员设置的模型下载密码" placeholderTextColor={colors.textSecondary} secureTextEntry autoCapitalize="none" autoCorrect={false} value={password} onChangeText={setPassword} style={{ color: colors.text, borderWidth: 1, borderColor: colors.border, padding: 12, marginTop: 12, borderRadius: 8 }} />}
       {error ? <Text accessibilityRole="alert" style={{ color: colors.danger || '#b91c1c', marginTop: 12 }}>{error}</Text> : null}

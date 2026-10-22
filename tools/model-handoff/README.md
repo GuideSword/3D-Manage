@@ -6,13 +6,15 @@
 
 需要Windows、Bambu Studio以及可验证证书的ERP HTTPS接口。局域网IP可以使用内部CA签发且包含该IP的证书，不要求购买域名；在浏览器及Windows中先正常验证证书，不能跳过校验。
 
+正式用户应优先从 ERP 网页的“下载 Windows 助手”按钮或 GitHub Release 下载带版本号的 ZIP，并核对同一 Release 中的 `SHA256SUMS`。下载不会自动安装；打开 ZIP 后在 Windows PowerShell 运行安装脚本，Windows 会单独显示安装确认。
+
 从同一版本仓库获取整个目录，在Windows PowerShell运行：
 
 ```powershell
 .\Install.ps1 -ServerUrl 'https://你的ERP地址/api'
 ```
 
-选择`bambu-studio.exe`并确认安装。普通用户不需要Git；目前仅提供源码安装流程，尚未发布GitHub Release安装包。若下载文件被Windows标记为互联网来源，请先审查源码，再按组织策略解除这些文件的来源锁定；不全局修改执行策略。更新已有安装前先人工核对协议与目录归属，安装器不会覆盖现有协议。
+选择`bambu-studio.exe`并确认安装。普通用户不需要Git。若下载文件被Windows标记为互联网来源，请先审查源码，再按组织策略解除这些文件的来源锁定；不全局修改执行策略。更新已有安装前先人工核对协议与目录归属，安装器不会覆盖现有协议。
 
 配置及运行脚本保存在`%LOCALAPPDATA%/3DManageModelHandoff/app`；仅写当前用户的`manage3d-model`协议，不覆盖STL/3MF文件关联。安装时通过受信HTTPS读取并绑定ERP服务器身份，之后每次交接重新核对，IP相同但服务器身份变化也会拒绝。首次只绑定一个ERP地址；绑定其他服务器需重新明确配置，不接受网页任意指定服务器。
 
