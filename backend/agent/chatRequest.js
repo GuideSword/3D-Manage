@@ -22,8 +22,28 @@ function normalizeChatRequest(body) {
 
   validateChatLength(suppliedMessage);
 
+  if (value.conversationId !== undefined && value.conversationId !== null
+      && (typeof value.conversationId !== 'string' || !value.conversationId.trim()
+        || value.conversationId.length > 128)) {
+    throw new ChatRequestError('CONVERSATION_ID_INVALID', '会话标识无效');
+  }
+
+  const retryMessageId = value.retryMessageId == null ? undefined : value.retryMessageId;
+  if (retryMessageId !== undefined) {
+    if (typeof retryMessageId !== 'string' || !retryMessageId.trim() || retryMessageId.length > 128) {
+      throw new ChatRequestError('RETRY_MESSAGE_INVALID', '重试消息标识无效');
+    }
+    if (typeof value.conversationId !== 'string' || !value.conversationId.trim()) {
+      throw new ChatRequestError('RETRY_CONVERSATION_REQUIRED', '重试需要原会话');
+    }
+    if (images.length > 0) {
+      throw new ChatRequestError('RETRY_IMAGES_UNSUPPORTED', '图片消息中断后请重新选择图片并发起新问题');
+    }
+  }
+
   return {
     conversationId: value.conversationId,
+    retryMessageId,
     suppliedMessage,
     images,
     modelMessage: suppliedMessage || '请分析这些图片',

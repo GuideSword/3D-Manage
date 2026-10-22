@@ -11,6 +11,8 @@ const memorySession = new Map();
 
 const tokenKey = (serverKey) => `jwtToken.v1.${serverKey}`;
 const draftsKey = (serverKey) => `drafts.v1.${serverKey}`;
+const agentChatKey = (serverKey) => `agentChat.v1.${serverKey}`;
+let pendingAgentChatSave = Promise.resolve();
 
 const getWebSessionStorage = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
@@ -81,11 +83,38 @@ export const setTokenForSnapshot = async (captured, token) => {
   return true;
 };
 
+export const getAgentChatState = async (captured, userId) => {
+  if (!captured?.serverKey || !userId || !isCurrentRuntime(captured)) return null;
+  const raw = await storage.getItem(agentChatKey(captured.serverKey));
+  if (!isCurrentRuntime(captured) || !raw) return null;
+  try {
+    const value = JSON.parse(raw);
+    return String(value.userId) === String(userId)
+      ? { conversationId: value.conversationId || null, draft: value.draft || '' }
+      : null;
+  } catch (_) {
+    return null;
+  }
+};
+
+export const setAgentChatState = async (captured, userId, state) => {
+  if (!captured?.serverKey || !userId || !isCurrentRuntime(captured)) return false;
+  const value = JSON.stringify({ userId: String(userId),
+    conversationId: state.conversationId || null, draft: String(state.draft || '').slice(0, 20000) });
+  pendingAgentChatSave = pendingAgentChatSave.catch(() => {}).then(async () => {
+    if (isCurrentRuntime(captured)) await storage.setItem(agentChatKey(captured.serverKey), value);
+  });
+  await pendingAgentChatSave;
+  return isCurrentRuntime(captured);
+};
+
 export const clearSession = async (serverKey) => {
   if (!serverKey) return;
   requireServerKey(serverKey);
   await clearToken(serverKey);
   await credentials.deleteItem(draftsKey(serverKey));
+  await pendingAgentChatSave.catch(() => {});
+  await storage.deleteItem(agentChatKey(serverKey));
   await clearTrackedFiles(serverKey);
 };
 

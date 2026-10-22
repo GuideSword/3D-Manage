@@ -9,6 +9,26 @@ const SCHEMA_PATH = path.join(__dirname, 'schema.sql');
 
 let db;
 
+function recoverPendingTurnsOnStartup(connection) {
+  const pending = connection.prepare(`
+    SELECT m.id, m.conversation_id, m.sequence, m.content
+    FROM messages m
+    WHERE m.role = 'user' AND json_extract(m.content, '$.turn_state') = 'pending'
+      AND m.sequence = (
+        SELECT MAX(next.sequence) FROM messages next
+        WHERE next.conversation_id = m.conversation_id AND next.role = 'user'
+      )
+  `).all();
+  connection.transaction(() => {
+    const deleteTail = connection.prepare('DELETE FROM messages WHERE conversation_id = ? AND sequence > ?');
+    const update = connection.prepare('UPDATE messages SET content = ? WHERE id = ?');
+    for (const row of pending) {
+      deleteTail.run(row.conversation_id, row.sequence);
+      update.run(JSON.stringify({ ...JSON.parse(row.content), turn_state: 'interrupted' }), row.id);
+    }
+  })();
+}
+
 function getDb() {
   if (!db) {
     if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -20,6 +40,7 @@ function getDb() {
     migrateAgentDb(db);
     const schema = fs.readFileSync(SCHEMA_PATH, 'utf8');
     db.exec(schema);
+    recoverPendingTurnsOnStartup(db);
   }
   return db;
 }
@@ -123,6 +144,35 @@ function addMessage(msg) {
     `).run({ ...value, sequence, content: JSON.stringify(value.content) });
     return sequence;
   })(msg);
+}
+
+function markUserMessageTurnState(conversationId, userId, messageId, state) {
+  if (!['pending', 'interrupted', 'complete'].includes(state)) throw new Error('Invalid turn state');
+  const db = getDb();
+  return db.transaction(() => {
+    const row = db.prepare(`
+      SELECT m.content FROM messages m
+      JOIN conversations c ON c.id = m.conversation_id
+      WHERE m.id = ? AND m.conversation_id = ? AND m.role = 'user' AND c.user_id = ?
+    `).get(String(messageId), String(conversationId), String(userId));
+    if (!row) return false;
+    const content = JSON.parse(row.content);
+    db.prepare('UPDATE messages SET content = ? WHERE id = ?')
+      .run(JSON.stringify({ ...content, turn_state: state }), String(messageId));
+    return true;
+  })();
+}
+
+function getRetryableUserMessage(conversationId, userId, messageId) {
+  const row = getDb().prepare(`
+    SELECT m.* FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.conversation_id = ? AND c.user_id = ?
+    ORDER BY m.sequence DESC LIMIT 1
+  `).get(String(conversationId), String(userId));
+  if (!row || row.id !== String(messageId) || row.role !== 'user') return null;
+  const content = JSON.parse(row.content);
+  return ['pending', 'interrupted'].includes(content.turn_state) ? { ...row, content } : null;
 }
 
 function addMessageWithAttachments(msg, attachments = []) {
@@ -461,6 +511,7 @@ module.exports = {
   listConversations, getConversation, createConversation, touchConversation, deleteConversation,
   // messages
   getMessages, addMessage, addMessageWithAttachments, deleteConversationMessagesFromSequence,
+  markUserMessageTurnState, getRetryableUserMessage,
   getConversationSummary, commitConversationSummary,
   listCoreMemories, getOwnedUserMessage, insertCoreMemory, listArchivalPassages,
   upsertArchivalEmbedding, listArchivalEmbeddings, searchArchivalFts,
