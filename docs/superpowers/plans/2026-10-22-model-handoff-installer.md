@@ -56,9 +56,9 @@
 - Create: `docs/rehearsals/2026-10-22-model-handoff-installer.md`
 - Modify: `README.md`
 
-- [ ] 生成本地 Release ZIP 和 SHA256SUMS。
-- [ ] 运行助手 PowerShell 验证、客户端契约测试和 Web 导出。
-- [ ] 用 Edge 验证下载提示、取消和协议失败回退，不自动打开 Bambu Studio。
-- [ ] 记录安装包校验值、验证范围和待用户确认的真实安装步骤。
-- [ ] 提交独立 Git 分支和 PR，合并前不更新正式 Docker。
+- [x] 生成本地 Release ZIP 和 SHA256SUMS。
+- [x] 运行助手 PowerShell 验证、客户端契约测试和 Web 导出。
+- [x] 用 Edge 验证下载提示、取消和协议失败回退，不自动打开 Bambu Studio。
+- [x] 记录安装包校验值、验证范围和待用户确认的真实安装步骤。
+- [x] 提交独立 Git 分支和 PR，合并前不更新正式 Docker。
 
