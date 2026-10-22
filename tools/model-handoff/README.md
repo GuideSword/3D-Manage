@@ -8,6 +8,14 @@
 
 正式用户应优先从 ERP 网页的“下载 Windows 助手”按钮或 GitHub Release 下载带版本号的 ZIP，并核对同一 Release 中的 `SHA256SUMS`。下载不会自动安装；打开 ZIP 后在 Windows PowerShell 运行安装脚本，Windows 会单独显示安装确认。
 
+校验不要求安装包位于 C 盘或固定的“下载”目录。将 `Verify-Checksum.ps1` 与网页下载的 `SHA256SUMS` 放在同一目录，然后运行：
+
+```powershell
+.\Verify-Checksum.ps1 -ArchivePath 'D:\你的目录\3d-manage-model-handoff-windows-v1.0.0.zip' -ChecksumFile 'D:\你的目录\SHA256SUMS'
+```
+
+也可以省略 `-ArchivePath`，脚本会提示输入 ZIP 路径；可以直接把 ZIP 拖进 PowerShell 窗口。注意：校验的是原始 ZIP，不是解压后的单个文件。
+
 从同一版本仓库获取整个目录，在Windows PowerShell运行：
 
 ```powershell

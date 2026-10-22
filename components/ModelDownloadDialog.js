@@ -5,7 +5,7 @@ import { isCurrentRuntime, subscribeServerRuntime, StaleSessionError } from '../
 import { useAppTheme } from '../context/ThemeContext';
 import ModelHandoffInstallCard from './ModelHandoffInstallCard';
 
-const repositoryUrl = 'https://github.com/GuideSword/3D-Manage/tree/master/tools/model-handoff';
+const repositoryUrl = 'https://github.com/GuideSword/3D-Manage/tree/codex/model-handoff-installer/tools/model-handoff';
 const cancelled = () => Object.assign(new Error('已取消本地模型拉取'), { code: 'MODEL_DOWNLOAD_CANCELLED' });
 function keyFromUrl(fileUrl, runtime) {
   const base = new URL(runtime.apiBaseUrl), target = new URL(fileUrl, base.origin);

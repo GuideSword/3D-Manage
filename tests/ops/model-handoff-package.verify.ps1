@@ -12,7 +12,7 @@ if ($expected -ne $actual) { throw "Checksum mismatch: expected $expected, got $
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
 try {
-  $allowed = @('Install.ps1', 'Open-Model.ps1', 'Handoff.Core.psm1', 'README.md', 'release-manifest.json')
+  $allowed = @('Install.ps1', 'Open-Model.ps1', 'Verify-Checksum.ps1', 'Handoff.Core.psm1', 'README.md', 'release-manifest.json')
   $entries = @($archive.Entries | ForEach-Object FullName | Sort-Object)
   if (-not (@($entries | Where-Object { $_ -notin $allowed }).Count -eq 0)) { throw "Package contains an unexpected file: $($entries -join ', ')" }
   if (@($entries).Count -ne $allowed.Count) { throw "Package entry count mismatch: $($entries -join ', ')" }
