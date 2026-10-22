@@ -6,6 +6,7 @@
 
 const { withData } = require('../utils/store');
 const sqliteDb = require('../db/agent');
+const { prepareRecordUpdate } = require('./recordUpdates');
 
 async function searchModelsByKeyword(keyword, limit = 20) {
   if (!keyword) return [];
@@ -57,10 +58,15 @@ async function semanticSearchModels(userId, configFingerprint, queryVector, topK
   return { items, indexComplete: indexState?.status === 'ready' };
 }
 
-async function listOrders({ status, from, to, limit = 50 } = {}) {
+async function listOrders({ status, from, to, limit = 50, search } = {}) {
   const data = await withData((d) => d, { write: false });
   let results = data.orders || [];
   if (status) results = results.filter((o) => o.status === status);
+  if (search) {
+    const query = String(search).toLowerCase();
+    results = results.filter((o) => [o.id, o.customer?.name, o.customerName, o.notes]
+      .some((value) => String(value || '').toLowerCase().includes(query)));
+  }
   if (from) {
     const fromTs = new Date(from).getTime();
     results = results.filter((o) => new Date(o.createdAt || 0).getTime() >= fromTs);
@@ -74,7 +80,7 @@ async function listOrders({ status, from, to, limit = 50 } = {}) {
     const customer = (data.customers || []).find((c) => String(c.id) === String(o.customerId || o.customer_id)) || {};
     return {
       id: o.id,
-      customerName: customer.name || o.customerName || '',
+      customerName: o.customer?.name || customer.name || o.customerName || '',
       status: o.status,
       total: o.total,
       currency: o.currency || 'CNY',
@@ -92,9 +98,9 @@ async function getOrderDetail(orderId) {
   return {
     id: order.id,
     customer: {
-      name: customer.name || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
+      name: order.customer?.name || customer.name || order.customerName || '',
+      email: order.customer?.email || customer.email || order.customerEmail || '',
+      phone: order.customer?.phone || customer.phone || order.customerPhone || '',
     },
     status: order.status,
     items: order.items || [],
@@ -105,6 +111,18 @@ async function getOrderDetail(orderId) {
     createdAt: order.createdAt || order.created_at,
     updatedAt: order.updatedAt || order.updated_at,
   };
+}
+
+async function searchMaterials(keyword, limit = 20) {
+  const data = await withData((d) => d, { write: false });
+  const query = String(keyword || '').toLowerCase();
+  return (data.materials || []).filter((row) => [row.id, row.type, row.brand, row.color]
+    .some((value) => String(value || '').toLowerCase().includes(query)))
+    .slice(0, limit).map((row) => ({
+      id: row.id, type: row.type, brand: row.brand, color: row.color,
+      diameter: row.diameter, density: row.density, unitPrice: row.unitPrice,
+      unit: row.unit, notes: row.notes,
+    }));
 }
 
 const { inventorySummary } = require('../services/inventory');
@@ -127,4 +145,6 @@ module.exports = {
   listOrders,
   getOrderDetail,
   inventorySummary,
+  prepareRecordUpdate,
+  searchMaterials,
 };

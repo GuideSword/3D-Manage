@@ -12,7 +12,7 @@ const { createLLMClient, streamChatCompletion } = require('./providers/llm');
 const embedProvider = require('./providers/embed');
 const dbBridge = require('./dbBridge');
 const { isImageInputRejection } = require('./visionProbe');
-const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
+const { discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
 const { assembleBudgetedContext, estimateTokens } = require('./contextBudget');
 const { XIAOLI_SYSTEM_PROMPT } = require('./persona');
 const { MAX_INPUT_TOKENS, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
@@ -29,6 +29,7 @@ async function ensureConversation({ userId, conversationId, firstUserMessage }) 
   if (conversationId) {
     const existing = sqliteDb.getConversation(conversationId, userId);
     if (existing) return { ...existing, justCreated: false };
+    throw Object.assign(new Error('会话不存在或无权访问'), { status: 404, code: 'CONVERSATION_NOT_FOUND' });
   }
   // Create new
   const id = newId();
@@ -65,6 +66,7 @@ async function runConversation({
   userId,
   role,
   conversationId,
+  retryMessageId,
   userMessage,
   displayUserMessage = userMessage,
   imageParts = [],
@@ -100,7 +102,8 @@ async function runConversation({
   sqliteDb.touchConversation(conv.id);
 
   // 3. Load history
-  const history = sqliteDb.getMessages(conv.id);
+  const history = sqliteDb.getMessages(conv.id).filter((message) =>
+    !['pending', 'interrupted'].includes(message.content?.turn_state));
   const memoryLayers = await prepareMemoryLayers({
     userId,
     conversationId: conv.id,
@@ -128,8 +131,15 @@ async function runConversation({
     return;
   }
   const messages = budgetedContext.messages;
-  const userMessageId = newId();
-  const preparedAttachments = await prepareMessageImages({
+  const retriedMessage = retryMessageId
+    ? sqliteDb.getRetryableUserMessage(conv.id, userId, retryMessageId)
+    : null;
+  if (retryMessageId && (!retriedMessage || retriedMessage.content.content !== displayUserMessage)) {
+    onEvent('error', { code: 'RETRY_NOT_AVAILABLE', message: '原消息无法重试，请重新打开会话' });
+    return;
+  }
+  const userMessageId = retriedMessage?.id || newId();
+  const preparedAttachments = retriedMessage ? [] : await prepareMessageImages({
     images: decodedImages,
     userId,
     conversationId: conv.id,
@@ -137,6 +147,7 @@ async function runConversation({
   });
   const persistentUserMsg = {
     role: 'user',
+    turn_state: 'pending',
     content: preparedAttachments.length > 0
       ? [
           { type: 'text', text: displayUserMessage },
@@ -151,24 +162,29 @@ async function runConversation({
       : displayUserMessage,
   };
   let currentSequence;
-  try {
-    currentSequence = sqliteDb.addMessageWithAttachments({
-      id: userMessageId,
-      conversation_id: conv.id,
-      role: 'user',
-      content: persistentUserMsg,
-    }, preparedAttachments);
-  } catch (error) {
-    await discardPreparedImages(preparedAttachments);
-    throw error;
+  if (retriedMessage) {
+    currentSequence = retriedMessage.sequence;
+    sqliteDb.markUserMessageTurnState(conv.id, userId, userMessageId, 'pending');
+  } else {
+    try {
+      currentSequence = sqliteDb.addMessageWithAttachments({
+        id: userMessageId,
+        conversation_id: conv.id,
+        role: 'user',
+        content: persistentUserMsg,
+      }, preparedAttachments);
+    } catch (error) {
+      await discardPreparedImages(preparedAttachments);
+      throw error;
+    }
   }
+  onEvent('accepted', { conversationId: conv.id, messageId: userMessageId });
   let failedTurnCleaned = false;
   const cleanupFailedTurn = async () => {
     if (failedTurnCleaned) return;
     failedTurnCleaned = true;
-    sqliteDb.deleteConversationMessagesFromSequence(conv.id, userId, currentSequence);
-    await deleteConversationAttachments(preparedAttachments);
-    if (conv.justCreated) sqliteDb.deleteConversation(conv.id, userId);
+    sqliteDb.deleteConversationMessagesFromSequence(conv.id, userId, currentSequence + 1);
+    sqliteDb.markUserMessageTurnState(conv.id, userId, userMessageId, 'interrupted');
   };
 
   // 5. Build the per-turn runtime. Any local setup failure after persistence must
@@ -201,6 +217,7 @@ async function runConversation({
       ? sqliteDb.getModelIndexState(userId, settings.embed_config_fingerprint)
       : null;
     activeTools = getToolsForContext({
+      role,
       embeddingReady: Number(indexState?.ready_count || 0) > 0,
       hasAttachments: settings.llm_vision_status === 'vision'
         && sqliteDb.listConversationAttachments(conv.id, userId).length > 0,
@@ -416,6 +433,9 @@ async function runConversation({
           ],
         });
       }
+      if (tc.name === 'propose_record_update' && !result?.error) {
+        onEvent('update_proposal', { proposal: result });
+      }
       sqliteDb.addMessage({
         id: newId(),
         conversation_id: conv.id,
@@ -444,6 +464,7 @@ async function runConversation({
     );
   }
 
+  sqliteDb.markUserMessageTurnState(conv.id, userId, userMessageId, 'complete');
   onEvent('done', { conversationId: conv.id, text: finalText, turns: turn });
   return { conversationId: conv.id, turns: turn };
 }

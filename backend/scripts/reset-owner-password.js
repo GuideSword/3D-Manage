@@ -1,5 +1,7 @@
 const bcrypt = require('bcryptjs');
-const { withData, appendAudit, now, closeStore } = require('../utils/store');
+const { createBusinessPool } = require('../business-db/connection');
+const { inspectBusinessStorage } = require('../business-db/storageMode');
+let store;
 
 const ownerId = process.argv[2];
 
@@ -51,6 +53,18 @@ const main = async () => {
   if (!ownerId) {
     throw new Error('Usage: node scripts/reset-owner-password.js OWNER_ID');
   }
+  const driver = (process.env.STORE_DRIVER || 'file').trim().toLowerCase();
+  if (!['file', 'postgres', 'pg'].includes(driver)) throw new Error('无法识别业务存储模式，拒绝恢复');
+  if (driver !== 'file') {
+    const pool = await createBusinessPool({ connectionString: process.env.DATABASE_URL });
+    try {
+      if ((await inspectBusinessStorage(pool)).mode !== 'legacy') {
+        throw new Error('当前使用关系存储，请使用 erp-owner-recovery.js 并明确指定目标和版本');
+      }
+    } finally { await pool.end(); }
+  }
+  store = require('../utils/store');
+  const { withData, appendAudit, now } = store;
   const first = await readHidden('New Owner password: ');
   const second = await readHidden('Confirm password: ');
   if (first !== second) throw new Error('Passwords do not match.');
@@ -80,4 +94,4 @@ main()
     console.error(error.message);
     process.exitCode = 1;
   })
-  .finally(closeStore);
+  .finally(() => store?.closeStore());

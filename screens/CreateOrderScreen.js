@@ -29,6 +29,9 @@ import { pickerAssetToFormFile, validateExtension } from '../utils/upload';
 import { useEditRecord } from '../utils/useEditRecord';
 import EditLoadState from '../components/EditLoadState';
 import { orderToForm, formToOrderItems, isPositiveNumber } from '../utils/editFormCore.cjs';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalOrderFormScreen from './RelationalOrderFormScreen';
 
 const COLOR_OPTIONS = [
   { value: '金色', label: '金色' },
@@ -760,4 +763,7 @@ const createStyles = (COLORS) => StyleSheet.create({
   },
 });
 
-export default CreateOrderScreen;
+export default function OrderFormRoute(props) {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server) ? <RelationalOrderFormScreen {...props} /> : <CreateOrderScreen {...props} />;
+}

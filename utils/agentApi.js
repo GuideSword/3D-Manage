@@ -16,6 +16,10 @@ export const agentApi = {
     method: 'POST',
     body: JSON.stringify({ draft }),
   }),
+  confirmUpdate: (proposal) => apiRequest('/agent/updates/confirm', {
+    method: 'POST',
+    body: JSON.stringify({ proposal }),
+  }),
   getSettings: () => apiRequest('/agent/keys'),
   testSettings: (settings) => apiRequest('/agent/keys/test', {
     method: 'POST',
@@ -31,7 +35,7 @@ export const agentApi = {
   }),
 };
 
-export async function streamChat({ message, conversationId, images, onEvent }) {
+export async function streamChat({ message, conversationId, retryMessageId, images, onEvent }) {
   if (typeof onEvent !== 'function') {
     throw new Error('streamChat requires an onEvent callback');
   }
@@ -68,7 +72,7 @@ export async function streamChat({ message, conversationId, images, onEvent }) {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: { message, conversationId, images },
+        body: { message, conversationId, ...(retryMessageId ? { retryMessageId } : {}), images },
         signal: controller.signal,
       },
       safeEvent

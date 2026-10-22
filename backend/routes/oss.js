@@ -83,6 +83,9 @@ router.post('/test-connection', requireRoles('owner'), async (req, res) => {
 });
 
 router.post('/upload-url', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    if ((await require('../modules/modelDownloads/legacy').statusRequest(req)).enabled) return res.status(403).json({ code: 'MODEL_DOWNLOAD_DIRECT_LINK_DISABLED', error: '下载保护已开启，请使用服务器本地文件上传，避免产生外部直链' });
+  } catch (_) { return res.status(503).json({ code: 'DOWNLOAD_SERVICE_UNAVAILABLE', error: '下载保护状态暂不可用' }); }
   if (rejectSensitiveConfig(req, res)) return undefined;
   const input = parseRequest(uploadUrlSchema, req.body, res);
   if (!input) return undefined;
@@ -136,6 +139,9 @@ router.post('/download-url', requireRoles('owner', 'staff', 'viewer'), async (re
   const input = parseRequest(downloadUrlSchema, req.body, res);
   if (!input) return undefined;
   try {
+    if ((await require('../modules/modelDownloads/legacy').statusRequest(req)).enabled) {
+      return res.status(403).json({ code: 'MODEL_DOWNLOAD_DIRECT_LINK_DISABLED', error: '模型下载保护已开启，不能生成对象存储直链，请使用受保护下载入口' });
+    }
     const registered = await withData((data) => isRegisteredObject(data, input.objectKey), { write: false });
     if (!registered) {
       return res.status(404).json({ code: 'OBJECT_NOT_REGISTERED', error: '对象尚未登记' });
@@ -148,6 +154,9 @@ router.post('/download-url', requireRoles('owner', 'staff', 'viewer'), async (re
 });
 
 router.post('/complete-upload', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    if ((await require('../modules/modelDownloads/legacy').statusRequest(req)).enabled) return res.status(403).json({ code: 'MODEL_DOWNLOAD_DIRECT_LINK_DISABLED', error: '下载保护已开启，不能继续登记外部对象，请改用服务器本地文件上传' });
+  } catch (_) { return res.status(503).json({ code: 'DOWNLOAD_SERVICE_UNAVAILABLE', error: '下载保护状态暂不可用' }); }
   if (rejectSensitiveConfig(req, res)) return undefined;
   const input = parseRequest(completeSchema, req.body, res);
   if (!input) return undefined;

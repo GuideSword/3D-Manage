@@ -79,7 +79,7 @@ try {
     ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resolvedBackup 'manifest.incomplete.json') -Encoding utf8NoBOM
   throw
 } finally {
-  try { if ($appWasRunning) { Invoke-Native { docker compose -p $ProjectName up -d app } } } finally {
+  try { if ($appWasRunning) { Invoke-Native { docker start $appContainer } } } finally {
     if ($locationPushed) { Pop-Location }
     if ($lock) {
       $lock.Dispose()

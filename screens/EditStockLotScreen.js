@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { SafeAreaView, ScrollView, StyleSheet, Text } from 'react-native';
 import { Button, Card, Input } from '../components';
 import EditLoadState from '../components/EditLoadState';
@@ -7,11 +7,18 @@ import { isAuthRequiredError, stockAPI } from '../utils/api';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { useEditRecord } from '../utils/useEditRecord';
 import { SPACING } from '../constants';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import { relationalInventoryAPI } from '../utils/relationalInventoryApi';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 
 const lotAPI = { getById: (id) => stockAPI.getLotById(id) };
+const relationalLotAPI = { getById: relationalInventoryAPI.getLotById };
 
 export default function EditStockLotScreen({ route, navigation }) {
   const lotId = route.params?.lotId;
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
   const { colors } = useAppTheme();
   const styles = useMemo(() => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
@@ -24,10 +31,20 @@ export default function EditStockLotScreen({ route, navigation }) {
   const [loading, setLoading] = useState(false);
   const [conflict, setConflict] = useState(false);
   const [saveError, setSaveError] = useState('');
-  const [pendingPayload, setPendingPayload] = useState(null);
+  const [pendingPayload, setPendingState] = useState(null);
+  const pendingRef = useRef(null), pendingRuntime = useRef(null);
+  const setPendingPayload = payload => {
+    if (!pendingRef.current && payload) pendingRuntime.current = getServerRuntime();
+    if (!payload) pendingRuntime.current = null;
+    pendingRef.current = payload; setPendingState(payload);
+  };
+  useEffect(() => navigation.addListener('beforeRemove', event => {
+    if (!relational || !pendingRef.current || !isCurrentRuntime(pendingRuntime.current)) return;
+    event.preventDefault(); setSaveError('请先重试确认上次保存结果，再离开此页。');
+  }), [navigation, relational]);
   const submitting = useRef(false);
   const submitCommand = useInventoryCommand();
-  const { record, loadingRecord, loadError, reload } = useEditRecord(lotId, lotAPI, (lot) => {
+  const { record, loadingRecord, loadError, reload } = useEditRecord(lotId, relational ? relationalLotAPI : lotAPI, (lot) => {
     setForm({ lotNo: lot.lotNo || lot.lot_no || '', serialNo: lot.serialNo || lot.serial_no || '',
       location: lot.location || '', notes: lot.notes || '' });
     setConflict(false);
@@ -47,7 +64,10 @@ export default function EditStockLotScreen({ route, navigation }) {
     setPendingPayload(payload);
     try {
       const result = await submitCommand('lot.update', payload,
-        (body, key) => stockAPI.updateLot(body.id, body.changes, key));
+        (body, key) => relational ? relationalInventoryAPI.updateLot(body.id, {
+          version: body.changes.version,
+          changes: { lotNo: body.changes.lotNo, serialNo: body.changes.serialNo, location: body.changes.location, notes: body.changes.notes },
+        }, key) : stockAPI.updateLot(body.id, body.changes, key));
       if (result === null) return;
       setPendingPayload(null);
       navigation.goBack();
@@ -73,7 +93,7 @@ export default function EditStockLotScreen({ route, navigation }) {
       <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>编辑库存批次</Text>
         <Card>
-          <Text style={styles.text}>当前库存：{record.qty || 0}g · {record.active === false ? '已停用' : '已启用'}</Text>
+          <Text style={styles.text}>当前库存：{relational && (record.qty == null || record.balanceStatus === 'legacy_invalid') ? '待核对' : `${record.qty || 0}g`} · {record.active === false ? '已停用' : '已启用'}</Text>
           <Text style={styles.text}>数量更正请使用入库、出库或盘点，系统会保留库存流水。</Text>
         </Card>
         <Card>

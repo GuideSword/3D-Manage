@@ -31,6 +31,7 @@ const { queueUserModelReconcile } = require('../agent/modelIndex');
 const { deleteConversationAttachments, readOwnedAttachment } = require('../agent/attachmentStore');
 const { withData } = require('../utils/store');
 const { createOrderInData } = require('../services/orders');
+const { confirmRecordUpdate } = require('../agent/recordUpdates');
 const { z } = require('zod');
 const { parseRequest } = require('../utils/validation');
 const { publicErrorMessage } = require('../utils/publicError');
@@ -68,7 +69,19 @@ router.post('/chat', async (req, res) => {
       error: publicErrorMessage(error, '对话初始化失败'),
     });
   }
-  const { conversationId, suppliedMessage, images, modelMessage } = chatRequest;
+  const { conversationId, retryMessageId, suppliedMessage, images, modelMessage } = chatRequest;
+  if (conversationId && !sqliteDb.getConversation(conversationId, req.user.id)) {
+    return res.status(404).json({ code: 'CONVERSATION_NOT_FOUND', error: '会话不存在或无权访问' });
+  }
+  if (retryMessageId) {
+    const retry = sqliteDb.getRetryableUserMessage(conversationId, req.user.id, retryMessageId);
+    if (!retry || retry.content.content !== suppliedMessage) {
+      return res.status(409).json({ code: 'RETRY_NOT_AVAILABLE', error: '原消息无法重试，请重新打开会话' });
+    }
+    if (Array.isArray(retry.content.content)) {
+      return res.status(409).json({ code: 'RETRY_IMAGES_UNSUPPORTED', error: '图片消息中断后请重新选择图片' });
+    }
+  }
 
   const settings = sqliteDb.getUserSettings(req.user.id);
   if (!settings?.llm_api_key_enc) {
@@ -124,6 +137,12 @@ router.post('/chat', async (req, res) => {
       ac.abort();
     }
   });
+  res.on('close', () => {
+    if (!res.writableEnded && !clientGone) {
+      clientGone = true;
+      ac.abort();
+    }
+  });
   res.on('error', (err) => {
     console.warn('[/chat] res error:', err?.message);
     clientGone = true;
@@ -135,6 +154,7 @@ router.post('/chat', async (req, res) => {
       userId: req.user.id,
       role: req.user.role,
       conversationId,
+      retryMessageId,
       userMessage: modelMessage,
       displayUserMessage: suppliedMessage,
       imageParts: parsedImages.parts,
@@ -216,6 +236,19 @@ router.post('/drafts/confirm', requireRoles('owner', 'staff'), async (req, res) 
     res.json({ order: newOrder });
   } catch (err) {
     res.status(500).json({ error: publicErrorMessage(err, '读取草稿失败') });
+  }
+});
+
+router.post('/updates/confirm', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    const record = await confirmRecordUpdate(req.body?.proposal || {}, req.user.id);
+    if (req.body?.proposal?.entity === 'models') {
+      const { queueUserAssetIndex } = require('../agent/modelIndex');
+      queueUserAssetIndex({ userId: req.user.id, model: record });
+    }
+    res.json({ record });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: publicErrorMessage(error, '更新记录失败') });
   }
 });
 

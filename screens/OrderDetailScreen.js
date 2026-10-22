@@ -1,8 +1,9 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -11,6 +12,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as DocumentPicker from 'expo-document-picker';
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
@@ -23,11 +25,26 @@ import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { canWrite } from '../utils/permissions';
-import { isAuthRequiredError, ordersAPI } from '../utils/api';
+import { isAuthRequiredError, ordersAPI, modelsAPI } from '../utils/api';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import filesCore from '../utils/relationalFilesCore.cjs';
+import { relationalOrdersAPI } from '../utils/relationalOrdersApi';
+import { useRelationalFileMutation } from '../utils/useRelationalFileMutation';
+import RelationalFileFeedback from '../components/RelationalFileFeedback';
+import { pickerAssetToFormFile } from '../utils/upload';
+import { trackPickedAsset } from '../utils/sessionStorage';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
+import orderDisplay from '../utils/orderDisplayCore.cjs';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const fileMutation = useRelationalFileMutation(navigation);
+  const orderRuntime = useRef(null);
+  const [downloading, setDownloading] = useState(null);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { orderId } = route.params;
@@ -35,12 +52,17 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const fileLocked = relational && (fileMutation.pending || fileMutation.busy || updating);
 
   const fetchOrderDetail = async () => {
     try {
       setLoading(true);
-      const data = await ordersAPI.getById(orderId);
+      const captured = getServerRuntime();
+      const data = await (relational ? relationalOrdersAPI : ordersAPI).getById(orderId);
+      if (!isCurrentRuntime(captured)) return;
+      orderRuntime.current = captured;
       setOrder(data);
+      return data;
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
@@ -51,6 +73,45 @@ const OrderDetailScreen = ({ route, navigation }) => {
       setLoading(false);
       setRefreshing(false);
     }
+  };
+
+  const uploadAttachment = async () => {
+    const pickerRuntime = orderRuntime.current;
+    if (fileLocked || !canWrite(user) || !isCurrentRuntime(pickerRuntime)) return;
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: '*/*', copyToCacheDirectory: true, multiple: false });
+      if (picked.canceled || !isCurrentRuntime(pickerRuntime)) return;
+      const asset = picked.assets?.[0];
+      await trackPickedAsset(asset);
+      if (!isCurrentRuntime(pickerRuntime)) return;
+      filesCore.validateFileAsset('attachments', asset?.file || asset);
+      const result = await fileMutation.start({ entity: 'orders', record: order, child: 'attachments', file: pickerAssetToFormFile(asset) });
+      if (result) setOrder(result);
+    } catch (error) { if (!isAuthRequiredError(error) && !error.staleSession) fileMutation.setError(error.message || '附件上传失败'); }
+  };
+  const removeAttachment = async attachment => {
+    if (fileLocked || !canWrite(user) || !isCurrentRuntime(orderRuntime.current)) return;
+    const result = await fileMutation.remove({ entity: 'orders', record: order, child: 'attachments', position: attachment.position });
+    if (result) setOrder(result);
+  };
+  const confirmRemoveAttachment = attachment => {
+    const message = `确定从订单中移除“${attachment.originalName || attachment.name || '该附件'}”吗？`;
+    if (Platform.OS === 'web') { if (window.confirm(message)) removeAttachment(attachment); return; }
+    Alert.alert('移除附件', message, [{ text: '取消', style: 'cancel' }, { text: '移除', style: 'destructive', onPress: () => removeAttachment(attachment) }]);
+  };
+  const downloadAttachment = async attachment => {
+    if (downloading !== null || !isCurrentRuntime(orderRuntime.current)) return;
+    try {
+      setDownloading(attachment.position); fileMutation.setError('');
+      // Reuse the existing scoped protected-file transfer; this sends no legacy business command.
+      await modelsAPI.downloadFile({ ...attachment, name: attachment.originalName || attachment.name || '订单附件' });
+    } catch (error) { if (!isAuthRequiredError(error) && !error.staleSession) fileMutation.setError(error.message || '附件下载失败'); }
+    finally { setDownloading(null); }
+  };
+  const reloadAttachmentConflict = async () => {
+    if (!isCurrentRuntime(orderRuntime.current)) return;
+    const current = await fetchOrderDetail();
+    if (current) await fileMutation.rebase(current);
   };
 
   const handleStatusUpdate = (newStatus) => {
@@ -174,7 +235,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const customerName = order.customer?.name || order.customerName || '未知客户';
   const orderItems = order.items || order.orderItems || [];
   const attachments = order.attachments || [];
-  const total = Number(order.total || 0);
+  const total = orderDisplay.amount(order.total);
   const currency = order.currency || 'CNY';
   const statusColor = getOrderStatusColor(order.status, colors);
   const availableActions = getAvailableActions(order.status);
@@ -205,7 +266,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
 
         <Card style={styles.section}>
           <View style={styles.summaryGrid}>
-            <SummaryTile label="订单总额" value={`${currency} ${total.toFixed(2)}`} highlight />
+            <SummaryTile label="订单总额" value={`${currency} ${total}`} highlight />
             <SummaryTile label="创建时间" value={order.createdAt || order.created_at || '未知'} />
             <SummaryTile label="交付日期" value={order.dueDate || order.due_date || '未设置'} />
           </View>
@@ -216,7 +277,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           {orderItems.length > 0 ? orderItems.map((item, index) => {
             const quantity = item.quantity || item.qty || 0;
             const unitPrice = item.unitPrice || item.unit_price || 0;
-            const itemTotal = quantity * unitPrice;
+            const itemTotal = orderDisplay.lineAmount(item);
             return (
               <View key={item.id || index} style={styles.orderItem}>
                 <View style={styles.orderItemLeft}>
@@ -227,11 +288,11 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     {item.materialType || item.material_type || '未知材质'} · {item.color || '未知颜色'}
                   </Text>
                   <Text style={styles.orderItemSpec}>
-                    数量 {quantity} · 单价 {currency} {Number(unitPrice).toFixed(2)}
+                    数量 {quantity} · 单价 {currency} {orderDisplay.unitPrice(unitPrice)}
                   </Text>
                 </View>
                 <Text style={styles.orderItemTotal}>
-                  {currency} {Number(itemTotal).toFixed(2)}
+                  {currency} {itemTotal}
                 </Text>
               </View>
             );
@@ -247,11 +308,11 @@ const OrderDetailScreen = ({ route, navigation }) => {
           </Card>
         ) : null}
 
-        {attachments.length > 0 ? (
+        {attachments.length > 0 || relational ? (
           <Card style={styles.section}>
             <SectionHeader title="附件" count={attachments.length} />
             {attachments.map((attachment, index) => (
-              <View key={attachment.fileKey || index} style={styles.attachmentItem}>
+              <View key={attachment.id || `${attachment.fileKey}-${attachment.position ?? index}`} style={styles.attachmentItem}>
                 <View style={styles.attachmentIcon}>
                   <Ionicons name="attach-outline" size={18} color={colors.primary} />
                 </View>
@@ -263,8 +324,15 @@ const OrderDetailScreen = ({ route, navigation }) => {
                     <Text style={styles.attachmentMeta}>{Math.round(attachment.size / 1024)} KB</Text>
                   ) : null}
                 </View>
+                {relational ? <View style={{ gap: 8 }}>
+                  <Button title="下载附件" size="small" variant="outline" disabled={downloading !== null} loading={downloading === attachment.position} onPress={() => downloadAttachment(attachment)} />
+                  {canWrite(user) ? <Button title="移除附件" size="small" variant="outline" disabled={fileLocked} onPress={() => confirmRemoveAttachment(attachment)} /> : null}
+                </View> : null}
               </View>
             ))}
+            {relational && !attachments.length ? <Text style={styles.notesText}>暂无附件</Text> : null}
+            {relational && canWrite(user) ? <Button title="添加订单附件" variant="outline" disabled={fileLocked} onPress={uploadAttachment} /> : null}
+            {relational ? <RelationalFileFeedback mutation={fileMutation} onSaved={setOrder} onReload={reloadAttachmentConflict} /> : null}
           </Card>
         ) : null}
 
@@ -282,7 +350,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
               iconLeft="refresh-outline"
               onPress={handleRestore}
               variant="primary"
-              disabled={updating}
+              disabled={updating || fileLocked}
               loading={updating}
               fullWidth
             />
@@ -300,7 +368,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
                   iconLeft={action.icon}
                   onPress={() => handleStatusUpdate(action.status)}
                   variant={action.variant}
-                  disabled={updating}
+                  disabled={updating || fileLocked}
                   loading={updating}
                   fullWidth
                 />
@@ -310,7 +378,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
         ) : null}
 
         {canWrite(user) ? <Card style={styles.section}>
-          <Button title="编辑订单" iconLeft="create-outline" fullWidth
+          <Button title="编辑订单" disabled={fileLocked} iconLeft="create-outline" fullWidth
             onPress={() => navigation.navigate(ROUTES.CREATE_ORDER, { orderId })} />
         </Card> : null}
 
@@ -320,6 +388,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
             title="删除订单"
             iconLeft="trash-outline"
             onPress={handleDelete}
+            disabled={fileLocked}
             variant="danger"
             fullWidth
           />

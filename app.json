@@ -42,6 +42,7 @@
     "plugins": [
       "expo-font",
       "expo-secure-store",
+      "./plugins/withWindowsCxxPaths",
       [
         "expo-build-properties",
         {

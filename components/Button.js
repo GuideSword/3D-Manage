@@ -26,6 +26,8 @@ const Button = ({
   return (
     <TouchableOpacity
       activeOpacity={0.82}
+      accessibilityRole="button"
+      accessibilityLabel={title}
       style={[
         styles.button,
         styles[size] || styles.medium,

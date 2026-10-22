@@ -22,7 +22,7 @@ cleanup() {
     printf '{"status":"incomplete","exitCode":%s,"utcTimestamp":"%s"}\n' "$code" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > "$backup/manifest.incomplete.json" || code=1
   fi
   cd "$deployment"
-  if [ -n "$running" ]; then docker compose -p "$project" up -d app >/dev/null || code=1; fi
+  if [ -n "$running" ]; then docker start "$running" >/dev/null || code=1; fi
   rm -f "$lock"
   exit "$code"
 }

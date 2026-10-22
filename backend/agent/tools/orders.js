@@ -73,6 +73,7 @@ const listOrdersSchema = z.object({
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
   limit: z.number().int().min(1).max(200).default(50),
+  search: z.string().optional().describe('按客户名、订单号或备注筛选'),
 });
 
 const listOrders = {

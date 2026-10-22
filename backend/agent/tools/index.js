@@ -14,6 +14,7 @@ const modelsTools = require('./models');
 const inventoryTools = require('./inventory');
 const extractTools = require('./extract');
 const memoryTools = require('./memory');
+const updateTools = require('./updates');
 
 const tools = [
   ...modelsTools, // search_models_by_keyword, search_models_semantic
@@ -21,12 +22,15 @@ const tools = [
   ...inventoryTools, // get_inventory_summary
   ...extractTools, // extract_order_draft
   ...memoryTools,
+  ...updateTools,
 ];
 
 const toolsByName = Object.fromEntries(tools.map((t) => [t.name, t]));
 
-function getToolsForContext({ embeddingReady = false, hasAttachments = false } = {}) {
+function getToolsForContext({ embeddingReady = false, hasAttachments = false, role } = {}) {
   return tools.filter((tool) => (
+    (!role || tool.allowedRoles?.includes(role))
+    &&
     (embeddingReady || tool.name !== 'search_models_semantic')
     && (hasAttachments || tool.name !== 'recall_conversation_image')
   ));

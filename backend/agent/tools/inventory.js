@@ -82,4 +82,18 @@ const getInventorySummary = {
   },
 };
 
-module.exports = [getInventorySummary];
+const searchMaterialsSchema = z.object({
+  keyword: z.string().describe('耗材类型、品牌、颜色或 ID；空字符串列出最近记录'),
+  limit: z.number().int().min(1).max(50).default(20),
+});
+
+const searchMaterials = {
+  name: 'search_materials',
+  allowedRoles: ['owner', 'staff', 'viewer'],
+  description: '查询耗材资料及准确 ID，供查看或修改资料使用；库存数量仍使用 get_inventory_summary。',
+  schema: searchMaterialsSchema,
+  parameters: zodToJsonSchema(searchMaterialsSchema),
+  handler: (args, ctx) => ctx.db.searchMaterials(args.keyword, args.limit),
+};
+
+module.exports = [getInventorySummary, searchMaterials];
