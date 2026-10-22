@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$ArchivePath,
   [string]$ChecksumFile = (Join-Path $PSScriptRoot 'SHA256SUMS')
 )
