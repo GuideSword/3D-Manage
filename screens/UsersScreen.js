@@ -13,6 +13,9 @@ import { Button, Card, Input, Picker } from '../components';
 import { ROLE_LABELS, ROLES, SPACING, TYPOGRAPHY } from '../constants';
 import { useAppTheme } from '../context/ThemeContext';
 import { usersAPI } from '../utils/api';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalUsersScreen from './RelationalUsersScreen';
 
 const ROLE_OPTIONS = [ROLES.STAFF, ROLES.VIEWER].map((role) => ({
   value: role,
@@ -230,4 +233,7 @@ const createStyles = (colors) => StyleSheet.create({
   modalCard: { width: '100%', maxWidth: 480, alignSelf: 'center', marginHorizontal: 0 },
 });
 
-export default UsersScreen;
+export default function UsersRoute(props) {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server) ? <RelationalUsersScreen {...props} /> : <UsersScreen {...props} />;
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import AppNavigator, { navigationRef } from './navigation/AppNavigator';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import DraggableFab from './components/agent/DraggableFab';
@@ -8,6 +9,7 @@ import { ROUTES } from './constants';
 import { ThemeProvider, useAppTheme } from './context/ThemeContext';
 import { ServerConfigProvider } from './context/ServerConfigContext';
 import navigationRouteObserver from './utils/navigationRouteObserver.cjs';
+import ModelDownloadDialog from './components/ModelDownloadDialog';
 
 const { subscribeToNavigationRoute } = navigationRouteObserver;
 
@@ -53,6 +55,7 @@ function AppContent() {
   return (
     <AuthProvider>
       <AppNavigator />
+      <ModelDownloadDialog />
       <AuthenticatedFab />
       <StatusBar style={isDark ? 'light' : 'dark'} />
     </AuthProvider>
@@ -61,12 +64,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <KeyboardProvider>
-      <ThemeProvider>
-        <ServerConfigProvider>
-          <AppContent />
-        </ServerConfigProvider>
-      </ThemeProvider>
-    </KeyboardProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <ThemeProvider>
+          <ServerConfigProvider>
+            <AppContent />
+          </ServerConfigProvider>
+        </ThemeProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }

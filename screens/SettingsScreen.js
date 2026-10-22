@@ -16,6 +16,8 @@ import { useAuth } from '../context/AuthContext';
 import { useAppTheme } from '../context/ThemeContext';
 import { useServerConfig } from '../context/ServerConfigContext';
 import { canExport } from '../utils/permissions';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import ModelDownloadSettings from '../components/ModelDownloadSettings';
 
 const SettingsScreen = () => {
   const { colors, themeMode, setThemeMode } = useAppTheme();
@@ -86,6 +88,8 @@ const SettingsScreen = () => {
             label="角色"
             value={ROLE_LABELS[user?.role] || user?.role || '未知'}
           />
+          <ActionRow styles={styles} colors={colors} icon="key-outline" label="修改本人密码"
+            hint="修改后使用新密码重新登录" onPress={() => navigation.navigate(ROUTES.CHANGE_PASSWORD)} />
           {user?.role === ROLES.OWNER ? (
             <ActionRow
               styles={styles}
@@ -115,6 +119,15 @@ const SettingsScreen = () => {
         </Card>
       </View>
 
+      {masterDataCore.supportsMasterData(server) ? <View style={styles.section}>
+        <Text style={styles.sectionTitle}>资料维护</Text>
+        <Card style={styles.card} padding="none">
+          <ActionRow styles={styles} colors={colors} icon="people-outline" label="客户资料" hint="客户、联系人与联系方式" onPress={() => navigation.navigate(ROUTES.CUSTOMERS)} />
+          <ActionRow styles={styles} colors={colors} icon="business-outline" label="供应商资料" hint="供应商与采购联系资料" onPress={() => navigation.navigate(ROUTES.SUPPLIERS)} />
+          <ActionRow styles={styles} colors={colors} icon="cube-outline" label="默认仓库" hint="查看仓库信息和维护名称" onPress={() => navigation.navigate(ROUTES.WAREHOUSE_SETTINGS)} />
+        </Card>
+      </View> : null}
+
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>服务器配置</Text>
         <Card style={styles.card} padding="none">
@@ -139,13 +152,14 @@ const SettingsScreen = () => {
             styles={styles}
             colors={colors}
             icon="document-attach-outline"
-            label="CSV 导入"
-            hint="批量导入订单、耗材或库存数据"
+            label={masterDataCore.supportsMasterData(server) ? "CSV 导入导出" : "CSV 导入"}
+            hint={masterDataCore.supportsMasterData(server) ? "批量导入资料或导出CSV文件" : "批量导入订单、耗材或库存数据"}
             onPress={() => navigation.navigate(ROUTES.DATA_IMPORT)}
           />
         </Card>
       </View> : null}
 
+      {user?.role === ROLES.OWNER && server?.capabilities?.modelDownloadsVersion === 1 ? <ModelDownloadSettings /> : null}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>会话</Text>
         <TouchableOpacity activeOpacity={0.82} style={styles.logoutButton} onPress={handleLogout}>

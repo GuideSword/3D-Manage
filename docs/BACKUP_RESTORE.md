@@ -20,6 +20,8 @@ Windows 主机应使用 PowerShell 脚本。不要从 Git Bash/MSYS 直接运行
 
 脚本取得与恢复/升级共享的锁，记录 app 原运行状态，停止 app，checkpoint AI SQLite，使用 `pg_dump -Fc` 生成 `database.dump`，归档 `runtime/data` 与 `runtime/uploads` 为 `files.tar.gz`，最后写入含 serverId、版本、hash 和加密密钥标识的 `manifest.json`。任一步失败会保留带 `manifest.incomplete.json` 的诊断目录，并只在原先运行时重启 app。
 
+2026-09-30 起，备份脚本以原容器 ID 重启此前运行的 app，避免备份期间 Compose 配置漂移导致意外重建或端口绑定失败。完整恢复还需要单独保留 `.env`（尤其 `AGENT_KEY_ENC_SECRET`）；本机备份不等于离机备份。
+
 推荐每日备份、至少保留 7 个每日和 4 个每周已验证副本；确认最新已验证副本已离机后再修剪旧副本。Windows 任务计划程序或 Linux systemd timer/cron 应执行上述命令并监控非零退出码。
 
 ## 恢复守卫

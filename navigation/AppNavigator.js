@@ -21,6 +21,12 @@ import OutboundTransactionScreen from '../screens/OutboundTransactionScreen';
 import AdjustTransactionScreen from '../screens/AdjustTransactionScreen';
 import DataImportScreen from '../screens/DataImportScreen';
 import UsersScreen from '../screens/UsersScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
+import PartnersScreen from '../screens/PartnersScreen';
+import PartnerDetailScreen from '../screens/PartnerDetailScreen';
+import EditPartnerScreen from '../screens/EditPartnerScreen';
+import WarehouseSettingsScreen from '../screens/WarehouseSettingsScreen';
+import masterDataCore from '../utils/masterDataCore.cjs';
 import ServerSetupScreen from '../screens/ServerSetupScreen';
 import ServerConnectionErrorScreen from '../screens/ServerConnectionErrorScreen';
 import BootstrapOwnerScreen from '../screens/BootstrapOwnerScreen';
@@ -158,13 +164,21 @@ const AppNavigator = () => {
             {canExport(user) ? <Stack.Screen
               name={ROUTES.DATA_IMPORT}
               component={DataImportScreen}
-              options={{ title: SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
+              options={{ title: masterDataCore.supportsMasterData(server) ? 'CSV导入导出' : SCREEN_TITLES[ROUTES.DATA_IMPORT] }}
             /> : null}
+            <Stack.Screen name={ROUTES.CHANGE_PASSWORD} component={ChangePasswordScreen} options={{ title: SCREEN_TITLES[ROUTES.CHANGE_PASSWORD] }} />
             {canManage(user) ? <Stack.Screen
               name={ROUTES.USERS}
               component={UsersScreen}
               options={{ title: SCREEN_TITLES[ROUTES.USERS] }}
             /> : null}
+            {masterDataCore.supportsMasterData(server) ? <>
+              <Stack.Screen name={ROUTES.CUSTOMERS} component={PartnersScreen} initialParams={{ kind: 'customers' }} options={{ title: SCREEN_TITLES[ROUTES.CUSTOMERS] }} />
+              <Stack.Screen name={ROUTES.SUPPLIERS} component={PartnersScreen} initialParams={{ kind: 'suppliers' }} options={{ title: SCREEN_TITLES[ROUTES.SUPPLIERS] }} />
+              <Stack.Screen name={ROUTES.PARTNER_DETAIL} component={PartnerDetailScreen} options={{ title: SCREEN_TITLES[ROUTES.PARTNER_DETAIL] }} />
+              {canWrite(user) ? <Stack.Screen name={ROUTES.EDIT_PARTNER} component={EditPartnerScreen} options={({ route }) => ({ title: `${route.params?.id ? '编辑' : '新增'}${route.params?.kind === 'suppliers' ? '供应商' : '客户'}` })} /> : null}
+              <Stack.Screen name={ROUTES.WAREHOUSE_SETTINGS} component={WarehouseSettingsScreen} options={{ title: SCREEN_TITLES[ROUTES.WAREHOUSE_SETTINGS] }} />
+            </> : null}
             <Stack.Screen
               name={ROUTES.AGENT}
               component={AgentStack}

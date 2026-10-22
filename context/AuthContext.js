@@ -11,6 +11,7 @@ import { useServerConfig } from './ServerConfigContext';
 import { clearSessionSafely, clearTrackedFiles } from '../utils/sessionStorage';
 import { beginSessionInvalidation, subscribeServerRuntime } from '../utils/serverRuntime';
 import userErrorCore from '../utils/userErrorCore.cjs';
+import authUserCore from '../utils/authUserCore.cjs';
 
 const { localizeTransportError } = userErrorCore;
 
@@ -42,7 +43,7 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const result = await authAPI.me();
-      const nextUser = result.user || null;
+      const nextUser = authUserCore.authenticatedUser(result);
       setUser(nextUser);
       return nextUser;
     } catch (error) {
@@ -78,7 +79,7 @@ export const AuthProvider = ({ children }) => {
 
         const result = await authAPI.me();
         if (active) {
-          setUser(result.user || null);
+          setUser(authUserCore.authenticatedUser(result));
         }
       } catch (error) {
         if (active) {
@@ -104,7 +105,7 @@ export const AuthProvider = ({ children }) => {
       beginSessionInvalidation();
       if (serverKey) await clearTrackedFiles(serverKey);
       const result = await authAPI.login(credentials);
-      setUser(result.user || null);
+      setUser(authUserCore.authenticatedUser(result));
       return result;
     } catch (error) {
       throw localizeTransportError(error, { fallback: '登录失败，请稍后重试' });

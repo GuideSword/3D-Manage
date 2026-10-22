@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -20,10 +21,13 @@ import { Button, Card, Input, Picker } from '../components';
 import { useAuth } from '../context/AuthContext';
 import { canManage } from '../utils/permissions';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalInventoryTransactionScreen from './RelationalInventoryTransactionScreen';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
-const AdjustTransactionScreen = ({ navigation }) => {
+const LegacyAdjustTransactionScreen = ({ navigation }) => {
   const { user } = useAuth();
   const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
@@ -122,6 +126,7 @@ const AdjustTransactionScreen = ({ navigation }) => {
         version: selectedLotInfo?.version,
       }, (body, key) => stockAPI.inventoryTransaction(body, key));
       if (result === null) return;
+      if (Platform.OS === 'web') { navigation.goBack(); return; }
 
       Alert.alert('成功', '库存盘点已记录', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -357,5 +362,12 @@ const createStyles = (COLORS) => StyleSheet.create({
     marginBottom: SPACING.md,
   },
 });
+
+const AdjustTransactionScreen = props => {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server)
+    ? <RelationalInventoryTransactionScreen {...props} kind="adjust" />
+    : <LegacyAdjustTransactionScreen {...props} />;
+};
 
 export default AdjustTransactionScreen;

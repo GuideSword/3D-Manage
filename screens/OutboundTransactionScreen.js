@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -18,10 +19,13 @@ import {
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalInventoryTransactionScreen from './RelationalInventoryTransactionScreen';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
-const OutboundTransactionScreen = ({ navigation }) => {
+const LegacyOutboundTransactionScreen = ({ navigation }) => {
   const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -117,6 +121,7 @@ const OutboundTransactionScreen = ({ navigation }) => {
         notes: formData.notes.trim(),
       }, (body, key) => stockAPI.inventoryTransaction(body, key));
       if (result === null) return;
+      if (Platform.OS === 'web') { navigation.goBack(); return; }
 
       Alert.alert('成功', '出库操作成功', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -353,5 +358,12 @@ const createStyles = (COLORS) => StyleSheet.create({
     marginBottom: SPACING.md,
   },
 });
+
+const OutboundTransactionScreen = props => {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server)
+    ? <RelationalInventoryTransactionScreen {...props} kind="out" />
+    : <LegacyOutboundTransactionScreen {...props} />;
+};
 
 export default OutboundTransactionScreen;

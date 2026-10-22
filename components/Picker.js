@@ -11,6 +11,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { RADIUS, SPACING, TYPOGRAPHY } from '../constants';
 import { useAppTheme } from '../context/ThemeContext';
+import Input from './Input';
 
 const Picker = ({
   label,
@@ -21,12 +22,17 @@ const Picker = ({
   style,
   disabled = false,
   error,
+  selectedLabel,
+  searchValue,
+  onSearchChange,
+  searchPlaceholder = '搜索选项',
+  listFooter,
 }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const { colors, shadows } = useAppTheme();
   const styles = useMemo(() => createStyles(colors, shadows), [colors, shadows]);
   const selectedOption = options.find((opt) => opt.value === value);
-  const displayText = selectedOption ? selectedOption.label : placeholder;
+  const displayText = selectedOption ? selectedOption.label : selectedLabel || placeholder;
 
   const handleSelect = (option) => {
     onValueChange(option.value);
@@ -49,7 +55,7 @@ const Picker = ({
         <Text
           style={[
             styles.pickerText,
-            !selectedOption && styles.placeholderText,
+            !selectedOption && !selectedLabel && styles.placeholderText,
           ]}
           numberOfLines={1}
         >
@@ -79,9 +85,12 @@ const Picker = ({
                     <Ionicons name="close" size={20} color={colors.text} />
                   </TouchableOpacity>
                 </View>
+                {onSearchChange ? <Input placeholder={searchPlaceholder} value={searchValue || ''} onChangeText={onSearchChange} maxLength={500} editable={!disabled} /> : null}
                 <FlatList
                   data={options}
                   keyExtractor={(item) => String(item.value)}
+                  keyboardShouldPersistTaps="handled"
+                  ListFooterComponent={listFooter}
                   renderItem={({ item }) => {
                     const selected = value === item.value;
                     return (
