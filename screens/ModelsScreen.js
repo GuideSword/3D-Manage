@@ -8,6 +8,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -37,6 +39,7 @@ import { relationalModelsAPI } from '../utils/relationalCatalogApi';
 import { useRelationalPage } from '../utils/useRelationalPage';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import PaginationControls from '../components/PaginationControls';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -59,7 +62,9 @@ const ModelsScreen = ({ navigation }) => {
   const relational = masterDataCore.supportsMasterData(server);
   const { isDark } = useAppTheme();
   const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
-  const styles = React.useMemo(() => createStyles(t), [t]);
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  const styles = React.useMemo(() => createStyles(t, isDesktop), [t, isDesktop]);
   const [legacyModels, setModels] = useState([]);
   const [legacyRefreshing, setRefreshing] = useState(false);
   const [legacyLoading, setLoading] = useState(true);
@@ -283,7 +288,7 @@ const MetaPill = ({ icon, label }) => {
   );
 };
 
-const createStyles = (t) => StyleSheet.create({
+const createStyles = (t, isDesktop = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.background,
@@ -291,7 +296,7 @@ const createStyles = (t) => StyleSheet.create({
   page: {
     flex: 1,
     width: '100%',
-    maxWidth: 620,
+    maxWidth: isDesktop ? 1360 : 620,
     alignSelf: 'center',
   },
   modelTools: {

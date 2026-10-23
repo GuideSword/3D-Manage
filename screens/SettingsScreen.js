@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, Platform, ScrollView, StyleSheet, Text, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,10 +18,13 @@ import { useServerConfig } from '../context/ServerConfigContext';
 import { canExport } from '../utils/permissions';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import ModelDownloadSettings from '../components/ModelDownloadSettings';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
 
 const SettingsScreen = () => {
   const { colors, themeMode, setThemeMode } = useAppTheme();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  const styles = useMemo(() => createStyles(colors, isDesktop), [colors, isDesktop]);
   const navigation = useNavigation();
   const { user, signOut, cleanupError, retrySessionCleanup } = useAuth();
   const { server, refreshServer } = useServerConfig();
@@ -205,7 +208,7 @@ const ActionRow = ({ icon, label, hint, onPress, styles, colors }) => (
   </TouchableOpacity>
 );
 
-const createStyles = (colors) => StyleSheet.create({
+const createStyles = (colors, isDesktop = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
@@ -213,7 +216,7 @@ const createStyles = (colors) => StyleSheet.create({
   page: {
     flex: 1,
     width: '100%',
-    maxWidth: 620,
+    maxWidth: isDesktop ? 1360 : 620,
     alignSelf: 'center',
   },
   scroll: {

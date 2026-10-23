@@ -9,6 +9,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,6 +49,7 @@ import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand } from '../utils/useInventoryCommand';
 import { canManage, canWrite } from '../utils/permissions';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
 
 const MaterialsScreen = ({ navigation, route }) => {
   const { user } = useAuth();
@@ -56,7 +59,9 @@ const MaterialsScreen = ({ navigation, route }) => {
   const editable = canWrite(user);
   const submitCommand = useInventoryCommand({ reusable: true });
   const { colors } = useAppTheme();
-  const styles = React.useMemo(() => createStyles(colors), [colors]);
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  const styles = React.useMemo(() => createStyles(colors, isDesktop), [colors, isDesktop]);
   const [legacyMaterials, setMaterials] = useState([]);
   const [legacyStockLots, setStockLots] = useState([]);
   const [legacyRefreshing, setRefreshing] = useState(false);
@@ -627,7 +632,7 @@ const useMaterialTheme = () => {
   return { colors, styles: React.useMemo(() => createStyles(colors), [colors]) };
 };
 
-const createStyles = (COLORS) => StyleSheet.create({
+const createStyles = (COLORS, isDesktop = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
@@ -635,7 +640,7 @@ const createStyles = (COLORS) => StyleSheet.create({
   page: {
     flex: 1,
     width: '100%',
-    maxWidth: 620,
+    maxWidth: isDesktop ? 1360 : 620,
     alignSelf: 'center',
   },
   header: {

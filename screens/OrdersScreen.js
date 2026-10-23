@@ -9,6 +9,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,12 +37,15 @@ import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { isRestorable, isTerminalStatus } from '../utils/orderStatus';
 import { canWrite } from '../utils/permissions';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
 
 const OrdersScreen = ({ navigation, route }) => {
   const { user } = useAuth();
   const { isDark } = useAppTheme();
   const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
-  const styles = React.useMemo(() => createStyles(t), [t]);
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  const styles = React.useMemo(() => createStyles(t, isDesktop), [t, isDesktop]);
   const [orders, setOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -407,7 +412,7 @@ const formatShortDate = (value) => {
   return `${month}-${day}`;
 };
 
-const createStyles = (t) => StyleSheet.create({
+const createStyles = (t, isDesktop = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.background,
@@ -415,7 +420,7 @@ const createStyles = (t) => StyleSheet.create({
   page: {
     flex: 1,
     width: '100%',
-    maxWidth: 620,
+    maxWidth: isDesktop ? 1360 : 620,
     alignSelf: 'center',
   },
   filterBar: {

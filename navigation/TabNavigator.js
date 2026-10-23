@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform, useWindowDimensions } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { ROUTES, SCREEN_TITLES } from '../constants';
 import HomeScreen from '../screens/HomeScreen';
@@ -8,12 +9,18 @@ import MaterialsScreen from '../screens/MaterialsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import { useAppTheme } from '../context/ThemeContext';
 import CyberTabBar from './CyberTabBar';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
 
 const Tab = createBottomTabNavigator();
 
 export default function TabNavigator() {
   const { colors } = useAppTheme();
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
   return <Tab.Navigator tabBar={props => <CyberTabBar {...props} />} screenOptions={{
+    tabBarPosition: isDesktop ? 'left' : 'bottom',
+    tabBarVariant: isDesktop ? 'material' : 'uikit',
+    sceneStyle: { backgroundColor: colors.background },
     headerStyle: { backgroundColor: colors.surfaceElevated },
     headerTintColor: colors.primary,
     headerTitleStyle: { color: colors.text, fontWeight: '700' },
