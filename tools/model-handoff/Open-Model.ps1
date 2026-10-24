@@ -12,7 +12,8 @@ $diagnostic = @{ stage = 'startup'; status = 0; code = 'HANDOFF_STARTUP' }
 try {
     $diagnostic.stage = 'arguments'
     $diagnostic.code = 'HANDOFF_ARGUMENTS'
-    if ($args.Count) { throw '不接受额外交接参数' }
+    $unboundArguments = Get-Variable -Name args -ValueOnly -ErrorAction SilentlyContinue
+    if ($null -ne $unboundArguments -and @($unboundArguments).Count -gt 0) { throw '不接受额外交接参数' }
     $diagnostic.stage = 'configuration'
     $diagnostic.code = 'HANDOFF_CONFIGURATION'
     $configPath = Join-Path $PSScriptRoot 'config.json'
