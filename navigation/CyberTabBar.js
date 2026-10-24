@@ -72,7 +72,7 @@ function DesktopShortcut({ label, icon, onPress, theme }) {
 
 const styles = StyleSheet.create({
   shell: { paddingTop: 5 },
-  rail: { width: 236, flex: 1, borderRightWidth: 1, paddingHorizontal: 14 },
+  rail: { width: 216, flexGrow: 0, flexShrink: 0, alignSelf: 'stretch', borderRightWidth: 1, paddingHorizontal: 14 },
   brand: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 8, paddingBottom: 24 },
   brandTitle: { fontSize: 14, fontWeight: '900' },
   brandSubtitle: { fontSize: 9, letterSpacing: 0.8, marginTop: 2 },

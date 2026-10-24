@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { ORDER_STATUS_LABELS, ORDER_STATUSES } from '../../constants';
 import { cyberTheme } from './theme';
 import responsiveLayout from '../../utils/responsiveLayout.cjs';
+import DesktopHome from './DesktopHome';
 
 const heroImage = require('../../assets/xiaoli/hero.png');
 const reviewImage = require('../../assets/xiaoli/review.png');
@@ -16,16 +17,16 @@ function Touch({ children, style, label, ...props }) {
     style={({ pressed }) => [style, pressed && { opacity: 0.76 }]}>{children}</Pressable>;
 }
 
-function HomeHero({ theme: t, dark, stats, value, onOrders, onAgent, compact, desktop }) {
+function HomeHero({ theme: t, dark, stats, value, onOrders, onAgent, compact }) {
   return <LinearGradient colors={t.hero} style={s.hero}>
     <View pointerEvents="none" style={StyleSheet.absoluteFill}>
       <Image source={require('../../assets/xiaoli/workshop.png')} style={[StyleSheet.absoluteFillObject, { width: '100%', height: '100%', opacity: dark ? 0.18 : 0.62 }]} resizeMode="cover" />
       <Text style={[s.star, { left: '42%', top: 50 }]}>✦</Text>
       <Text style={[s.star, { left: '56%', top: 122, fontSize: 17 }]}>✧</Text>
       <Text style={[s.star, { left: '9%', top: 208, fontSize: 16 }]}>✦</Text>
-      <Image source={heroImage} style={[s.heroCharacter, compact && { width: '64%', right: -28 }, desktop && { width: '40%', height: 300, right: 24 }, dark && { opacity: 0.83 }]} resizeMode="contain" />
+      <Image source={heroImage} style={[s.heroCharacter, compact && { width: '64%', right: -28 }, dark && { opacity: 0.83 }]} resizeMode="contain" />
     </View>
-    <View style={[s.heroTop, desktop && s.desktopHeroTop]}>
+    <View style={s.heroTop}>
       <View style={s.row}>
         <View style={[s.avatar, { backgroundColor: t.glass }]}><Image source={heroImage} style={s.avatarImage} /></View>
         <View style={[s.pill, { backgroundColor: t.glass }]}>
@@ -37,12 +38,12 @@ function HomeHero({ theme: t, dark, stats, value, onOrders, onAgent, compact, de
         <Ionicons name="notifications-outline" size={25} color={t.primary} />
       </Touch>
     </View>
-    <View style={[s.heroCopy, desktop && s.desktopHeroCopy]}>
-      <Text style={[s.welcome, { color: dark ? '#F7F2FF' : '#4934B9', fontSize: desktop ? 42 : compact ? 32 : 40 }]}>欢迎回来！</Text>
+    <View style={s.heroCopy}>
+      <Text style={[s.welcome, { color: dark ? '#F7F2FF' : '#4934B9', fontSize: compact ? 32 : 40 }]}>欢迎回来！</Text>
       <Text style={[s.heroSubtitle, { color: t.text }]}>关注订单进度，{ '\n' }掌控生产全局</Text>
       <Text style={[s.assistantName, { color: t.muted }]}>{dark ? '小鲤陪你，轻松收尾' : '小鲤陪你，开工啦'}</Text>
     </View>
-    <View style={[s.summaryRow, desktop && s.desktopSummaryRow]}>
+    <View style={s.summaryRow}>
       {[[ORDER_STATUSES.PENDING_REVIEW, '待审核订单', stats.pendingReview, 'document-text-outline'],
         [ORDER_STATUSES.IN_PROGRESS, '执行中订单', stats.inProgress, 'rocket-outline']].map(([status, title, count, icon]) =>
         <Touch key={status} label={`${title} ${value(count)}`} onPress={() => onOrders(status)}
@@ -55,9 +56,9 @@ function HomeHero({ theme: t, dark, stats, value, onOrders, onAgent, compact, de
   </LinearGradient>;
 }
 
-function OrderStatusCard({ theme: t, production, count, onPress, desktop }) {
+function OrderStatusCard({ theme: t, production, count, onPress }) {
   const color = production ? t.blue : t.pink;
-  return <Touch onPress={onPress} label={`${production ? '执行中订单' : '待审核订单'} ${count}`} style={[s.statusOuter, desktop && s.desktopStatusCard]}>
+  return <Touch onPress={onPress} label={`${production ? '执行中订单' : '待审核订单'} ${count}`} style={s.statusOuter}>
     <LinearGradient colors={production ? t.blueCard : t.pinkCard} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
       style={[s.statusGradient, { borderColor: `${color}60`, shadowColor: color }]}>
       <View style={[s.characterPanel, { borderColor: `${color}30` }]}>
@@ -111,22 +112,19 @@ export default function CyberHome({ dark, stats, recentOrders, loading, refreshi
   const t = cyberTheme(dark);
   const { width } = useWindowDimensions();
   const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  if (isDesktop) return <DesktopHome {...{ dark, stats, recentOrders, loading, refreshing, error, onRefresh, onOrders, onOrder, onInventory, onAgent, onCreate, onModel, onAdjust, onExport, exporting }} />;
   const value = count => count == null || (loading && !refreshing) ? '—' : count;
   const shortcuts = [['全部订单', 'document-text-outline', () => onOrders('all')], ['生产进度', 'stats-chart-outline', () => onOrders(ORDER_STATUSES.IN_PROGRESS)],
     ['库存风险', 'shield-checkmark-outline', onInventory], ['消息中心', 'notifications-outline', onAgent]];
-  return <SafeAreaView edges={['top', 'left', 'right']} style={[s.screen, { backgroundColor: dark ? '#292559' : '#969DF6' }, isDesktop && s.desktopScreen]}>
+  return <SafeAreaView edges={['top', 'left', 'right']} style={[s.screen, { backgroundColor: dark ? '#292559' : '#969DF6' }]}>
     <ScrollView style={{ backgroundColor: t.background }} contentContainerStyle={s.scrollContent}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={t.primary} colors={[t.primary]} />}>
-      <View style={[s.page, isDesktop && s.desktopPage]}>
-        <HomeHero theme={t} dark={dark} stats={stats} value={value} onOrders={onOrders} onAgent={onAgent} compact={width < 380} desktop={isDesktop} />
-        <View style={[s.body, { backgroundColor: t.background }, isDesktop && s.desktopBody]}>
+      <View style={s.page}>
+        <HomeHero theme={t} dark={dark} stats={stats} value={value} onOrders={onOrders} onAgent={onAgent} compact={width < 380} />
+        <View style={[s.body, { backgroundColor: t.background }]}>
           {!!error && <Touch onPress={onRefresh} style={[s.error, { borderColor: t.border }]}><Text style={{ color: t.muted }}>{error} · 点击重试</Text></Touch>}
-          <View style={isDesktop && s.desktopStatusRow}>
-            <OrderStatusCard theme={t} desktop={isDesktop} count={value(stats.pendingReview)} onPress={() => onOrders(ORDER_STATUSES.PENDING_REVIEW)} />
-            <OrderStatusCard theme={t} desktop={isDesktop} production count={value(stats.inProgress)} onPress={() => onOrders(ORDER_STATUSES.IN_PROGRESS)} />
-          </View>
-          <View style={isDesktop && s.desktopQuickRow}>
-          <View style={isDesktop && s.desktopQuickCard}>
+          <OrderStatusCard theme={t} count={value(stats.pendingReview)} onPress={() => onOrders(ORDER_STATUSES.PENDING_REVIEW)} />
+          <OrderStatusCard theme={t} production count={value(stats.inProgress)} onPress={() => onOrders(ORDER_STATUSES.IN_PROGRESS)} />
           <SectionTitle theme={t} title="快速入口" />
           <View style={s.shortcuts}>{shortcuts.map(([label, icon, onPress], index) =>
             <Touch key={label} label={label === '消息中心' ? '消息中心，打开小鲤助手' : label} onPress={onPress} style={s.shortcut}>
@@ -136,9 +134,7 @@ export default function CyberHome({ dark, stats, recentOrders, loading, refreshi
               </LinearGradient><Text style={[s.shortcutLabel, { color: t.text }]}>{label}</Text>
             </Touch>)}</View>
           <Text style={[s.hint, { color: t.muted }]}>消息中心由小鲤助手为你服务 · 库存风险 ≤100g</Text>
-          </View>
           <RecentOrdersSection theme={t} orders={recentOrders} loading={loading && !refreshing} failed={!!error} onOrders={onOrders} onOrder={onOrder} onCreate={onCreate} />
-          </View>
           <View style={s.tools}>{[[onCreate, '新建订单'], [onModel, '新增模型'], [onAdjust, '库存盘点'], [onExport, exporting ? '导出中…' : '导出数据']].map(([action, label]) => action &&
             <Touch key={label} onPress={action} disabled={label === '导出中…'} style={s.tool}><Text style={{ color: t.primary, fontSize: 12 }}>{label}</Text></Touch>)}</View>
         </View>
@@ -149,22 +145,20 @@ export default function CyberHome({ dark, stats, recentOrders, loading, refreshi
 
 const s = StyleSheet.create({
   screen: { flex: 1 }, scrollContent: { flexGrow: 1 }, page: { width: '100%', maxWidth: 620, alignSelf: 'center' },
-  desktopScreen: { backgroundColor: '#F2F1FF' }, desktopPage: { maxWidth: 1440, width: '100%', paddingHorizontal: 18 },
   hero: { minHeight: 320, padding: 18, paddingBottom: 34, overflow: 'hidden' },
   star: { position: 'absolute', fontSize: 28, color: '#FFF6BA' },
   heroCharacter: { position: 'absolute', width: '61%', height: 288, right: -10, bottom: 4 },
-  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }, desktopHeroTop: { paddingHorizontal: 5 },
+  heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 }, between: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 4 },
   avatar: { width: 36, height: 36, borderRadius: 18, overflow: 'hidden', borderWidth: 1, borderColor: '#FFFFFF90' },
   avatarImage: { width: 45, height: 50, left: -3, top: 0 }, pill: { flexDirection: 'row', gap: 6, paddingVertical: 9, paddingHorizontal: 12, borderRadius: 22 },
   bell: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
-  heroCopy: { marginTop: 22, marginBottom: 23, width: '61%' }, desktopHeroCopy: { width: '49%', marginTop: 30 },
+  heroCopy: { marginTop: 22, marginBottom: 23, width: '61%' },
   welcome: { fontWeight: '900', letterSpacing: -1, textShadowColor: '#FFFFFFB0', textShadowRadius: 3, textShadowOffset: { width: 1, height: 2 } },
   heroSubtitle: { fontSize: 13, fontWeight: '600', lineHeight: 21, marginTop: 7 }, assistantName: { fontSize: 11, marginTop: 8 },
-  summaryRow: { flexDirection: 'row', gap: 10, width: '76%' }, desktopSummaryRow: { width: '44%', marginTop: 0 },
+  summaryRow: { flexDirection: 'row', gap: 10, width: '76%' },
   summary: { flex: 1, minWidth: 0, padding: 11, borderRadius: 17, borderWidth: 1 }, summaryTitle: { fontSize: 12, fontWeight: '800' }, summaryValue: { fontSize: 31, fontWeight: '800' },
-  body: { marginTop: -20, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 16, paddingTop: 24, paddingBottom: 25 }, desktopBody: { marginTop: -18, padding: 22, paddingTop: 28, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
-  desktopStatusRow: { flexDirection: 'row', gap: 16 }, desktopStatusCard: { flex: 1, minWidth: 0 }, desktopQuickRow: { flexDirection: 'row', gap: 18, alignItems: 'flex-start' }, desktopQuickCard: { flex: 1, minWidth: 0 },
+  body: { marginTop: -20, borderTopLeftRadius: 26, borderTopRightRadius: 26, padding: 16, paddingTop: 24, paddingBottom: 25 },
   statusOuter: { marginBottom: 20 }, statusGradient: { borderWidth: 1.5, borderRadius: 23, flexDirection: 'row', minHeight: 145,
     shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 10, elevation: 2 },
   characterPanel: { width: '25%', borderRightWidth: 1, justifyContent: 'flex-end' }, chibi: { width: '118%', height: 150, marginLeft: -6 },
