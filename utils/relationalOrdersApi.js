@@ -11,5 +11,7 @@ export const relationalOrdersAPI = Object.freeze({
   getById: id => call(idPath(id)),
   create: (body, key) => call('/orders', 'POST', body, key),
   update: (id, { version, changes }, key) => call(idPath(id), 'PATCH', { version: masterDataCore.recordVersion(version), changes }, key),
+  updateStatus: (id, { version, status }, key) => call(`${idPath(id)}/transition`, 'POST', { version: masterDataCore.recordVersion(version), status }, key),
+  delete: (id, version, key) => call(idPath(id), 'DELETE', { version: masterDataCore.recordVersion(version) }, key),
   refreshCustomer: (id, version, key) => call(`${idPath(id)}/refresh-customer`, 'POST', { version: masterDataCore.recordVersion(version) }, key),
 });

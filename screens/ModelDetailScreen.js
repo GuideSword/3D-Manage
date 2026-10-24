@@ -539,7 +539,7 @@ const ModelDetailScreen = ({ route, navigation }) => {
             token={authToken}
             fallback={<ActivityIndicator color="#fff" size="large" />}
           /> : null}
-          <Text style={styles.previewHint}>双指缩放 · 放大后拖动</Text>
+          <Text style={styles.previewHint}>{Platform.OS === 'web' ? '滑动鼠标滚轮进行图片的放大和缩小' : '双指缩放 · 放大后拖动'}</Text>
         </GestureHandlerRootView>
       </Modal>
     </SafeAreaView>

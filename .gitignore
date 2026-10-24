@@ -35,6 +35,8 @@ yarn-error.*
 .env.bak*
 .env*.local
 runtime/
+runtime.pre-restore.*/
+runtime.restore-stage.*/
 .backups/
 
 # typescript

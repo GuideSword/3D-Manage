@@ -1,5 +1,5 @@
-import React from 'react';
-import { StyleSheet, View } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Platform, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import ProtectedImage from './ProtectedImage';
@@ -21,6 +21,7 @@ const maxOffset = (scale, viewportWidth, viewportHeight, imageWidth, imageHeight
 };
 
 export default function ZoomableProtectedImage({ fileUrl, token, fallback }) {
+  const viewportRef = useRef(null);
   const scale = useSharedValue(1);
   const offsetX = useSharedValue(0);
   const offsetY = useSharedValue(0);
@@ -33,6 +34,30 @@ export default function ZoomableProtectedImage({ fileUrl, token, fallback }) {
   const startOffsetY = useSharedValue(0);
   const startFocalX = useSharedValue(0);
   const startFocalY = useSharedValue(0);
+
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+    const onWheel = event => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!Number.isFinite(event.deltaY) || event.deltaY === 0) return;
+      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? viewportHeight.value : 1);
+      const nextScale = clamp(scale.value * Math.exp(-delta * 0.002), 1, MAX_SCALE);
+      const ratio = nextScale / scale.value;
+      const bounds = viewport.getBoundingClientRect();
+      const focalX = event.clientX - bounds.left - viewportWidth.value / 2;
+      const focalY = event.clientY - bounds.top - viewportHeight.value / 2;
+      const limitX = maxOffset(nextScale, viewportWidth.value, viewportHeight.value, imageWidth.value, imageHeight.value, 'x');
+      const limitY = maxOffset(nextScale, viewportWidth.value, viewportHeight.value, imageWidth.value, imageHeight.value, 'y');
+      offsetX.value = clamp(focalX - ratio * (focalX - offsetX.value), -limitX, limitX);
+      offsetY.value = clamp(focalY - ratio * (focalY - offsetY.value), -limitY, limitY);
+      scale.value = nextScale;
+    };
+    viewport.addEventListener('wheel', onWheel, { passive: false });
+    return () => viewport.removeEventListener('wheel', onWheel);
+  }, [scale, offsetX, offsetY, viewportWidth, viewportHeight, imageWidth, imageHeight]);
 
   const pinch = Gesture.Pinch()
     .onStart((event) => {
@@ -83,13 +108,13 @@ export default function ZoomableProtectedImage({ fileUrl, token, fallback }) {
   }));
 
   return (
-    <View style={styles.viewport} onLayout={(event) => {
+    <View ref={viewportRef} testID="zoomable-image-viewport" style={styles.viewport} onLayout={(event) => {
       viewportWidth.value = event.nativeEvent.layout.width;
       viewportHeight.value = event.nativeEvent.layout.height;
     }}>
       <GestureDetector gesture={Gesture.Simultaneous(pinch, pan)}>
         <View style={styles.gestureFrame}>
-          <Animated.View style={[styles.imageFrame, animatedStyle]}>
+          <Animated.View testID="zoomable-image-transform" style={[styles.imageFrame, animatedStyle]}>
             <ProtectedImage
               fileUrl={fileUrl}
               token={token}
@@ -97,8 +122,8 @@ export default function ZoomableProtectedImage({ fileUrl, token, fallback }) {
               resizeMode="contain"
               fallback={fallback}
               onLoad={(event) => {
-                imageWidth.value = event.nativeEvent.source?.width || 0;
-                imageHeight.value = event.nativeEvent.source?.height || 0;
+                imageWidth.value = event.nativeEvent.source?.width || event.nativeEvent.target?.naturalWidth || 0;
+                imageHeight.value = event.nativeEvent.source?.height || event.nativeEvent.target?.naturalHeight || 0;
               }}
             />
           </Animated.View>

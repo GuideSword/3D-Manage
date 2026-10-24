@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   Modal,
@@ -11,6 +10,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { showAlert } from '../utils/platformAlert';
 import {
   ORDER_STATUS_LABELS,
   ORDER_STATUSES,
@@ -378,7 +378,7 @@ const StatusActionSheet = ({
     }
     if (isDowngrade(currentStatus, status)) {
       const reopen = isReopen(currentStatus, status);
-      Alert.alert(
+      showAlert(
         getDowngradeTitle(currentStatus, status),
         getDowngradeMessage(currentStatus, status),
         [

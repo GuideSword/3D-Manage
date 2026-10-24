@@ -448,6 +448,10 @@ export const modelsAPI = {
     });
   },
 
+  deleteImage: async (id, imageId) => apiRequest(`/models/${id}/images/${imageId}`, {
+    method: 'DELETE',
+  }),
+
   uploadFile: async (file, metadata = {}) => {
     if (!metadata.assetId) {
       throw new Error('上传模型文件时缺少 assetId');

@@ -2,7 +2,6 @@ import React, { useCallback, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Alert,
   Platform,
   RefreshControl,
   SafeAreaView,
@@ -37,12 +36,16 @@ import { trackPickedAsset } from '../utils/sessionStorage';
 import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 import { getRestoreTarget, isRestorable } from '../utils/orderStatus';
 import orderDisplay from '../utils/orderDisplayCore.cjs';
+import { showAlert } from '../utils/platformAlert';
+import { useOrderMutation } from '../utils/useOrderMutation';
+import OrderMutationFeedback from '../components/OrderMutationFeedback';
 
 const OrderDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
   const { server } = useServerConfig();
   const relational = masterDataCore.supportsMasterData(server);
   const fileMutation = useRelationalFileMutation(navigation);
+  const orderMutation = useOrderMutation(navigation);
   const orderRuntime = useRef(null);
   const [downloading, setDownloading] = useState(null);
   const { colors } = useAppTheme();
@@ -52,7 +55,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
-  const fileLocked = relational && (fileMutation.pending || fileMutation.busy || updating);
+  const fileLocked = updating || orderMutation.locked || (relational && (fileMutation.pending || fileMutation.busy));
 
   const fetchOrderDetail = async () => {
     try {
@@ -62,13 +65,14 @@ const OrderDetailScreen = ({ route, navigation }) => {
       if (!isCurrentRuntime(captured)) return;
       orderRuntime.current = captured;
       setOrder(data);
+      orderMutation.resetAfterLoad();
       return data;
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
       }
       console.error('获取订单详情失败:', error);
-      Alert.alert('错误', '获取订单详情失败，请检查网络连接');
+      showAlert('错误', '获取订单详情失败，请检查网络连接');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -97,7 +101,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   const confirmRemoveAttachment = attachment => {
     const message = `确定从订单中移除“${attachment.originalName || attachment.name || '该附件'}”吗？`;
     if (Platform.OS === 'web') { if (window.confirm(message)) removeAttachment(attachment); return; }
-    Alert.alert('移除附件', message, [{ text: '取消', style: 'cancel' }, { text: '移除', style: 'destructive', onPress: () => removeAttachment(attachment) }]);
+    showAlert('移除附件', message, [{ text: '取消', style: 'cancel' }, { text: '移除', style: 'destructive', onPress: () => removeAttachment(attachment) }]);
   };
   const downloadAttachment = async attachment => {
     if (downloading !== null || !isCurrentRuntime(orderRuntime.current)) return;
@@ -114,10 +118,17 @@ const OrderDetailScreen = ({ route, navigation }) => {
     if (current) await fileMutation.rebase(current);
   };
 
+  const applyOrderResult = async (result, operation) => {
+    if (!isCurrentRuntime(orderRuntime.current)) return;
+    if (operation === 'order.delete') navigation.goBack();
+    else setOrder(result);
+  };
+
   const handleStatusUpdate = (newStatus) => {
+    if (fileLocked || !canWrite(user) || !isCurrentRuntime(orderRuntime.current)) return;
     const statusLabel = ORDER_STATUS_LABELS[newStatus];
 
-    Alert.alert(
+    showAlert(
       '确认操作',
       `确定要将订单状态更新为“${statusLabel}”吗？`,
       [
@@ -125,16 +136,16 @@ const OrderDetailScreen = ({ route, navigation }) => {
         {
           text: '确认',
           onPress: async () => {
+            if (!isCurrentRuntime(orderRuntime.current)) return;
             try {
               setUpdating(true);
-              await ordersAPI.updateStatus(orderId, newStatus);
-              Alert.alert('成功', '订单状态已更新');
-              await fetchOrderDetail();
+              const result = await orderMutation.transition(order, newStatus);
+              if (result !== null) await applyOrderResult(result, 'order.transition');
             } catch (error) {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '更新订单状态失败');
+              showAlert('错误', '更新订单状态失败');
             } finally {
               setUpdating(false);
             }
@@ -145,7 +156,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
   };
 
   const handleRestore = () => {
-    if (!order) {
+    if (!order || fileLocked || !canWrite(user) || !isCurrentRuntime(orderRuntime.current)) {
       return;
     }
     const target = getRestoreTarget(order.status);
@@ -153,7 +164,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
       return;
     }
     const targetLabel = ORDER_STATUS_LABELS[target] || '草稿';
-    Alert.alert(
+    showAlert(
       '恢复订单',
       `将该订单恢复为“${targetLabel}”状态后，需要重新走完整流程。\n\n确定要恢复吗？`,
       [
@@ -161,17 +172,16 @@ const OrderDetailScreen = ({ route, navigation }) => {
         {
           text: '恢复',
           onPress: async () => {
+            if (!isCurrentRuntime(orderRuntime.current)) return;
             try {
               setUpdating(true);
-              await ordersAPI.updateStatus(orderId, target);
-              Alert.alert('成功', `订单已恢复为"${targetLabel}"`, [
-                { text: '确定', onPress: () => fetchOrderDetail() },
-              ]);
+              const result = await orderMutation.transition(order, target);
+              if (result !== null) await applyOrderResult(result, 'order.transition');
             } catch (error) {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '恢复订单失败');
+              showAlert('错误', '恢复订单失败');
             } finally {
               setUpdating(false);
             }
@@ -182,7 +192,8 @@ const OrderDetailScreen = ({ route, navigation }) => {
   };
 
   const handleDelete = () => {
-    Alert.alert(
+    if (fileLocked || !canWrite(user) || !isCurrentRuntime(orderRuntime.current)) return;
+    showAlert(
       '确认删除',
       '确定要删除这个订单吗？此操作不可恢复。',
       [
@@ -191,16 +202,18 @@ const OrderDetailScreen = ({ route, navigation }) => {
           text: '删除',
           style: 'destructive',
           onPress: async () => {
+            if (!isCurrentRuntime(orderRuntime.current)) return;
             try {
-              await ordersAPI.delete(orderId);
-              Alert.alert('成功', '订单已删除', [
-                { text: '确定', onPress: () => navigation.goBack() },
-              ]);
+              setUpdating(true);
+              const result = await orderMutation.remove(order);
+              if (result !== null) await applyOrderResult(result, 'order.delete');
             } catch (error) {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '删除订单失败');
+              showAlert('错误', '删除订单失败');
+            } finally {
+              setUpdating(false);
             }
           },
         },
@@ -249,6 +262,7 @@ const OrderDetailScreen = ({ route, navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
+        <OrderMutationFeedback mutation={orderMutation} onResolved={applyOrderResult} onReload={fetchOrderDetail} />
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
             <Ionicons name="receipt-outline" size={24} color={colors.primary} />
