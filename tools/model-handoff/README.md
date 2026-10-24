@@ -14,7 +14,7 @@
 .\Verify-Checksum.ps1 -ArchivePath 'D:\你的目录\3d-manage-model-handoff-windows-v1.0.0.zip' -ChecksumFile 'D:\你的目录\SHA256SUMS'
 ```
 
-也可以省略 `-ArchivePath`，脚本会提示输入 ZIP 路径；可以直接把 ZIP 拖进 PowerShell 窗口。注意：校验的是原始 ZIP，不是解压后的单个文件。
+也可以右键 `Verify-Checksum.ps1` 选择“使用 PowerShell 运行”，或省略 `-ArchivePath`，脚本会提示输入 ZIP 路径；可以直接把 ZIP 拖进 PowerShell 窗口。此交互模式会在显示结果或错误后等待再次按回车关闭窗口。指定 `-ArchivePath` 的命令模式不会等待；自动化也可显式传入 `-NoPause`。注意：校验的是原始 ZIP，不是解压后的单个文件。缺少 `SHA256SUMS` 时仅显示本地计算值，不代表校验通过；退出码为 0 表示通过、1 表示错误、2 表示缺少发布值而尚未验证。
 
 从同一版本仓库获取整个目录，在Windows PowerShell运行：
 
