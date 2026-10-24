@@ -8,10 +8,19 @@ $handler = [Net.Http.HttpClientHandler]::new()
 $handler.AllowAutoRedirect = $false
 $client = [Net.Http.HttpClient]::new($handler)
 $client.Timeout = [TimeSpan]::FromMinutes(5)
-$diagnostic = @{ stage = 'configuration'; status = 0; code = 'HANDOFF_CONFIGURATION' }
+$diagnostic = @{ stage = 'startup'; status = 0; code = 'HANDOFF_STARTUP' }
 try {
+    $diagnostic.stage = 'arguments'
+    $diagnostic.code = 'HANDOFF_ARGUMENTS'
     if ($args.Count) { throw '不接受额外交接参数' }
-    $config = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'config.json') -Raw | ConvertFrom-Json
+    $diagnostic.stage = 'configuration'
+    $diagnostic.code = 'HANDOFF_CONFIGURATION'
+    $configPath = Join-Path $PSScriptRoot 'config.json'
+    if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw '助手配置文件不存在，请重新安装助手' }
+    $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+    if (-not $config.serverUrl -or -not $config.serverId -or -not $config.studioPath) { throw '助手配置文件缺少服务器或Studio路径' }
+    $diagnostic.stage = 'handoff-uri'
+    $diagnostic.code = 'HANDOFF_URI'
     $readServer = {
         param($url)
         $diagnostic.stage = 'identity'
@@ -98,12 +107,20 @@ try {
     $result = Invoke-ModelHandoff -Uri $Uri -Config $config -TemporaryRoot (Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/temporary') -ReadServer $readServer -Post $post -Download $download -ChooseDestination $choose -Launch $launch
 } catch {
     # Never show raw URI, ticket, transport token or HTTP response bodies.
+    $rawMessage = [string]$_.Exception.Message
+    if ($rawMessage -match '交接地址无效|交接参数|交接凭据') { $diagnostic.code = 'HANDOFF_URI' }
+    elseif ($rawMessage -match '服务器与已绑定|HTTPS ERP接口地址') { $diagnostic.code = 'HANDOFF_SERVER_BINDING' }
+    elseif ($rawMessage -match '配置文件|配置') { $diagnostic.code = 'HANDOFF_CONFIGURATION' }
+    elseif ($rawMessage -match 'Studio程序路径') { $diagnostic.code = 'HANDOFF_STUDIO_CONFIGURATION' }
     $message = switch ($diagnostic.code) {
         'MODEL_DOWNLOAD_AUTHORIZATION_REQUIRED' { '交接授权已过期、已使用或失效。请回到 ERP 重新验证下载密码，并在一分钟内点击打开。'; break }
         'FILE_IDENTITY_UNAVAILABLE' { '服务器缺少这个模型的完整校验信息，请联系管理员补全文件资料。'; break }
         'AUTHENTICATION_REQUIRED' { '账号登录状态已失效，请在 ERP 重新登录并授权。'; break }
         'DOWNLOAD_HTTPS_REQUIRED' { '服务器拒绝了未加密的交接请求，请核对 HTTPS 配置。'; break }
         'HANDOFF_IDENTITY' { '无法核对服务器身份，请检查 HTTPS 连接和助手绑定的服务器。'; break }
+        'HANDOFF_URI' { '网页传来的交接地址无效或已被系统截断。请重新授权后再点击打开。'; break }
+        'HANDOFF_SERVER_BINDING' { '网页交接地址与助手绑定的服务器不一致，请确认 Web 使用的是同一个 HTTPS 地址。'; break }
+        'HANDOFF_STUDIO_CONFIGURATION' { '助手保存的 Bambu Studio 路径无效，请重新安装助手并选择 bambu-studio.exe。'; break }
         'HANDOFF_AUTHORIZATION' { '交接授权兑换失败，请回到 ERP 重新授权。'; break }
         'HANDOFF_DOWNLOAD' { '模型传输或完整性校验失败，未打开 Studio。请回到 ERP 重新授权。'; break }
         'HANDOFF_STUDIO' { '模型已校验，但无法启动所配置的 Bambu Studio，请核对程序路径和运行权限。'; break }
