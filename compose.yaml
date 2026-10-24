@@ -54,9 +54,13 @@ services:
       OSS_SECURE: ${OSS_SECURE:-true}
       MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-524288000}
       MAX_UPLOAD_CONCURRENCY: ${MAX_UPLOAD_CONCURRENCY:-1}
+      TLS_CERT_FILE: ${TLS_CERT_FILE:-}
+      TLS_KEY_FILE: ${TLS_KEY_FILE:-}
+      TLS_CA_FILE: ${TLS_CA_FILE:-}
     volumes:
       - ./runtime/data:/app/data
       - ./runtime/uploads:/app/uploads
+      - ./runtime/tls/server:/app/tls:ro
     ports:
       - "${APP_PORT:-5800}:5000"
     depends_on:

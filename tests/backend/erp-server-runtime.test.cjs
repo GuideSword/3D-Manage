@@ -39,7 +39,7 @@ async function createHarness(t) {
         STORE_DRIVER: driver, DATABASE_URL: connectionString, STORE_TABLE: 'app_store', STORE_ID: 'default', DATABASE_SSL: 'false',
         DATA_DIR: dataDir, UPLOAD_DIR: path.join(dataDir, 'uploads'), JWT_SECRET: jwtSecret,
         AGENT_KEY_ENC_SECRET: 'server-runtime-agent-fixture-at-least-32-characters', BOOTSTRAP_TOKEN: bootstrapToken,
-        OSS_ENABLED: 'false', AGENT_ENABLED: 'false', ...override } });
+        OSS_ENABLED: 'false', AGENT_ENABLED: 'false', TLS_CERT_FILE: '', TLS_KEY_FILE: '', TLS_CA_FILE: '', ...override } });
     let logs = '';
     child.stdout.on('data', chunk => { logs = (logs + chunk).slice(-8000); });
     child.stderr.on('data', chunk => { logs = (logs + chunk).slice(-8000); });
