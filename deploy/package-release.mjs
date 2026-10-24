@@ -45,7 +45,7 @@ const isExcludedName = (name) =>
   (name.startsWith('.env') && name !== '.env.example') ||
   [...excludedExtensions].some((extension) => name.endsWith(extension));
 const filter = (source) => !relative(root, source).split(/[\\/]/).some(isExcludedName);
-for (const item of ['backend', 'deploy', 'docs', 'compose.yaml', 'compose.https.yaml', '.env.example', 'README.md']) {
+for (const item of ['backend', 'deploy', 'docs', 'compose.yaml', 'compose.https.yaml', '.env.example', 'README.md', '配置内网HTTPS.bat']) {
   await cp(join(root, item), join(stage, item), { recursive: true, filter });
 }
 

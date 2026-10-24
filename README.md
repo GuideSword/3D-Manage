@@ -139,6 +139,8 @@ docker compose -f compose.yaml -f compose.https.yaml up -d --build
 
 Caddy 会自动申请和续期证书。完整网络、CORS 与 HTTPS 说明见[自托管部署文档](docs/SELF_HOSTING.md)。当前生产基线是单个应用副本；本阶段未验证 ARM64。
 
+仅在局域网使用且没有域名：双击 `配置内网HTTPS.bat`，按[免费内网 HTTPS 配置](docs/LAN_HTTPS.md)为使用设备安装根证书信任，即可通过 HTTPS IP 地址使用模型下载密码与本地助手。
+
 ## 连接客户端并初始化 Owner
 
 后端健康后，仍需在客户端完成一次初始化：

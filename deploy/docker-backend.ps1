@@ -632,11 +632,18 @@ function Resolve-HostPortConflict {
   }
 }
 
+function Get-BackendScheme {
+  $tlsLine = Get-Content -LiteralPath $script:EnvFile | Where-Object { $_ -match '^\s*TLS_CERT_FILE\s*=\s*[^\s#]+' } | Select-Object -First 1
+  if ($tlsLine -and (($tlsLine -split '=', 2)[1]).Trim().Trim('"').Trim("'")) { return 'https' }
+  return 'http'
+}
+
 function Test-BackendApi {
   param([Parameter(Mandatory = $true)][int]$Port)
 
   Write-Step '验证后端 API'
-  $url = "http://127.0.0.1:$Port/api/system/info"
+  $scheme = Get-BackendScheme
+  $url = "${scheme}://127.0.0.1:$Port/api/system/info"
   $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 10
   $info = $response.Content | ConvertFrom-Json
   if ($response.StatusCode -lt 200 -or $response.StatusCode -ge 300 -or $info.product -ne '3D Manage') {
@@ -696,9 +703,10 @@ function Show-Success {
 
   Write-Host ''
   Write-Host '3D Manage Docker 后端已启动。' -ForegroundColor Green
-  Write-Host "本机地址：http://127.0.0.1:$Port"
+  $scheme = Get-BackendScheme
+  Write-Host "本机地址：${scheme}://127.0.0.1:$Port"
   foreach ($address in @(Get-LanIpv4Addresses)) {
-    Write-Host "局域网地址：http://${address}:$Port"
+    Write-Host "局域网地址：${scheme}://${address}:$Port"
   }
   if ($ServerInfo.serverId) {
     Write-Host "服务器 ID：$($ServerInfo.serverId)"
