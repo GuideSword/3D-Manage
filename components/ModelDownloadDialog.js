@@ -18,10 +18,10 @@ export default function ModelDownloadDialog() {
   const current = React.useRef(null), [task, setTask] = React.useState(null);
   const preparing = React.useRef(false);
   const [password, setPassword] = React.useState(''), [consent, setConsent] = React.useState(false);
-  const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(''), [ready, setReady] = React.useState(null);
+  const [busy, setBusy] = React.useState(false), [error, setError] = React.useState(''), [ready, setReady] = React.useState(null), [readyUntil, setReadyUntil] = React.useState(0);
   const finish = React.useCallback((failure, value) => {
     const pending = current.current; current.current = null;
-    setTask(null); setPassword(''); setConsent(false); setReady(null); setBusy(false); setError('');
+    setTask(null); setPassword(''); setConsent(false); setReady(null); setReadyUntil(0); setBusy(false); setError('');
     if (pending) failure ? pending.reject(failure) : pending.resolve(value);
   }, []);
   React.useEffect(() => {
@@ -57,7 +57,7 @@ export default function ModelDownloadDialog() {
       const result = await apiRequest('/model-downloads/authorize', { method: 'POST', body: JSON.stringify({ key: pending.key, password: pending.requirements.requiresPassword ? password : undefined, purpose: pending.purpose, consent: true }) });
       if (current.current !== pending || !isCurrentRuntime(pending.captured)) throw new StaleSessionError();
       setPassword('');
-      if (pending.purpose === 'handoff') { setReady(result.token); setBusy(false); }
+      if (pending.purpose === 'handoff') { setReady(result.token); setReadyUntil(Date.now() + Math.max(1, Number(result.expiresIn || 60)) * 1000); setBusy(false); }
       else finish(null, { 'X-Model-Download-Grant': result.token });
     } catch (caught) { if (current.current === pending) { setError(caught.message); setBusy(false); } }
   }
@@ -66,6 +66,7 @@ export default function ModelDownloadDialog() {
     setBusy(true);
     try {
       if (!isCurrentRuntime(pending.captured)) throw new StaleSessionError();
+      if (!readyUntil || Date.now() >= readyUntil) { setReady(null); setReadyUntil(0); setError('交接授权已过期，请重新验证下载密码后再打开。'); return; }
       await Linking.openURL(`manage3d-model://open?server=${encodeURIComponent(pending.captured.apiBaseUrl)}&ticket=${encodeURIComponent(ready)}`);
       finish(null, true);
     } catch (caught) { setError('未能启动本地助手，请确认已安装并配置；你可以重新授权后再试。'); setReady(null); setBusy(false); }
