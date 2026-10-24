@@ -60,6 +60,31 @@ test.after(async () => {
   fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
+test('模型图片可逐张删除，访客无权删除，模型文件保持不变', async () => {
+  const imagePath = path.join(tempDir, 'uploads', 'models', 'cover.png');
+  fs.mkdirSync(path.dirname(imagePath), { recursive: true });
+  fs.writeFileSync(imagePath, Buffer.from('image data'));
+
+  const denied = await request('/models/model-1/images/image-1', 'DELETE', undefined, 'viewer');
+  assert.equal(denied.status, 403);
+  assert.equal(fs.existsSync(imagePath), true);
+
+  const removed = await request('/models/model-1/images/image-1', 'DELETE');
+  assert.equal(removed.status, 200);
+  assert.deepEqual(removed.body, { success: true });
+  assert.equal(fs.existsSync(imagePath), false);
+
+  const model = (await request('/models/model-1')).body;
+  assert.deepEqual(model.images, []);
+  assert.equal(model.files.length, 1);
+  assert.equal((await request('/models/model-1/images/image-1', 'DELETE')).status, 404);
+  assert.equal((await request('/models/missing/images/image-1', 'DELETE')).status, 404);
+
+  const logs = (await store.getData()).auditLogs.filter((log) => log.action === 'image.delete');
+  assert.equal(logs.length, 1);
+  assert.equal(logs[0].diff.id, 'image-1');
+});
+
 test('订单可清空可选字段并保留客户 ID、状态、附件和创建信息，修改行重算金额', async () => {
   const original = (await request('/orders/o1')).body;
   const updated = await request('/orders/o1', 'PATCH', { id: 'forged', createdBy: 'forged', createdAt: 'forged',

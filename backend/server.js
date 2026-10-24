@@ -8,23 +8,22 @@ dotenv.config();
 const { assertRuntimeConfig } = require('./config/runtime');
 assertRuntimeConfig();
 
-const { initStorage } = require('./config/storage');
-const { initializeStore, closeStore } = require('./utils/store');
-const { getDb, closeDb } = require('./db/agent');
-const { retryPendingAttachmentCleanup } = require('./agent/attachmentStore');
+const { createBusinessRuntime } = require('./application/businessRuntime');
 const { publicErrorMessage } = require('./utils/publicError');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const readiness = Promise.all([
-  initializeStore(),
-  initStorage(),
-  Promise.resolve().then(async () => {
-    getDb().prepare('SELECT 1').get();
-    const cleanup = await retryPendingAttachmentCleanup({ limit: 25 });
-    if (cleanup.failed) console.warn(`[agent-attachments] ${cleanup.failed} cleanup item(s) still pending`);
-  }),
-]);
+const readiness = createBusinessRuntime({
+  driver: process.env.STORE_DRIVER || 'file', connectionString: process.env.DATABASE_URL,
+  factories: {
+    legacy: () => require('./application/legacyRuntime').createLegacyRuntime(),
+    relational: context => require('./application/relationalRuntime').createRelationalRuntime({
+      ...context, jwtSecret: process.env.JWT_SECRET, uploadDirectory: process.env.UPLOAD_DIR,
+    }),
+  },
+});
+// Observe startup rejection without changing the Promise awaited by start and requests.
+readiness.catch(() => {});
 
 const DEFAULT_ALLOWED_ORIGINS = [
   'http://localhost:8081',
@@ -63,21 +62,19 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(async (req, res, next) => {
   try { await readiness; next(); }
+  catch (_error) { res.status(503).json({ code: 'STORAGE_UNAVAILABLE', error: '服务器存储暂不可用' }); }
+});
+
+app.use('/api', async (req, res, next) => {
+  try { const runtime = await readiness; await runtime.router(req, res, next); }
   catch (error) { next(error); }
 });
 
-app.use('/api/system', require('./routes/system'));
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/models', require('./routes/models'));
-app.use('/api/materials', require('./routes/materials'));
-app.use('/api/stock', require('./routes/stock'));
-app.use('/api/files', require('./routes/files'));
-app.use('/api/oss', require('./routes/oss'));
-app.use('/api/agent', require('./routes/agent'));
-
-app.get('/', (req, res) => {
+const requireReady = async (_req, res, next) => {
+  try { await (await readiness).checkReady(); next(); }
+  catch (_error) { res.status(503).json({ code: 'STORAGE_UNAVAILABLE', error: '服务器存储暂不可用' }); }
+};
+app.get('/', requireReady, (req, res) => {
   res.json({
     name: '3D Manage API',
     status: 'OK',
@@ -96,7 +93,7 @@ app.get('/', (req, res) => {
   });
 });
 
-app.get('/health', (req, res) => {
+app.get('/health', requireReady, (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
@@ -107,46 +104,65 @@ app.use((req, res) => {
 app.use((err, req, res, next) => {
   console.error(err.stack || err);
   res.status(err.status || 500).json({
+    ...(/^BUSINESS_RUNTIME_[A-Z_]+$/.test(err.code || '') ? { code: err.code } : {}),
     error: publicErrorMessage(err, '服务器内部错误'),
   });
 });
 
 let httpServer;
 let shuttingDown = false;
+let startPromise;
+let shutdownPromise;
 
-const start = async () => {
-  await readiness;
-  const HOST = process.env.HOST || '0.0.0.0';
-  httpServer = await new Promise((resolve, reject) => {
-    const listener = app.listen(PORT, HOST, () => resolve(listener));
-    listener.once('error', reject);
-  });
-  console.log(`Server running on ${HOST}:${PORT}`);
-  console.log(`Frontend CORS allowed: ${allowedOrigins.join(', ')}`);
-  return httpServer;
+const start = () => {
+  if (shuttingDown) return Promise.reject(Object.assign(new Error('服务正在关闭'), { code: 'BUSINESS_RUNTIME_CLOSED' }));
+  if (!startPromise) startPromise = (async () => {
+    const runtime = await readiness;
+    if (shuttingDown) throw Object.assign(new Error('服务正在关闭'), { code: 'BUSINESS_RUNTIME_CLOSED' });
+    const HOST = process.env.HOST || '0.0.0.0';
+    try {
+      httpServer = await new Promise((resolve, reject) => {
+        const listener = require('./config/httpTransport').createHttpTransport(app).listen(PORT, HOST, error => error ? reject(error) : resolve(listener));
+        listener.once('error', reject);
+      });
+    } catch (failure) {
+      try { await runtime.close(); } catch (cleanupError) { failure.cleanupError = cleanupError; }
+      throw failure;
+    }
+    console.log(`Server running on ${HOST}:${PORT}`);
+    console.log(`Frontend CORS allowed: ${allowedOrigins.join(', ')}`);
+    return httpServer;
+  })();
+  return startPromise;
 };
 
-const shutdown = async (signal = 'shutdown') => {
-  if (shuttingDown) return;
+const shutdown = (signal = 'shutdown') => {
+  if (shutdownPromise) return shutdownPromise;
   shuttingDown = true;
-  console.log(`${signal} received, draining requests`);
-  const deadline = setTimeout(() => {
-    console.error('Graceful shutdown timed out');
-    process.exitCode = 1;
-    process.exit(1);
-  }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 25000));
-  deadline.unref();
-  try {
-    if (httpServer) {
-      await new Promise((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
-      httpServer.closeAllConnections?.();
+  shutdownPromise = (async () => {
+    console.log(`${signal} received, draining requests`);
+    const deadline = setTimeout(() => {
+      console.error('Graceful shutdown timed out');
+      process.exitCode = 1;
+      process.exit(1);
+    }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 25000));
+    deadline.unref();
+    try {
+      // A listen callback can still be pending when shutdown is requested.
+      try { await startPromise; } catch (_) { /* Failed startup already closes its selected runtime. */ }
+      if (httpServer) {
+        await new Promise((resolve, reject) => httpServer.close((error) => (error ? reject(error) : resolve())));
+        httpServer.closeAllConnections?.();
+      }
+      let runtime;
+      try { runtime = await readiness; } catch (_) { /* Failed factories already clean up their resources. */ }
+      await runtime?.close();
+      console.log('Graceful shutdown complete');
+    } finally {
+      clearTimeout(deadline);
     }
-    await closeStore();
-    closeDb();
-    console.log('Graceful shutdown complete');
-  } finally {
-    clearTimeout(deadline);
-  }
+  })();
+  return shutdownPromise;
 };
 
 if (require.main === module) {
@@ -181,3 +197,4 @@ process.on('SIGINT', () => shutdown('SIGINT').catch((error) => {
 module.exports = app;
 module.exports.start = start;
 module.exports.shutdown = shutdown;
+module.exports.ready = readiness;

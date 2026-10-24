@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   SafeAreaView,
   ScrollView,
   StyleSheet,
@@ -20,6 +21,9 @@ import {
 } from '../constants';
 import { Button, Card, Input, Picker } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import RelationalInventoryTransactionScreen from './RelationalInventoryTransactionScreen';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 import { useInventoryCommand, isValidGramQuantity } from '../utils/useInventoryCommand';
 
@@ -28,7 +32,7 @@ const QUANTITY_PRESET_OPTIONS = ['200', '500', '1000'].map((value) => ({
   label: `${value}g`,
 }));
 
-const InboundTransactionScreen = ({ navigation }) => {
+const LegacyInboundTransactionScreen = ({ navigation }) => {
   const submitCommand = useInventoryCommand();
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
@@ -163,6 +167,7 @@ const InboundTransactionScreen = ({ navigation }) => {
       const result = await submitCommand(inTransactionType === 'new' ? 'lot.create' : 'inventory.post', payload,
         (body, key) => inTransactionType === 'new' ? stockAPI.createLot(body, key) : stockAPI.inventoryTransaction(body, key));
       if (result === null) return;
+      if (Platform.OS === 'web') { navigation.goBack(); return; }
 
       Alert.alert('成功', '入库操作成功', [
         { text: '确定', onPress: () => navigation.goBack() },
@@ -484,5 +489,12 @@ const createStyles = (COLORS) => StyleSheet.create({
     marginBottom: SPACING.md,
   },
 });
+
+const InboundTransactionScreen = props => {
+  const { server } = useServerConfig();
+  return masterDataCore.supportsMasterData(server)
+    ? <RelationalInventoryTransactionScreen {...props} kind="in" />
+    : <LegacyInboundTransactionScreen {...props} />;
+};
 
 export default InboundTransactionScreen;

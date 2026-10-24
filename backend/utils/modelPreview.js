@@ -1,11 +1,5 @@
-const fs = require('fs').promises;
-const os = require('os');
 const path = require('path');
 const zlib = require('zlib');
-const { promisify } = require('util');
-const { execFile } = require('child_process');
-
-const execFileAsync = promisify(execFile);
 
 const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
@@ -14,13 +8,6 @@ const LOCAL_FILE_SIGNATURE = 0x04034b50;
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg']);
 
 const getExtension = (filename = '') => path.extname(filename).toLowerCase();
-
-const isTruthyEnv = (value) => ['1', 'true', 'yes', 'on'].includes(String(value || '').toLowerCase());
-
-const shouldSkipWindowsShellThumbnail = () => (
-  process.env.NODE_ENV === 'test'
-  || isTruthyEnv(process.env.SKIP_WINDOWS_SHELL_THUMBNAIL)
-);
 
 const getImageExtensionFromBuffer = (buffer) => {
   if (!buffer || buffer.length < 8) {
@@ -153,109 +140,7 @@ const extract3mfThumbnail = (fileBuffer) => {
   return null;
 };
 
-const writeWindowsThumbnailScript = () => `
-Add-Type -AssemblyName System.Drawing
-$code = @"
-using System;
-using System.Drawing;
-using System.Drawing.Imaging;
-using System.Runtime.InteropServices;
-
-[StructLayout(LayoutKind.Sequential)]
-public struct SIZE {
-  public int cx;
-  public int cy;
-  public SIZE(int x, int y) { cx = x; cy = y; }
-}
-
-[Flags]
-public enum SIIGBF {
-  ResizeToFit = 0x00,
-  BiggerSizeOk = 0x01,
-  MemoryOnly = 0x02,
-  IconOnly = 0x04,
-  ThumbnailOnly = 0x08,
-  InCacheOnly = 0x10
-}
-
-[ComImport]
-[Guid("bcc18b79-ba16-442f-80c4-8a59c30c463b")]
-[InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
-public interface IShellItemImageFactory {
-  void GetImage([In, MarshalAs(UnmanagedType.Struct)] SIZE size, [In] SIIGBF flags, out IntPtr phbm);
-}
-
-public static class ShellThumbnail {
-  [DllImport("shell32.dll", CharSet = CharSet.Unicode, PreserveSig = false)]
-  private static extern void SHCreateItemFromParsingName(
-    [MarshalAs(UnmanagedType.LPWStr)] string path,
-    IntPtr pbc,
-    ref Guid riid,
-    [MarshalAs(UnmanagedType.Interface)] out IShellItemImageFactory shellItem
-  );
-
-  [DllImport("gdi32.dll")]
-  private static extern bool DeleteObject(IntPtr hObject);
-
-  public static void Save(string inputPath, string outputPath, int size) {
-    Guid guid = typeof(IShellItemImageFactory).GUID;
-    IShellItemImageFactory factory;
-    SHCreateItemFromParsingName(inputPath, IntPtr.Zero, ref guid, out factory);
-    IntPtr hbitmap;
-    factory.GetImage(new SIZE(size, size), SIIGBF.ThumbnailOnly | SIIGBF.BiggerSizeOk, out hbitmap);
-    try {
-      using (Bitmap bitmap = Image.FromHbitmap(hbitmap)) {
-        bitmap.Save(outputPath, ImageFormat.Png);
-      }
-    } finally {
-      DeleteObject(hbitmap);
-    }
-  }
-}
-"@
-Add-Type -TypeDefinition $code -ReferencedAssemblies System.Drawing
-[ShellThumbnail]::Save($args[0], $args[1], 512)
-`;
-
-const tryWindowsShellThumbnail = async (fullPath) => {
-  if (process.platform !== 'win32' || !fullPath || shouldSkipWindowsShellThumbnail()) {
-    return null;
-  }
-
-  const outputPath = path.join(os.tmpdir(), `model-preview-${Date.now()}-${process.pid}.png`);
-  try {
-    await execFileAsync(
-      'powershell.exe',
-      [
-        '-NoProfile',
-        '-ExecutionPolicy',
-        'Bypass',
-        '-Command',
-        writeWindowsThumbnailScript(),
-        fullPath,
-        outputPath,
-      ],
-      { timeout: 15000, windowsHide: true }
-    );
-
-    const imageBuffer = await fs.readFile(outputPath);
-    if (getImageExtensionFromBuffer(imageBuffer)) {
-      return {
-        buffer: imageBuffer,
-        extension: 'png',
-        source: 'windows_shell',
-      };
-    }
-  } catch (error) {
-    return null;
-  } finally {
-    await fs.unlink(outputPath).catch(() => {});
-  }
-
-  return null;
-};
-
-const createModelPreview = async ({ fileBuffer, originalName, fullPath }) => {
+const createModelPreview = async ({ fileBuffer, originalName }) => {
   const extension = getExtension(originalName);
 
   if (extension === '.3mf') {
@@ -265,7 +150,9 @@ const createModelPreview = async ({ fileBuffer, originalName, fullPath }) => {
     }
   }
 
-  return tryWindowsShellThumbnail(fullPath);
+  // System thumbnail providers can launch the installed slicer as a side effect.
+  // Missing embedded previews stay empty; opening a slicer requires a separate user action.
+  return null;
 };
 
 module.exports = {

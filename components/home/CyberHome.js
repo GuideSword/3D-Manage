@@ -1,10 +1,12 @@
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Image, Platform, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { ORDER_STATUS_LABELS, ORDER_STATUSES } from '../../constants';
 import { cyberTheme } from './theme';
+import responsiveLayout from '../../utils/responsiveLayout.cjs';
+import DesktopHome from './DesktopHome';
 
 const heroImage = require('../../assets/xiaoli/hero.png');
 const reviewImage = require('../../assets/xiaoli/review.png');
@@ -109,6 +111,8 @@ function RecentOrdersSection({ theme: t, orders, loading, failed, onOrders, onOr
 export default function CyberHome({ dark, stats, recentOrders, loading, refreshing, error, onRefresh, onOrders, onOrder, onInventory, onAgent, onCreate, onModel, onAdjust, onExport, exporting }) {
   const t = cyberTheme(dark);
   const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  if (isDesktop) return <DesktopHome {...{ dark, stats, recentOrders, loading, refreshing, error, onRefresh, onOrders, onOrder, onInventory, onAgent, onCreate, onModel, onAdjust, onExport, exporting }} />;
   const value = count => count == null || (loading && !refreshing) ? '—' : count;
   const shortcuts = [['全部订单', 'document-text-outline', () => onOrders('all')], ['生产进度', 'stats-chart-outline', () => onOrders(ORDER_STATUSES.IN_PROGRESS)],
     ['库存风险', 'shield-checkmark-outline', onInventory], ['消息中心', 'notifications-outline', onAgent]];

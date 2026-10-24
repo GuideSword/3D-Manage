@@ -469,6 +469,43 @@ router.post('/:id/images', requireRoles('owner', 'staff'), limitUploadConcurrenc
   }
 });
 
+router.delete('/:id/images/:imageId', requireRoles('owner', 'staff'), async (req, res) => {
+  try {
+    const result = await withData((data) => {
+      const model = findModel(data, req.params.id);
+      if (!model) return { status: 404, body: { error: '模型不存在' } };
+
+      const imageIndex = (model.images || []).findIndex((image) => String(image.id) === String(req.params.imageId));
+      if (imageIndex === -1) return { status: 404, body: { error: '图片不存在' } };
+
+      const [image] = model.images.splice(imageIndex, 1);
+      model.updatedAt = now();
+      appendAudit(data, {
+        actorId: String(req.user.id),
+        entity: 'models',
+        entityId: model.id,
+        action: 'image.delete',
+        diff: image,
+      });
+      return { status: 200, body: { success: true }, fileKey: image.fileKey };
+    });
+
+    if (result.status !== 200) return res.status(result.status).json(result.body);
+    if (result.fileKey) {
+      try {
+        await deleteFile(result.fileKey);
+      } catch (error) {
+        // The database deletion has committed; leave an orphan rather than report a false failure.
+        console.error('Model image file cleanup failed:', error);
+      }
+    }
+    return res.json(result.body);
+  } catch (error) {
+    console.error('Model image delete failed:', error);
+    return res.status(500).json({ error: publicErrorMessage(error, '删除模型图片失败') });
+  }
+});
+
 router.get('/:id/audit', requireRoles('owner'), async (req, res) => {
   try {
     const logs = await withData((data) => data.auditLogs.filter((log) => (

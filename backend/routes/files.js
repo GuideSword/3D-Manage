@@ -1,75 +1,37 @@
 const express = require('express');
-const path = require('path');
-const router = express.Router();
-const { getFile, getFileInfo, UPLOAD_DIR } = require('../config/storage');
+const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const { UPLOAD_DIR } = require('../config/storage');
 const { requireRoles } = require('../middleware/auth');
-
+const { createLocalFileStorage, parseByteRange } = require('../modules/files/localStorage');
+const { FILE_MIME_TYPES } = require('../modules/files/service');
+const router = express.Router();
 const protectedFileAccess = requireRoles('owner', 'staff', 'viewer');
-
+let pendingStorage;
 const sendStoredFile = async (req, res) => {
+  let file;
   try {
-    const filePath = req.path.replace(/^\/+/, '');
-    if (/^agent(?:[\\/]|$)/i.test(filePath)) {
-      return res.status(404).json({ error: '文件不存在' });
-    }
-    const resolvedPath = path.resolve(path.join(UPLOAD_DIR, filePath));
-    const resolvedDir = path.resolve(UPLOAD_DIR);
-    const relative = path.relative(resolvedDir, resolvedPath);
-    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
-      return res.status(403).json({ error: '无权访问该文件' });
-    }
-
-    const fileInfo = await getFileInfo(filePath);
-    const fileBuffer = await getFile(filePath);
-    const ext = path.extname(filePath).toLowerCase();
-    const mimeTypes = {
-      '.stl': 'application/sla',
-      '.obj': 'model/obj',
-      '.3mf': 'model/3mf',
-      '.step': 'model/step',
-      '.stp': 'model/step',
-      '.zip': 'application/zip',
-      '.png': 'image/png',
-      '.jpg': 'image/jpeg',
-      '.jpeg': 'image/jpeg',
-      '.webp': 'image/webp',
-      '.pdf': 'application/pdf',
-      '.csv': 'text/csv',
-    };
-
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    res.setHeader('Content-Length', fileInfo.size);
-    res.setHeader('Content-Disposition', `inline; filename="${path.basename(filePath)}"`);
-
-    const range = req.headers.range;
-    if (range) {
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = Number.parseInt(parts[0], 10);
-      const end = parts[1] ? Number.parseInt(parts[1], 10) : fileInfo.size - 1;
-      const chunk = fileBuffer.slice(start, end + 1);
-      res.status(206);
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileInfo.size}`);
-      res.setHeader('Accept-Ranges', 'bytes');
-      res.setHeader('Content-Length', chunk.length);
-      return res.send(chunk);
-    }
-
-    return res.send(fileBuffer);
+    const filePath = decodeURIComponent(req.path.replace(/^\/+/, ''));
+    if (/^agent(?:[\\/]|$)/i.test(filePath)) return res.status(404).json({ error: '文件不存在' });
+    await require('../modules/modelDownloads/legacy').checkRequest(req, filePath);
+    const storage = await (pendingStorage ||= createLocalFileStorage({ uploadDirectory: path.resolve(UPLOAD_DIR) }));
+    file = await storage.open(filePath);
+    let range;
+    try { range = parseByteRange(req.get('Range'), file.size); }
+    catch (error) { if (error.status === 416) res.set('Content-Range', `bytes */${file.size}`); throw error; }
+    res.set('Cache-Control', 'private, no-store').set('Accept-Ranges', 'bytes')
+      .set('Content-Type', FILE_MIME_TYPES[path.extname(filePath).toLowerCase()] || 'application/octet-stream')
+      .set('Content-Length', String(range.length))
+      .set('Content-Disposition', `inline; filename*=UTF-8''${encodeURIComponent(path.basename(filePath)).replaceAll("'", '%27')}`);
+    if (range.partial) res.status(206).set('Content-Range', `bytes ${range.start}-${range.end}/${file.size}`);
+    if (req.method === 'HEAD' || !range.length) return res.end();
+    await pipeline(file.createReadStream(req.get('Range')), res);
   } catch (error) {
-    console.error('File download failed:', error);
-    if (error.code === 'ENOENT') {
-      return res.status(404).json({ error: '文件不存在' });
-    }
-    return res.status(500).json({ error: '文件下载失败' });
-  }
+    if (res.headersSent || res.destroyed) { if (!res.destroyed) res.destroy(); return; }
+    const publicError = Number.isInteger(error.status) && error.status >= 400 && error.status < 500;
+    const status = error instanceof URIError ? 403 : publicError ? error.status : 500;
+    return res.status(status).set('Cache-Control', 'private, no-store').json({ code: error instanceof URIError ? 'FILE_KEY_INVALID' : publicError ? error.code : 'FILE_SERVICE_UNAVAILABLE', error: publicError ? error.message : '文件下载暂不可用' });
+  } finally { if (file) await file.close(); }
 };
-
-router.get(/.*/, async (req, res, next) => protectedFileAccess(req, res, (error) => {
-    if (error) {
-      return next(error);
-    }
-    return sendStoredFile(req, res);
-  }));
-
+router.get(/.*/, (req, res, next) => protectedFileAccess(req, res, error => error ? next(error) : sendStoredFile(req, res)));
 module.exports = router;

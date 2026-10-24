@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   RefreshControl,
   SafeAreaView,
   ScrollView,
@@ -23,21 +24,49 @@ import {
 import { Badge, Button, Card } from '../components';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useServerConfig } from '../context/ServerConfigContext';
+import { useMasterDataMutation } from '../utils/useMasterDataMutation';
+import masterDataCore from '../utils/masterDataCore.cjs';
+import { relationalModelsAPI, relationalMaterialsAPI } from '../utils/relationalCatalogApi';
+import CatalogMutationFeedback from '../components/CatalogMutationFeedback';
+import { confirmDeletion } from '../utils/confirmAction';
+import { relationalInventoryAPI } from '../utils/relationalInventoryApi';
+import { useRelationalPage } from '../utils/useRelationalPage';
+import { useInventorySummary } from '../utils/useInventorySummary';
+import { useEditRecord } from '../utils/useEditRecord';
+import EditLoadState from '../components/EditLoadState';
+import PaginationControls from '../components/PaginationControls';
 import { canManage, canWrite } from '../utils/permissions';
 import { isAuthRequiredError, materialsAPI, stockAPI } from '../utils/api';
 
 const MaterialDetailScreen = ({ route, navigation }) => {
   const { user } = useAuth();
+  const { server } = useServerConfig();
+  const relational = masterDataCore.supportsMasterData(server);
+  const catalogMutation = useMasterDataMutation(navigation);
   const { colors } = useAppTheme();
   const styles = React.useMemo(() => createStyles(colors), [colors]);
   const { materialId } = route.params || {};
-  const [material, setMaterial] = useState(null);
-  const [stockLots, setStockLots] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const [legacyMaterial, setMaterial] = useState(null);
+  const [legacyStockLots, setStockLots] = useState([]);
+  const [legacyLoading, setLoading] = useState(true);
+  const [legacyRefreshing, setRefreshing] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const lotsPage = useRelationalPage(relationalInventoryAPI.getLotsPage, { materialId }, relational && Boolean(materialId));
+  const summaryRead = useInventorySummary({ materialId }, relational && Boolean(materialId));
+  const materialRead = useEditRecord(relational ? materialId : null, relationalMaterialsAPI, () => catalogMutation.resetAfterLoad());
+  const material = relational ? materialRead.record : legacyMaterial;
+  const stockLots = relational ? lotsPage.items : legacyStockLots;
+  const loading = relational ? materialRead.loadingRecord : legacyLoading;
+  const refreshing = relational ? lotsPage.loading || summaryRead.loading : legacyRefreshing;
+  const summary = summaryRead.rows?.[0] ?? null;
+
 
   const fetchMaterialDetail = async () => {
+    if (relational) {
+      if (!catalogMutation.pending) materialRead.reload();
+      await Promise.all([lotsPage.refresh(), summaryRead.refresh()]); return;
+    }
     if (!materialId) {
       Alert.alert('错误', '耗材 ID 不存在');
       navigation.goBack();
@@ -86,6 +115,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
 
       if (materialData) {
         setMaterial(materialData);
+        catalogMutation.resetAfterLoad();
         setStockLots(lotsData);
       } else {
         Alert.alert('错误', '耗材不存在', [
@@ -106,34 +136,20 @@ const MaterialDetailScreen = ({ route, navigation }) => {
     }
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      '确认删除',
-      '确定要删除这个耗材吗？此操作不可恢复。',
-      [
-        { text: '取消', style: 'cancel' },
-        {
-          text: '删除',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              setDeleting(true);
-              await materialsAPI.delete(materialId);
-              Alert.alert('成功', '耗材已删除', [
-                { text: '确定', onPress: () => navigation.goBack() },
-              ]);
-            } catch (error) {
-              if (isAuthRequiredError(error)) {
-                return;
-              }
-              Alert.alert('错误', error.message || '删除耗材失败');
-            } finally {
-              setDeleting(false);
-            }
-          },
-        },
-      ]
-    );
+  const handleDelete = async () => {
+    if (deleting || !material || !await confirmDeletion('确定要删除这个耗材吗？此操作不可恢复。')) return;
+    try {
+      setDeleting(true);
+      if (relational) {
+        const result = await catalogMutation.run('material.delete', { id: material.id, version: material.version },
+          (body, key) => relationalMaterialsAPI.delete(body.id, body.version, key));
+        if (result === null) return;
+      } else await materialsAPI.delete(materialId);
+      if (Platform.OS === 'web') navigation.goBack();
+      else Alert.alert('成功', '耗材已删除', [{ text: '确定', onPress: () => navigation.goBack() }]);
+    } catch (error) {
+      if (!isAuthRequiredError(error)) Alert.alert('错误', error.message || '删除耗材失败');
+    } finally { setDeleting(false); }
   };
 
   useFocusEffect(useCallback(() => {
@@ -144,6 +160,8 @@ const MaterialDetailScreen = ({ route, navigation }) => {
     setRefreshing(true);
     await fetchMaterialDetail();
   };
+
+  if (relational && !material) return <EditLoadState loading={loading} error={materialRead.loadError} onRetry={fetchMaterialDetail} onCancel={() => navigation.goBack()} />;
 
   if (loading && !material) {
     return <CenteredState icon="layers-outline" text="加载耗材中..." loading />;
@@ -160,7 +178,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
     );
   }
 
-  const totalStock = stockLots.reduce((sum, lot) => sum + (lot.qty || 0), 0);
+  const totalStock = relational ? summary?.totalQty ?? null : stockLots.reduce((sum, lot) => sum + (lot.qty || 0), 0);
   const materialType = material.type || material.materialType || '未知材质';
 
   return (
@@ -172,6 +190,7 @@ const MaterialDetailScreen = ({ route, navigation }) => {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} tintColor={colors.primary} />
         )}
       >
+        <CatalogMutationFeedback mutation={catalogMutation} onReload={fetchMaterialDetail} onSuccess={() => navigation.goBack()} />
         <View style={styles.identity}>
           <View style={styles.identityIcon}>
             <Ionicons name="layers-outline" size={24} color={colors.accent} />
@@ -206,9 +225,11 @@ const MaterialDetailScreen = ({ route, navigation }) => {
 
         <Card style={styles.section}>
           <SectionHeader title="库存概览" />
+          {relational && summaryRead.error ? <><Text style={{ color: colors.danger }}>{summaryRead.error}</Text><Button title="重试库存汇总" onPress={summaryRead.refresh} variant="outline" /></> : null}
+          {relational && summary?.balanceIncomplete ? <Text style={{ color: colors.warning }}>部分历史余额待核对，当前合计不包含无效余额。</Text> : relational && summary?.legacyUnverified ? <Text style={{ color: colors.warning }}>存在未核对的历史批次余额。</Text> : null}
           <View style={styles.summaryGrid}>
-            <SummaryTile label="总库存" value={`${totalStock}g`} icon="scale-outline" highlight />
-            <SummaryTile label="批次数量" value={`${stockLots.length} 个`} icon="archive-outline" />
+            <SummaryTile label="总库存" value={totalStock == null ? '暂不可用' : `${totalStock}g`} icon="scale-outline" highlight />
+            <SummaryTile label="批次数量" value={relational ? summary ? `${summary.lotCount} 个` : '暂不可用' : `${stockLots.length} 个`} icon="archive-outline" />
           </View>
         </Card>
 
@@ -237,16 +258,17 @@ const MaterialDetailScreen = ({ route, navigation }) => {
         </Card> : null}
 
         <Card style={styles.section}>
-          <SectionHeader title="库存批次" count={stockLots.length} />
+          <SectionHeader title="库存批次" count={relational ? lotsPage.total ?? '—' : stockLots.length} />
           {stockLots.length > 0 ? stockLots.map((lot) => (
             <View key={lot.id}>
-              <LotRow lot={lot} />
+              <LotRow lot={lot} relational={relational} />
               {canWrite(user) ? <Button title="编辑批次" variant="outline" size="small"
                 iconLeft="create-outline" onPress={() => navigation.navigate(ROUTES.EDIT_STOCK_LOT, { lotId: lot.id })} /> : null}
             </View>
-          )) : (
+          )) : relational && (lotsPage.error || lotsPage.initializing) ? null : (
             <EmptySection text="暂无库存批次" />
           )}
+          {relational ? <PaginationControls page={lotsPage} /> : null}
         </Card>
 
         {canWrite(user) ? <Card style={styles.section}>
@@ -335,7 +357,7 @@ const TransactionAction = ({ label, icon, color, onPress }) => {
   );
 };
 
-const LotRow = ({ lot }) => {
+const LotRow = ({ lot, relational }) => {
   const { colors, styles } = useDetailTheme();
   const state = lot.state || lot.status;
   const color = state === STOCK_STATUSES.IN_STOCK
@@ -354,7 +376,7 @@ const LotRow = ({ lot }) => {
       </View>
       <View style={styles.lotRight}>
         <Badge text={lot.active === false ? '已停用' : STOCK_STATUS_LABELS[state] || '未知'} color={color} size="small" />
-        <Text style={styles.lotQty}>{lot.qty || 0}g</Text>
+        <Text style={styles.lotQty}>{relational ? lot.balanceStatus === 'legacy_invalid' || lot.qty == null ? '待核对' : `${lot.qty}g` : `${lot.qty || 0}g`}</Text>
       </View>
       {lot.balanceStatus?.startsWith('legacy_') ? <Text style={styles.lotNotes}>{lot.balanceStatus === 'legacy_invalid' ? '历史余额无效，需人工核对后迁移' : '历史余额待核对'}</Text> : null}
       {lot.notes ? <Text style={styles.lotNotes}>{lot.notes}</Text> : null}

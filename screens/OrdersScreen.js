@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
-  Alert,
   FlatList,
   RefreshControl,
   ScrollView,
@@ -9,6 +9,8 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Platform,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -35,12 +37,21 @@ import { useAuth } from '../context/AuthContext';
 import { isAuthRequiredError, ordersAPI } from '../utils/api';
 import { isRestorable, isTerminalStatus } from '../utils/orderStatus';
 import { canWrite } from '../utils/permissions';
+import responsiveLayout from '../utils/responsiveLayout.cjs';
+import { showAlert } from '../utils/platformAlert';
+import { useOrderMutation } from '../utils/useOrderMutation';
+import OrderMutationFeedback from '../components/OrderMutationFeedback';
+import { getServerRuntime, isCurrentRuntime } from '../utils/serverRuntime';
 
 const OrdersScreen = ({ navigation, route }) => {
   const { user } = useAuth();
+  const orderMutation = useOrderMutation(navigation);
+  const ordersRuntime = useRef(null);
   const { isDark } = useAppTheme();
   const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
-  const styles = React.useMemo(() => createStyles(t), [t]);
+  const { width } = useWindowDimensions();
+  const { isDesktop } = responsiveLayout.getResponsiveLayout(width, Platform.OS);
+  const styles = React.useMemo(() => createStyles(t, isDesktop), [t, isDesktop]);
   const [orders, setOrders] = useState([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -60,14 +71,18 @@ const OrdersScreen = ({ navigation, route }) => {
       if (searchQuery) {
         params.search = searchQuery;
       }
+      const captured = getServerRuntime();
       const response = await ordersAPI.getAll(params);
+      if (!isCurrentRuntime(captured)) return;
+      ordersRuntime.current = captured;
       setOrders(response.items || response || []);
+      orderMutation.resetAfterLoad();
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
       }
       console.error('获取订单失败:', error);
-      Alert.alert('错误', '获取订单列表失败，请检查网络连接');
+      showAlert('错误', '获取订单列表失败，请检查网络连接');
       setOrders([]);
     } finally {
       setLoading(false);
@@ -76,7 +91,9 @@ const OrdersScreen = ({ navigation, route }) => {
   };
 
   const handleDelete = async (orderId) => {
-    Alert.alert(
+    const order = orders.find(item => item.id === orderId);
+    if (!order || !canWrite(user) || orderMutation.locked || updatingId || deletingId || !isCurrentRuntime(ordersRuntime.current)) return;
+    showAlert(
       '确认删除',
       '确定要删除这个订单吗？',
       [
@@ -85,16 +102,16 @@ const OrdersScreen = ({ navigation, route }) => {
           text: '删除',
           style: 'destructive',
           onPress: async () => {
+            if (!isCurrentRuntime(ordersRuntime.current)) return;
             try {
               setDeletingId(orderId);
-              await ordersAPI.delete(orderId);
-              Alert.alert('成功', '订单已删除');
-              await fetchOrders();
+              const result = await orderMutation.remove(order);
+              if (result !== null && isCurrentRuntime(ordersRuntime.current)) await fetchOrders();
             } catch (error) {
               if (isAuthRequiredError(error)) {
                 return;
               }
-              Alert.alert('错误', '删除订单失败');
+              showAlert('错误', '删除订单失败');
             } finally {
               setDeletingId(null);
             }
@@ -105,21 +122,20 @@ const OrdersScreen = ({ navigation, route }) => {
   };
 
   const handleStatusChange = async (orderId, newStatus) => {
-    if (updatingId) {
+    const order = orders.find(item => item.id === orderId);
+    if (!order || !canWrite(user) || updatingId || deletingId || orderMutation.locked || !isCurrentRuntime(ordersRuntime.current)) {
       return;
     }
     setStatusSheetOrder(null);
     try {
       setUpdatingId(orderId);
-      await ordersAPI.updateStatus(orderId, newStatus);
-      setOrders((prev) => prev.map((item) => (
-        item.id === orderId ? { ...item, status: newStatus } : item
-      )));
+      const result = await orderMutation.transition(order, newStatus);
+      if (result !== null && isCurrentRuntime(ordersRuntime.current)) await fetchOrders();
     } catch (error) {
       if (isAuthRequiredError(error)) {
         return;
       }
-      Alert.alert('错误', '修改订单状态失败');
+      showAlert('错误', '修改订单状态失败');
     } finally {
       setUpdatingId(null);
     }
@@ -129,8 +145,8 @@ const OrdersScreen = ({ navigation, route }) => {
     if (!order) {
       return;
     }
-    if (updatingId || deletingId) {
-      Alert.alert('提示', '当前有订单正在处理中，请稍候再试');
+    if (updatingId || deletingId || orderMutation.locked) {
+      showAlert('提示', '当前有订单正在处理中，请稍候再试');
       return;
     }
     setStatusSheetOrder(order);
@@ -148,9 +164,9 @@ const OrdersScreen = ({ navigation, route }) => {
     await fetchOrders();
   };
 
-  useEffect(() => {
+  useFocusEffect(React.useCallback(() => {
     fetchOrders();
-  }, [filterStatus, searchQuery]);
+  }, [filterStatus, searchQuery]));
 
   useEffect(() => {
     if (route?.params?.status) {
@@ -194,6 +210,7 @@ const OrdersScreen = ({ navigation, route }) => {
         value={searchQuery}
         onChangeText={setSearchQuery}
       />
+      <OrderMutationFeedback mutation={orderMutation} onResolved={fetchOrders} onReload={fetchOrders} />
       <CyberMetricStrip metrics={orderMetrics} />
       <ScrollView
         horizontal
@@ -240,6 +257,7 @@ const OrdersScreen = ({ navigation, route }) => {
               onDelete={handleDelete}
               onLongPress={showStatusPicker}
               editable={canWrite(user)}
+              locked={orderMutation.locked || Boolean(updatingId || deletingId)}
             />
           )}
           refreshControl={(
@@ -278,7 +296,7 @@ const OrdersScreen = ({ navigation, route }) => {
   );
 };
 
-const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress, editable }) => {
+const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLongPress, editable, locked }) => {
   const { isDark } = useAppTheme();
   const t = React.useMemo(() => cyberTheme(isDark), [isDark]);
   const styles = React.useMemo(() => createStyles(t), [t]);
@@ -288,8 +306,8 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
   const statusLabel = ORDER_STATUS_LABELS[order.status] || '未知';
   const isUpdating = updatingId === order.id;
   const isDeleting = deletingId === order.id;
-  const isBusy = isUpdating || isDeleting;
-  const longPressEnabled = editable && !isTerminalStatus(order.status);
+  const isBusy = isUpdating || isDeleting || locked;
+  const longPressEnabled = editable && !isBusy && !isTerminalStatus(order.status);
 
   return (
     <TouchableOpacity
@@ -320,6 +338,8 @@ const OrderCard = ({ order, navigation, deletingId, updatingId, onDelete, onLong
             )}
             {editable ? <TouchableOpacity
               style={styles.deleteButton}
+              accessibilityRole="button"
+              accessibilityLabel={`删除订单 ${order.id}`}
               onPress={(event) => {
                 event.stopPropagation?.();
                 onDelete(order.id);
@@ -407,7 +427,7 @@ const formatShortDate = (value) => {
   return `${month}-${day}`;
 };
 
-const createStyles = (t) => StyleSheet.create({
+const createStyles = (t, isDesktop = false) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: t.background,
@@ -415,7 +435,7 @@ const createStyles = (t) => StyleSheet.create({
   page: {
     flex: 1,
     width: '100%',
-    maxWidth: 620,
+    maxWidth: isDesktop ? 1360 : 620,
     alignSelf: 'center',
   },
   filterBar: {

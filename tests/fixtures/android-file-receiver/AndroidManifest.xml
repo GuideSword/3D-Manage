@@ -1,0 +1,13 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="com.manage3d.filereceiver.qa" android:versionCode="1" android:versionName="1.0">
+  <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
+  <application android:label="ERP 文件本地验收" android:debuggable="true" android:allowBackup="false" android:theme="@android:style/Theme.Material.Light.NoActionBar">
+    <activity android:name=".FileReceiverActivity" android:exported="true">
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="*/*" />
+      </intent-filter>
+    </activity>
+  </application>
+  <instrumentation android:name=".GestureInstrumentation" android:targetPackage="com.manage3d.filereceiver.qa" />
+</manifest>

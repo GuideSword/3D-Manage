@@ -17,6 +17,13 @@ import userErrorCore from './userErrorCore.cjs';
 const { localizeTransportError } = userErrorCore;
 
 let unauthorizedHandler = null;
+let fileDownloadAuthorizer = null;
+export const setFileDownloadAuthorizer = handler => { fileDownloadAuthorizer = handler; };
+export const authorizeStudioHandoff = async file => {
+  const captured = requireRuntime();
+  if (!fileDownloadAuthorizer || captured.capabilities?.modelDownloadsVersion !== 1) throw new Error('当前服务器尚未支持模型安全交接');
+  return fileDownloadAuthorizer({ fileUrl: file.fileUrl || file.url, filename: file.name || file.originalName, captured, purpose: 'handoff' });
+};
 
 export const setUnauthorizedHandler = (handler) => {
   unauthorizedHandler = typeof handler === 'function' ? handler : null;
@@ -156,26 +163,38 @@ const downloadProtectedFile = async ({ fileUrl, filename }) => {
   const apiOrigin = new URL(captured.apiBaseUrl).origin;
   const targetOrigin = new URL(url).origin;
   const isApiOrigin = apiOrigin === targetOrigin;
+  let downloadHeaders = {};
+  if (captured.capabilities?.modelDownloadsVersion === 1) {
+    if (!fileDownloadAuthorizer) throw new Error('下载授权界面尚未就绪，请稍后重试');
+    downloadHeaders = await fileDownloadAuthorizer({ fileUrl, filename, captured, purpose: 'download' });
+    if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+  }
   const token = isApiOrigin ? await getToken(captured.serverKey) : null;
   if (!isCurrentRuntime(captured)) throw new StaleSessionError();
   const { controller, release } = registerOperation(captured);
 
   try {
-    if (Platform.OS !== 'web') return downloadAndShareNative({
+    if (Platform.OS !== 'web') return await downloadAndShareNative({
       url,
       filename,
       token,
+      headers: downloadHeaders,
       captured,
       controller,
       isCurrent: isCurrentRuntime,
       staleError: () => new StaleSessionError(),
+      onUnauthorized: isApiOrigin ? async () => {
+        if (!isCurrentRuntime(captured)) return;
+        await clearToken(captured.serverKey);
+        if (isCurrentRuntime(captured)) unauthorizedHandler?.(captured);
+      } : undefined,
     });
 
     const response = await fetch(url, {
       cache: 'no-store',
       redirect: isApiOrigin ? 'manual' : 'follow',
       signal: controller.signal,
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      headers: { ...downloadHeaders, ...(token ? { Authorization: `Bearer ${token}` } : {}) },
     });
     if (!isCurrentRuntime(captured)) throw new StaleSessionError();
 
@@ -428,6 +447,10 @@ export const modelsAPI = {
       body: formData,
     });
   },
+
+  deleteImage: async (id, imageId) => apiRequest(`/models/${id}/images/${imageId}`, {
+    method: 'DELETE',
+  }),
 
   uploadFile: async (file, metadata = {}) => {
     if (!metadata.assetId) {
