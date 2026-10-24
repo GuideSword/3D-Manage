@@ -56,6 +56,8 @@ docker compose start
 
 ## HTTPS
 
+无域名、使用局域网 IP 的 Windows + Docker 工作室，优先使用[免费内网 HTTPS 配置](LAN_HTTPS.md)：项目根目录双击 `配置内网HTTPS.bat`，生成部署专属证书并为设备安装根信任；保留原端口和业务数据。下面是有公网域名时的独立部署方案，两种模式不能叠加。
+
 先让域名 A/AAAA 记录指向主机，在 `.env` 设置 `APP_DOMAIN` 与准确的 `CORS_ORIGINS=https://域名`，再运行：
 
 ```powershell
