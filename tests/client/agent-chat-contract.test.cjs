@@ -60,6 +60,8 @@ test('chat composer wires the shared five-line policy to the real text input', (
   assert.match(composerInput, /\bmultiline\b/);
   assert.match(composerInput, /\bscrollEnabled\b/);
   assert.match(composerInput, /textAlignVertical="top"/);
+  assert.match(composerInput, /onKeyPress=\{handleComposerKeyPress\}/);
+  assert.match(screen, /onSubmitEditing=\{Platform\.OS === 'web' \? undefined : send\}/);
   assert.doesNotMatch(composerInput, /\bnestedScrollEnabled\b/);
   assert.doesNotMatch(composerInput, /\ballowFontScaling\b/);
   assert.match(composerStyle, /maxHeight:\s*COMPOSER_MAX_HEIGHT/);

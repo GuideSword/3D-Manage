@@ -7,6 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -39,6 +40,7 @@ const {
   COMPOSER_MAX_HEIGHT,
 } = require('../utils/agentComposerLayoutCore.cjs');
 const { getKeyboardVerticalOffset } = require('../utils/agentKeyboardOffsetCore.cjs');
+const { shouldSendOnEnter } = require('../utils/agentComposerKeyCore.cjs');
 
 // Full-screen Agent chat.
 //
@@ -267,6 +269,16 @@ export default function AgentChatScreen({ route, navigation }) {
     }
   };
 
+  const handleComposerKeyPress = useCallback((event) => {
+    const nativeEvent = event?.nativeEvent || {};
+    const key = nativeEvent.key || event?.key;
+    const shiftKey = nativeEvent.shiftKey === true || event?.shiftKey === true;
+    const isComposing = nativeEvent.isComposing === true || event?.isComposing === true;
+    if (!shouldSendOnEnter({ platform: Platform.OS, key, shiftKey, isComposing })) return;
+    event?.preventDefault?.();
+    send();
+  }, [send]);
+
   const onConfirmDraft = async (draft) => {
     try {
       const normalized = normalizeDraftForClient(draft);
@@ -388,7 +400,8 @@ export default function AgentChatScreen({ route, navigation }) {
           scrollEnabled
           textAlignVertical="top"
           editable={!sending && !preparingImages}
-          onSubmitEditing={send}
+          onKeyPress={handleComposerKeyPress}
+          onSubmitEditing={Platform.OS === 'web' ? undefined : send}
           blurOnSubmit={false}
         />
         <TouchableOpacity
