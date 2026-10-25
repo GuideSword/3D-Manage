@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Linking, Platform } from 'react-native';
 import * as Crypto from 'expo-crypto';
 import {
   getServerRuntime,
@@ -23,6 +23,40 @@ export const authorizeStudioHandoff = async file => {
   const captured = requireRuntime();
   if (!fileDownloadAuthorizer || captured.capabilities?.modelDownloadsVersion !== 1) throw new Error('当前服务器尚未支持模型安全交接');
   return fileDownloadAuthorizer({ fileUrl: file.fileUrl || file.url, filename: file.name || file.originalName, captured, purpose: 'handoff' });
+};
+
+/** Request a short lived ticket and launch the installed Windows importer. */
+export const authorizeModelImport = async () => {
+  const captured = requireRuntime();
+  if (!['owner', 'staff'].includes(captured.userRole) && captured.userRole !== undefined) {
+    const error = new Error('当前账号无权导入模型');
+    error.code = 'MODEL_IMPORT_FORBIDDEN';
+    throw error;
+  }
+  if (captured.capabilities?.modelImportVersion === 0) {
+    const error = new Error('当前服务器尚未支持批量导入模型');
+    error.code = 'MODEL_IMPORT_UNSUPPORTED';
+    throw error;
+  }
+  const result = await apiRequest('/model-import/handoff/authorize', { method: 'POST', body: JSON.stringify({}) });
+  if (!isCurrentRuntime(captured)) throw new StaleSessionError();
+  const server = result?.server || result?.serverUrl || captured.apiBaseUrl.replace(/\/api\/?$/, '');
+  const ticket = result?.ticket || result?.token;
+  if (!ticket) {
+    const error = new Error('模型助手授权失败');
+    error.code = 'MODEL_IMPORT_AUTHORIZATION_FAILED';
+    throw error;
+  }
+  const url = `manage3d-model://import?server=${encodeURIComponent(server)}&ticket=${encodeURIComponent(ticket)}`;
+  try {
+    await Linking.openURL(url);
+  } catch (error) {
+    const installError = new Error('请先安装 Windows 模型助手');
+    installError.code = 'MODEL_IMPORT_HELPER_NOT_INSTALLED';
+    installError.cause = error;
+    throw installError;
+  }
+  return { ...result, url };
 };
 
 export const setUnauthorizedHandler = (handler) => {
