@@ -373,7 +373,7 @@ async function runConversation({
 
     // Execute tools
     for (const tc of toolCalls) {
-      onEvent('tool_call', { name: tc.name, arguments: tc.arguments });
+      onEvent('tool_call', { id: tc.id, name: tc.name, arguments: tc.arguments });
       let args;
       try {
         args = JSON.parse(tc.arguments || '{}');
@@ -389,6 +389,11 @@ async function runConversation({
       } catch (err) {
         result = { error: publicErrorMessage(err, '工具执行失败') };
       }
+
+      // Keep the UI and the persisted tool message in sync.  The client uses
+      // the provider call id when several tools are running in one turn, so a
+      // result can never be attached to the wrong card.
+      onEvent('tool_result', { id: tc.id, name: tc.name, result, ok: !result?.error });
 
       let storedResult = result;
       if (result?.__imageRecall) {

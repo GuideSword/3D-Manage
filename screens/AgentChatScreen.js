@@ -152,7 +152,7 @@ export default function AgentChatScreen({ route, navigation }) {
     // 2) Empty streaming assistant bubble that deltas will fill in.
     appendMessage({ role: 'assistant', text: '', isStreaming: true });
 
-    const toolMap = new Map(); // name|args-key → message id
+    const toolMap = new Map(); // provider tool-call id → message id
 
     try {
       const result = await streamChat({
@@ -177,20 +177,23 @@ export default function AgentChatScreen({ route, navigation }) {
           } else if (event === 'tool_call') {
             const name = data?.name || 'tool';
             const args = data?.arguments || data?.args || {};
-            const key = `${name}:${JSON.stringify(args)}`;
+            const key = data?.id || `${name}:${JSON.stringify(args)}`;
             const id = `${Date.now()}-tool-${Math.random().toString(36).slice(2, 6)}`;
             toolMap.set(key, id);
             appendMessage({ id, toolCall: { name, args, result: null } });
           } else if (event === 'tool_result') {
-            // Best-effort: update the LAST tool card (the server doesn't
-            // currently echo a key, so we assume results arrive in order).
+            const targetId = toolMap.get(data?.id);
             setMessages((prev) => {
               const next = [...prev];
               for (let i = next.length - 1; i >= 0; i -= 1) {
-                if (next[i] && next[i].toolCall && !next[i].toolCall.result) {
+                if (next[i] && next[i].toolCall && (!targetId || next[i].id === targetId)) {
                   next[i] = {
                     ...next[i],
-                    toolCall: { ...next[i].toolCall, result: data?.result ?? data },
+                    toolCall: {
+                      ...next[i].toolCall,
+                      result: data?.result ?? data,
+                      ok: data?.ok !== false,
+                    },
                   };
                   break;
                 }
