@@ -73,8 +73,8 @@ function zodToJsonSchema(schema) {
 // ------------------------------------------------------------------
 const extractOrderDraftSchema = z.object({
   customer_name: z.string().optional().default(''),
-  due_date: z.string().optional().describe('ISO 日期 (YYYY-MM-DD)'),
-  notes: z.string().optional(),
+  due_date: z.string().nullable().optional().describe('ISO 日期 (YYYY-MM-DD)'),
+  notes: z.string().optional().default(''),
   items: z
     .array(
       z.object({
@@ -87,7 +87,7 @@ const extractOrderDraftSchema = z.object({
       }).strict()
     )
     .default([]),
-  confidence: z.number().min(0).max(1).describe('抽取置信度 0-1'),
+  confidence: z.number().min(0).max(1).optional().describe('抽取置信度 0-1'),
   missing_fields: z.array(z.string()).default([]),
 });
 
