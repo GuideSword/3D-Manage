@@ -16,7 +16,13 @@ const COLLECTIONS = { orders: 'orders', models: 'models', materials: 'materials'
 const WRITABLE_ROLES = new Set(['owner', 'staff']);
 const MAX_ALL = 200;
 
-const stable = (value) => JSON.stringify(value, Object.keys(value || {}).sort());
+const stable = (value) => {
+  if (value === undefined) return 'null';
+  if (value === null || typeof value === 'string' || typeof value === 'boolean' || typeof value === 'number') return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
+  if (!value || typeof value !== 'object') throw PORT_ERROR('PROPOSAL_INVALID', '提案内容格式无效');
+  return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stable(value[key])}`).join(',')}}`;
+};
 const encodeCursor = (offset) => Buffer.from(JSON.stringify({ offset }), 'utf8').toString('base64url');
 const decodeCursor = (cursor) => {
   if (!cursor) return 0;
