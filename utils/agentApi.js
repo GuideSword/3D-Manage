@@ -1,6 +1,13 @@
 import { streamSSE } from '../components/agent/sseClient';
 import { apiRequest } from './api';
 import { getTokenForSnapshot } from './sessionStorage';
+
+const mutationKey = () => {
+  try {
+    if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  } catch (_) { /* fall through to the local random key */ }
+  return `agent-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+};
 import {
   getServerRuntime,
   isCurrentRuntime,
@@ -16,6 +23,23 @@ export const agentApi = {
     method: 'POST',
     body: JSON.stringify({ draft }),
   }),
+  // A mutation is prepared by the Agent first and is only executed after the
+  // user confirms the exact signed proposal shown in MutationConfirmCard.
+  prepareMutation: ({ action, entity, id, changes = {}, key } = {}) => apiRequest('/agent/mutations/prepare', {
+    method: 'POST',
+    headers: { 'Idempotency-Key': key || mutationKey() },
+    body: JSON.stringify({ action, entity, ...(id == null ? {} : { id }), changes }),
+  }),
+  confirmMutation: (proposalOrInput, key) => {
+    const input = proposalOrInput?.proposal
+      ? proposalOrInput
+      : { proposal: proposalOrInput, confirmed: true };
+    return apiRequest('/agent/mutations/confirm', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': key || input.key || mutationKey() },
+      body: JSON.stringify({ ...input, confirmed: input.confirmed !== false }),
+    });
+  },
   getSettings: () => apiRequest('/agent/keys'),
   testSettings: (settings) => apiRequest('/agent/keys/test', {
     method: 'POST',

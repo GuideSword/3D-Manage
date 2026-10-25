@@ -16,6 +16,7 @@ import {
 import AgentBubble from '../components/agent/AgentBubble';
 import ToolCallCard from '../components/agent/ToolCallCard';
 import DraftConfirmCard from '../components/agent/DraftConfirmCard';
+import MutationConfirmCard from '../components/agent/MutationConfirmCard';
 import ImageAttachment from '../components/agent/ImageAttachment';
 import { streamChat, agentApi } from '../utils/agentApi';
 import { useAppTheme } from '../context/ThemeContext';
@@ -29,6 +30,7 @@ import {
   prepareAgentImages,
   removeImage,
 } from '../utils/agentImage';
+import { normalizeDraftForClient } from '../components/agent/DraftConfirmCard';
 const {
   COMPOSER_LINE_HEIGHT,
   COMPOSER_VERTICAL_PADDING,
@@ -202,6 +204,13 @@ export default function AgentChatScreen({ route, navigation }) {
             });
           } else if (event === 'draft') {
             appendMessage({ draft: data?.draft || data });
+          } else if (event === 'mutation_proposal') {
+            // The server may wrap the proposal in { proposal }; accept both
+            // shapes so old and new orchestrators can share this screen.
+            appendMessage({ mutationProposal: data?.proposal || data });
+          } else if (event === 'mutation_result') {
+            const result = data?.result ?? data;
+            appendMessage({ mutationResult: result, role: 'assistant', text: mutationResultText(result) });
           } else if (event === 'done') {
             if (data?.conversationId) {
               convIdRef.current = data.conversationId;
@@ -228,13 +237,28 @@ export default function AgentChatScreen({ route, navigation }) {
 
   const onConfirmDraft = async (draft) => {
     try {
-      const res = await agentApi.confirmDraft(draft);
+      const normalized = normalizeDraftForClient(draft);
+      const res = normalized.proposal
+        ? await agentApi.confirmMutation({ proposal: normalized.proposal, confirmed: true })
+        : await agentApi.confirmDraft(normalized);
       const orderId = res?.order?.id ?? res?.id ?? '(未知)';
       Alert.alert('已创建', `订单 #${orderId} 已创建`);
+      appendMessage({ role: 'assistant', text: `已完成订单写入：#${orderId}` });
       // Drop all draft messages from the view.
       setMessages((prev) => prev.filter((m) => !m.draft));
     } catch (err) {
       Alert.alert('创建失败', err?.message || String(err));
+    }
+  };
+
+  const onConfirmMutation = async (proposal) => {
+    try {
+      const res = await agentApi.confirmMutation({ proposal, confirmed: true }, proposal?.proposalId);
+      const result = res?.result ?? res;
+      appendMessage({ role: 'assistant', text: mutationResultText(result), mutationResult: result });
+      setMessages((prev) => prev.filter((m) => !sameProposal(m.mutationProposal, proposal)));
+    } catch (err) {
+      Alert.alert('修改失败', err?.message || String(err));
     }
   };
 
@@ -260,6 +284,18 @@ export default function AgentChatScreen({ route, navigation }) {
           onCancel={onCancelDraft}
         />
       );
+    }
+    if (item.mutationProposal) {
+      return (
+        <MutationConfirmCard
+          proposal={item.mutationProposal}
+          onConfirm={allowWrite ? onConfirmMutation : undefined}
+          onCancel={() => setMessages((prev) => prev.filter((m) => m !== item))}
+        />
+      );
+    }
+    if (item.mutationResult) {
+      return <AgentBubble role="assistant" text={item.text || mutationResultText(item.mutationResult)} />;
     }
     return (
       <AgentBubble
@@ -334,6 +370,17 @@ export default function AgentChatScreen({ route, navigation }) {
       </View>
     </KeyboardControllerAvoidingView>
   );
+}
+
+function sameProposal(left, right) {
+  return Boolean(left && right && left.proposalId && right.proposalId && left.proposalId === right.proposalId);
+}
+
+function mutationResultText(result) {
+  if (!result) return '修改已完成。';
+  if (result.deleted) return `已删除记录 #${result.id || ''}`.trim();
+  const id = result.id || result.record?.id;
+  return id ? `修改已完成：记录 #${id}` : '修改已完成。';
 }
 
 const createStyles = (colors) => StyleSheet.create({
