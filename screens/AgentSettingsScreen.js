@@ -16,11 +16,18 @@ import { useAppTheme } from '../context/ThemeContext';
 
 const DEFAULT_LLM_URL = 'https://api.minimaxi.com/v1';
 const DEFAULT_EMBED_URL = 'https://api.minimaxi.com/v1';
+const DEFAULT_CONTEXT_TOKENS = 256000;
+const DEFAULT_CONTEXT_LIMITS = {
+  min: 8192,
+  recommended: { min: 65536, max: 256000 },
+  max: 1000000,
+};
 
 const emptyLlm = {
   provider: 'openai_compat',
   baseUrl: DEFAULT_LLM_URL,
   model: 'MiniMax-M3',
+  contextTokens: DEFAULT_CONTEXT_TOKENS,
   apiKey: '',
   apiKeyConfigured: false,
   visionStatus: 'untested',
@@ -48,6 +55,7 @@ export default function AgentSettingsScreen({ navigation }) {
   const styles = useMemo(() => createStyles(colors), [colors]);
   const [llm, setLlm] = useState(emptyLlm);
   const [embedding, setEmbedding] = useState(emptyEmbedding);
+  const [contextLimits, setContextLimits] = useState(DEFAULT_CONTEXT_LIMITS);
   const [editing, setEditing] = useState('llm');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
@@ -66,10 +74,12 @@ export default function AgentSettingsScreen({ navigation }) {
       provider: publicLlm.provider || emptyLlm.provider,
       baseUrl: publicLlm.baseUrl || emptyLlm.baseUrl,
       model: publicLlm.model || emptyLlm.model,
+      contextTokens: Number(publicLlm.contextTokens || emptyLlm.contextTokens),
       apiKey: '',
       apiKeyConfigured: Boolean(publicLlm.apiKeyConfigured),
       visionStatus: publicLlm.visionStatus || 'untested',
     });
+    setContextLimits(publicLlm.contextTokenLimits || DEFAULT_CONTEXT_LIMITS);
     setEmbedding({
       ...emptyEmbedding,
       enabled: Boolean(publicEmbedding.enabled),
@@ -103,6 +113,7 @@ export default function AgentSettingsScreen({ navigation }) {
       provider: llm.provider,
       baseUrl: llm.baseUrl.trim(),
       model: llm.model.trim(),
+      contextTokens: Number(llm.contextTokens),
       ...(llm.apiKey.trim() ? { apiKey: llm.apiKey.trim() } : {}),
     },
     embedding: embedding.enabled
@@ -175,6 +186,17 @@ export default function AgentSettingsScreen({ navigation }) {
       >
         <Field styles={styles} colors={colors} label="Base URL" value={llm.baseUrl} onChange={(baseUrl) => setLlm((value) => ({ ...value, baseUrl }))} />
         <Field styles={styles} colors={colors} label="模型名" value={llm.model} onChange={(model) => setLlm((value) => ({ ...value, model }))} />
+        <Field
+          styles={styles}
+          colors={colors}
+          label="上下文上限（token）"
+          value={llm.contextTokens}
+          onChange={(contextTokens) => setLlm((value) => ({ ...value, contextTokens }))}
+          keyboardType="numeric"
+        />
+        <Text style={styles.hint}>
+          可设置 {contextLimits.min.toLocaleString()}～{contextLimits.max.toLocaleString()}；建议 {contextLimits.recommended.min.toLocaleString()}～{contextLimits.recommended.max.toLocaleString()}。数值越大，长对话能力越强，但请求成本和延迟也可能增加。
+        </Text>
         <SecretField
           styles={styles}
           colors={colors}
@@ -267,7 +289,7 @@ function ServiceCard({ styles, colors, icon, title, status, editing, onEdit, chi
   );
 }
 
-function Field({ label, value, onChange, placeholder, styles, colors }) {
+function Field({ label, value, onChange, placeholder, keyboardType, styles, colors }) {
   return (
     <View style={styles.field}>
       <Text style={styles.label}>{label}</Text>
@@ -275,6 +297,7 @@ function Field({ label, value, onChange, placeholder, styles, colors }) {
         style={styles.input}
         value={String(value || '')}
         onChangeText={onChange}
+        keyboardType={keyboardType}
         placeholder={placeholder || ''}
         placeholderTextColor={colors.textTertiary}
         autoCapitalize="none"

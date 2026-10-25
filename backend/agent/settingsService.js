@@ -5,6 +5,13 @@ const defaultSecrets = require('../utils/crypto');
 const { createLLMClient } = require('./providers/llm');
 const defaultEmbedProvider = require('./providers/embed');
 const { probeVision } = require('./visionProbe');
+const {
+  DEFAULT_CONTEXT_TOKENS,
+  MAX_CONTEXT_TOKENS,
+  MIN_CONTEXT_TOKENS,
+  RECOMMENDED_CONTEXT_TOKENS,
+  normalizeContextTokens,
+} = require('./chatLimits');
 
 function settingsError(code, message, status = 400) {
   const error = new Error(message);
@@ -59,6 +66,10 @@ function buildCandidate({ existing = null, input = {}, secrets = defaultSecrets 
   const llmModel = cleanText(llmInput.model);
   const llmApiKey = cleanText(llmInput.apiKey)
     || getExistingSecret(existing, 'llm_api_key_enc', secrets);
+  const contextTokens = normalizeContextTokens(
+    llmInput.contextTokens ?? existing?.llm_context_tokens,
+    DEFAULT_CONTEXT_TOKENS,
+  );
 
   if (!llmModel || !llmApiKey) {
     throw settingsError('LLM_CONFIG_INCOMPLETE', '请完整填写大模型 Base URL、API Key 和模型名');
@@ -69,6 +80,7 @@ function buildCandidate({ existing = null, input = {}, secrets = defaultSecrets 
     baseUrl: llmBaseUrl,
     apiKey: llmApiKey,
     model: llmModel,
+    contextTokens,
     apiKeyReplaced: Boolean(cleanText(llmInput.apiKey)),
   };
 
@@ -167,6 +179,7 @@ function persistedRow({ candidate, existing, vision, preserveEmbedding = false, 
     || existing.llm_provider !== candidate.llm.provider
     || existing.llm_base_url !== candidate.llm.baseUrl
     || existing.llm_model !== candidate.llm.model
+    || Number(existing.llm_context_tokens || DEFAULT_CONTEXT_TOKENS) !== candidate.llm.contextTokens
     || priorPlaintext !== candidate.llm.apiKey;
 
   let embeddingFields;
@@ -207,6 +220,7 @@ function persistedRow({ candidate, existing, vision, preserveEmbedding = false, 
     llm_base_url: candidate.llm.baseUrl,
     llm_api_key_enc: llmCiphertext,
     llm_model: candidate.llm.model,
+    llm_context_tokens: candidate.llm.contextTokens,
     llm_vision_status: vision?.status || 'untested',
     llm_vision_checked_at: vision?.checkedAt || null,
     llm_config_revision: llmChanged ? Number(existing?.llm_config_revision || 0) + 1 : Number(existing?.llm_config_revision || 1),
@@ -222,6 +236,12 @@ function toPublicSettings(row) {
         provider: 'openai_compat',
         baseUrl: '',
         model: '',
+        contextTokens: DEFAULT_CONTEXT_TOKENS,
+        contextTokenLimits: {
+          min: MIN_CONTEXT_TOKENS,
+          recommended: RECOMMENDED_CONTEXT_TOKENS,
+          max: MAX_CONTEXT_TOKENS,
+        },
         apiKeyConfigured: false,
         visionStatus: 'untested',
         visionCheckedAt: null,
@@ -243,6 +263,12 @@ function toPublicSettings(row) {
       provider: row.llm_provider || 'openai_compat',
       baseUrl: row.llm_base_url || '',
       model: row.llm_model || '',
+      contextTokens: normalizeContextTokens(row.llm_context_tokens, DEFAULT_CONTEXT_TOKENS),
+      contextTokenLimits: {
+        min: MIN_CONTEXT_TOKENS,
+        recommended: RECOMMENDED_CONTEXT_TOKENS,
+        max: MAX_CONTEXT_TOKENS,
+      },
       apiKeyConfigured: Boolean(row.llm_api_key_enc),
       visionStatus: row.llm_vision_status || 'untested',
       visionCheckedAt: row.llm_vision_checked_at || null,

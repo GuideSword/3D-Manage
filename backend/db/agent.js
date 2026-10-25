@@ -33,12 +33,12 @@ function saveUserSettings(userId, settings) {
   getDb().prepare(`
     INSERT INTO user_settings (
       user_id, llm_provider, llm_base_url, llm_api_key_enc, llm_model,
-      llm_vision_status, llm_vision_checked_at, llm_config_revision,
+      llm_context_tokens, llm_vision_status, llm_vision_checked_at, llm_config_revision,
       embed_enabled, embed_base_url, embed_api_key_enc, embed_model,
       embed_group_id, embed_config_fingerprint, updated_at
     ) VALUES (
       @user_id, @llm_provider, @llm_base_url, @llm_api_key_enc, @llm_model,
-      @llm_vision_status, @llm_vision_checked_at, @llm_config_revision,
+      @llm_context_tokens, @llm_vision_status, @llm_vision_checked_at, @llm_config_revision,
       @embed_enabled, @embed_base_url, @embed_api_key_enc, @embed_model,
       @embed_group_id, @embed_config_fingerprint, datetime('now')
     )
@@ -47,6 +47,7 @@ function saveUserSettings(userId, settings) {
       llm_base_url = excluded.llm_base_url,
       llm_api_key_enc = excluded.llm_api_key_enc,
       llm_model = excluded.llm_model,
+      llm_context_tokens = excluded.llm_context_tokens,
       llm_vision_status = excluded.llm_vision_status,
       llm_vision_checked_at = excluded.llm_vision_checked_at,
       llm_config_revision = excluded.llm_config_revision,

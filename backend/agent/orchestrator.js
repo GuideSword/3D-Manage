@@ -21,7 +21,7 @@ const {
   trimConversationToBudget,
 } = require('./contextBudget');
 const { XIAOLI_SYSTEM_PROMPT } = require('./persona');
-const { MAX_INPUT_TOKENS, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
+const { contextTokensFor, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
 const { prepareMemoryLayers } = require('./memoryService');
 const { withData, appendAudit } = require('../utils/store');
 const { publicErrorMessage } = require('../utils/publicError');
@@ -107,6 +107,8 @@ async function runConversation({
   });
   sqliteDb.touchConversation(conv.id);
 
+  const maxInputTokens = contextTokensFor(settings);
+
   // 3. Load history
   const history = sqliteDb.getMessages(conv.id);
   const memoryLayers = await prepareMemoryLayers({
@@ -128,7 +130,7 @@ async function runConversation({
     archiveMatches: memoryLayers.archiveMatches,
     recentRounds: memoryLayers.recentRounds.map((round) => round.map(messageForProvider)),
     currentMessage: userMsg,
-    maxInputTokens: MAX_INPUT_TOKENS,
+    maxInputTokens,
   });
   if (budgetedContext.overBudget) {
     if (conv.justCreated) sqliteDb.deleteConversation(conv.id, userId);
@@ -242,7 +244,7 @@ async function runConversation({
       onEvent('error', { message: '客户端已断开' });
       return;
     }
-    if (estimateTokens(messages) > MAX_INPUT_TOKENS) {
+    if (estimateTokens(messages) > maxInputTokens) {
       await cleanupFailedTurn();
       onEvent('error', { code: 'CHAT_CONTEXT_TOO_LONG', message: '本次查询数据过多，请缩小查询范围后重试' });
       return;
@@ -441,7 +443,7 @@ async function runConversation({
       }
 
       messages.push(toolMsg);
-      trimConversationToBudget(messages, MAX_INPUT_TOKENS);
+      trimConversationToBudget(messages, maxInputTokens);
       if (result?.__imageRecall) {
         messages.push({
           role: 'user',

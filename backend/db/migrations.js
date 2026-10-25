@@ -7,6 +7,7 @@ const USER_SETTINGS_SQL = `
     llm_base_url TEXT NOT NULL,
     llm_api_key_enc TEXT NOT NULL,
     llm_model TEXT NOT NULL,
+    llm_context_tokens INTEGER NOT NULL DEFAULT 256000,
     llm_vision_status TEXT NOT NULL DEFAULT 'untested'
       CHECK(llm_vision_status IN ('untested','vision','text_only','error')),
     llm_vision_checked_at TEXT,
@@ -52,6 +53,7 @@ function migrateSettings(db) {
   const current = columns(db, 'user_settings');
   const alreadyCurrent = [
     'llm_vision_status',
+    'llm_context_tokens',
     'llm_vision_checked_at',
     'llm_config_revision',
     'embed_enabled',
@@ -80,6 +82,13 @@ function migrateSettings(db) {
     FROM user_settings_legacy
   `);
   db.exec('DROP TABLE user_settings_legacy');
+}
+
+function migrateContextTokens(db) {
+  const current = columns(db, 'user_settings');
+  if (current.size && !current.has('llm_context_tokens')) {
+    db.exec('ALTER TABLE user_settings ADD COLUMN llm_context_tokens INTEGER NOT NULL DEFAULT 256000');
+  }
 }
 
 function migrateModelEmbeddings(db) {
@@ -232,6 +241,7 @@ function migrateMemory(db) {
 
 function migrateAgentDb(db) {
   const migrate = db.transaction(() => {
+    migrateContextTokens(db);
     const version = db.pragma('user_version', { simple: true });
     if (version < 1) {
       migrateSettings(db);

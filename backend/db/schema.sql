@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS user_settings (
   llm_base_url TEXT NOT NULL,
   llm_api_key_enc TEXT NOT NULL,
   llm_model TEXT NOT NULL,
+  llm_context_tokens INTEGER NOT NULL DEFAULT 256000,
   llm_vision_status TEXT NOT NULL DEFAULT 'untested'
     CHECK(llm_vision_status IN ('untested','vision','text_only','error')),
   llm_vision_checked_at TEXT,
