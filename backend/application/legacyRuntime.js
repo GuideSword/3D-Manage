@@ -18,6 +18,7 @@ async function createLegacyRuntime({ agentRouter } = {}) {
     router.use('/model-downloads', require('../modules/modelDownloads/http').createModelDownloadsRouter({
       service: downloads.service, authenticate: downloads.authenticate, uploadDirectory: require('../config/storage').UPLOAD_DIR,
     }));
+    router.use('/model-import', require('../routes/modelImport'));
     for (const name of ['system', 'auth', 'users', 'orders', 'models', 'materials', 'stock', 'files', 'oss']) router.use('/' + name, require('../routes/' + name));
     router.use('/agent', agentRouter || require('../routes/agent'));
     return { router, close: closeResources };

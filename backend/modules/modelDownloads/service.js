@@ -31,7 +31,7 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
   async function mint(tx, user, policy, resource, purpose, lifetime) {
     const token = randomBytes(32).toString('base64url');
     await tx.insertGrant({ hash: digest(token), actorId: user.id, tokenVersion: String(user.tokenVersion),
-      policyVersion: String(policy.version), fileKey: resource.key, purpose, expiresAt: now() + lifetime, consumed: false });
+      policyVersion: String(policy.version), fileKey: resource?.key || null, purpose, expiresAt: now() + lifetime, consumed: false });
     return token;
   }
   async function validGrant(tx, token, purpose, key, user) {
@@ -72,7 +72,13 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
     }),
     authorize: (session, input) => run(async tx => {
       fields(input, ['key', 'password', 'purpose', 'consent']);
-      const user = await actor(tx, session), key = fileKey(input.key);
+      const user = await actor(tx, session);
+      if (input.purpose === 'model-import') {
+        if (input.consent !== true) fail('DOWNLOAD_CONSENT_REQUIRED', '请确认导入模型', 400);
+        const policy = await tx.policy(); const token = await mint(tx, user, policy, null, 'model-import', 300000);
+        return { token, expiresIn: 300 };
+      }
+      const key = fileKey(input.key);
       if (input.consent !== true || !['download', 'handoff'].includes(input.purpose)) fail('DOWNLOAD_CONSENT_REQUIRED', '请确认将模型数据拉取到当前设备', 400);
       const resource = await tx.resource(key), policy = await tx.policy();
       if (!resource) fail('FILE_NOT_FOUND', '文件不存在或尚未登记', 404);
@@ -108,6 +114,11 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
       const token = await mint(tx, current, policy, resource, 'transfer', grantMs);
       await tx.audit(current.id, 'handoff.redeemed', { key: grant.fileKey });
       return { token, file: { key: grant.fileKey, name: resource.name, size: resource.size, sha256: resource.sha256 }, expiresIn: grantMs / 1000 };
+    }),
+    redeemImport: ticket => run(async tx => {
+      const { grant, current } = await validGrant(tx, ticket, 'model-import');
+      await tx.consumeGrant(grant.hash);
+      return { actorId: current.id, serverId: (await tx.policy()).version, purpose: 'model-import' };
     }),
     transfer: token => run(async tx => {
       const { grant, current } = await validGrant(tx, token, 'transfer');

@@ -1,0 +1,18 @@
+'use strict';
+const express = require('express'); const multer = require('multer');
+const { requireRoles } = require('../middleware/auth'); const { limitUploadConcurrency } = require('../middleware/uploadConcurrency');
+const { createLegacyModelImportService } = require('../modules/modelImport/legacyService');
+const { authenticate } = require('../middleware/auth');
+const router = express.Router(); const service = createLegacyModelImportService();
+const upload = multer({ storage: multer.memoryStorage(), limits:{fileSize:Math.max(1,Number(process.env.MAX_UPLOAD_BYTES||500*1024*1024))} });
+const wrap = fn => (req,res,next)=>Promise.resolve(fn(req,res)).catch(next);
+router.use(express.json({limit:'1mb'}));
+router.post('/handoff/authorize', requireRoles('owner','staff'), wrap(async (req,res)=>{ const d=require('../modules/modelDownloads/legacy'); const session=await d.authenticate(String(req.get('Authorization')||'').replace(/^Bearer\s+/i,'')); res.json(await d.service.authorize(session,{...req.body,key:'model-import',purpose:'model-import',consent:true})); }));
+router.post('/jobs', requireRoles('owner','staff'), wrap(async(req,res)=>res.status(201).json(await service.createJob(req.user,req.body))));
+router.post('/jobs/:jobId/items/prepare', requireRoles('owner','staff'), wrap(async(req,res)=>res.status(201).json(await service.prepareItem(req.user,req.params.jobId,req.body))));
+router.post('/jobs/:jobId/items/:itemId/file', requireRoles('owner','staff'), limitUploadConcurrency, upload.single('file'), wrap(async(req,res)=>res.json(await service.completeFile(req.user,req.params.jobId,req.params.itemId,req.file))));
+router.get('/jobs/:jobId', requireRoles('owner','staff'), wrap(async(req,res)=>res.json(await service.getJob(req.user,req.params.jobId))));
+router.post('/jobs/:jobId/cleanup', requireRoles('owner','staff'), wrap(async(req,res)=>res.json(await service.cleanupJob(req.user,req.params.jobId))));
+router.delete('/jobs/:jobId', requireRoles('owner','staff'), wrap(async(req,res)=>res.json(await service.cancelJob(req.user,req.params.jobId))));
+router.use((e,_q,res,_n)=>res.status(e.status||500).json({code:e.code||'MODEL_IMPORT_SERVICE_UNAVAILABLE',error:e.message}));
+module.exports = router;
