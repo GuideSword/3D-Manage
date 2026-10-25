@@ -14,12 +14,16 @@ const modelsTools = require('./models');
 const inventoryTools = require('./inventory');
 const extractTools = require('./extract');
 const memoryTools = require('./memory');
+const entityTools = require('./entities');
+const mutationTools = require('./mutations');
 
 const tools = [
   ...modelsTools, // search_models_by_keyword, search_models_semantic
   ...ordersTools, // list_orders, get_order_detail
   ...inventoryTools, // get_inventory_summary
   ...extractTools, // extract_order_draft
+  ...entityTools, // describe_entity/list_records/get_record/search_records
+  ...mutationTools, // prepare_create/prepare_update/prepare_delete
   ...memoryTools,
 ];
 
@@ -50,7 +54,21 @@ async function dispatchTool(name, args, ctx) {
     error.code = 'TOOL_ROLE_FORBIDDEN';
     throw error;
   }
-  const validated = tool.schema.parse(args);
+  let validated;
+  try {
+    validated = tool.schema.parse(args);
+  } catch (error) {
+    if (error?.name === 'ZodError') {
+      const issue = error.issues?.[0] || {};
+      throw Object.assign(new Error(issue.message || '工具参数无效'), {
+        code: 'TOOL_ARGUMENT_INVALID',
+        path: issue.path || [],
+        status: 400,
+        details: { issues: error.issues || [] },
+      });
+    }
+    throw error;
+  }
   return tool.handler(validated, ctx);
 }
 

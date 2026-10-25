@@ -11,6 +11,7 @@ const { dispatchTool, getToolsForContext } = require('./tools');
 const { createLLMClient, streamChatCompletion } = require('./providers/llm');
 const embedProvider = require('./providers/embed');
 const dbBridge = require('./dbBridge');
+const { createLegacyAgentDataPort } = require('./adapters/legacy');
 const { isImageInputRejection } = require('./visionProbe');
 const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
 const { assembleBudgetedContext, estimateTokens } = require('./contextBudget');
@@ -64,6 +65,8 @@ function messageForProvider(stored) {
 async function runConversation({
   userId,
   role,
+  session,
+  agentDataPort,
   conversationId,
   userMessage,
   displayUserMessage = userMessage,
@@ -183,6 +186,14 @@ async function runConversation({
       role,
       currentUserMessageId: userMessageId,
       conversationId: conv.id,
+      // New tools consume the storage-neutral port. Legacy routes that call
+      // runConversation directly still receive a port backed by the JSON
+      // store, while dbBridge remains available to old compatibility tools.
+      agentDataPort: agentDataPort || createLegacyAgentDataPort({
+        actor: session
+          ? { id: session.id || session.actorId || String(userId), role: session.role || role, serverId: session.serverId || 'legacy' }
+          : { id: String(userId), role, serverId: 'legacy' },
+      }),
       db: dbBridge,
       ...(embedKey ? {
         embeddingFingerprint: settings.embed_config_fingerprint,
@@ -239,7 +250,7 @@ async function runConversation({
         messages,
         tools: activeTools.map((t) => ({
           type: 'function',
-          function: { name: t.name, description: t.description, parameters: t.parameters },
+          function: { name: t.name, description: t.description, parameters: t.parameters, strict: true },
         })),
         tool_choice: turn === MAX_MODEL_TURNS ? 'none' : 'auto',
         max_completion_tokens: MAX_OUTPUT_TOKENS,

@@ -2,6 +2,7 @@
 // Tools receive (args, ctx) where ctx = { db, embed, userId }.
 
 const { z } = require('zod');
+const { portFor } = require('./entities');
 
 // ------------------------------------------------------------------
 // Minimal Zod -> JSON Schema converter (handles the cases we use).
@@ -72,8 +73,11 @@ const listOrdersSchema = z.object({
     .optional(),
   from: z.string().datetime().optional(),
   to: z.string().datetime().optional(),
+  search: z.string().trim().max(200).optional(),
   limit: z.number().int().min(1).max(200).default(50),
-});
+  cursor: z.string().max(512).optional(),
+  all: z.boolean().default(false),
+}).strict();
 
 const listOrders = {
   name: 'list_orders',
@@ -82,6 +86,10 @@ const listOrders = {
   schema: listOrdersSchema,
   parameters: zodToJsonSchema(listOrdersSchema),
   handler: async (args, ctx) => {
+    if (ctx?.agentDataPort || ctx?.dataPort) {
+      const { entity: _entity, ...query } = { entity: 'orders', ...args };
+      return portFor(ctx).list('orders', query);
+    }
     return ctx.db.listOrders(args);
   },
 };
@@ -91,7 +99,7 @@ const listOrders = {
 // ------------------------------------------------------------------
 const getOrderDetailSchema = z.object({
   order_id: z.string().describe('订单 ID'),
-});
+}).strict();
 
 const getOrderDetail = {
   name: 'get_order_detail',
@@ -100,6 +108,7 @@ const getOrderDetail = {
   schema: getOrderDetailSchema,
   parameters: zodToJsonSchema(getOrderDetailSchema),
   handler: async (args, ctx) => {
+    if (ctx?.agentDataPort || ctx?.dataPort) return portFor(ctx).get('orders', args.order_id);
     return ctx.db.getOrderDetail(args.order_id);
   },
 };
