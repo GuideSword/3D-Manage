@@ -8,9 +8,11 @@ export { clearTrackedFiles, trackPickedAsset, trackSessionFile } from './session
 const CLEANUP_PENDING_KEY = 'sessionCleanupPending.v1';
 const LEGACY_MIGRATION_KEY = 'legacyCredentialsRemoved.v1';
 const memorySession = new Map();
+const AGENT_ROLES = new Set(['owner', 'staff', 'viewer']);
 
 const tokenKey = (serverKey) => `jwtToken.v1.${serverKey}`;
 const draftsKey = (serverKey) => `drafts.v1.${serverKey}`;
+const agentChatStateKey = (serverKey, role) => `agentChatState.v1.${serverKey}.${role}`;
 
 const getWebSessionStorage = () => {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return null;
@@ -49,6 +51,12 @@ const requireServerKey = (serverKey) => {
   }
 };
 
+const requireAgentRole = (role) => {
+  if (typeof role !== 'string' || !AGENT_ROLES.has(role)) {
+    throw new Error('会话存储缺少有效的账号角色');
+  }
+};
+
 export const getToken = async (serverKey) => {
   requireServerKey(serverKey);
   return credentials.getItem(tokenKey(serverKey));
@@ -81,11 +89,44 @@ export const setTokenForSnapshot = async (captured, token) => {
   return true;
 };
 
+export const setAgentChatState = async (captured, role, state) => {
+  if (!captured?.serverKey || !isCurrentRuntime(captured)) return false;
+  requireServerKey(captured.serverKey);
+  requireAgentRole(role);
+  const key = agentChatStateKey(captured.serverKey, role);
+  if (state == null) {
+    await credentials.deleteItem(key);
+  } else {
+    await credentials.setItem(key, JSON.stringify(state));
+  }
+  if (!isCurrentRuntime(captured)) {
+    await credentials.deleteItem(key);
+    return false;
+  }
+  return true;
+};
+
+export const getAgentChatState = async (captured, role) => {
+  if (!captured?.serverKey || !isCurrentRuntime(captured)) return null;
+  requireServerKey(captured.serverKey);
+  requireAgentRole(role);
+  const key = agentChatStateKey(captured.serverKey, role);
+  const raw = await credentials.getItem(key);
+  if (!isCurrentRuntime(captured) || !raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (_) {
+    await credentials.deleteItem(key);
+    return null;
+  }
+};
+
 export const clearSession = async (serverKey) => {
   if (!serverKey) return;
   requireServerKey(serverKey);
   await clearToken(serverKey);
   await credentials.deleteItem(draftsKey(serverKey));
+  await Promise.all([...AGENT_ROLES].map((role) => credentials.deleteItem(agentChatStateKey(serverKey, role))));
   await clearTrackedFiles(serverKey);
 };
 

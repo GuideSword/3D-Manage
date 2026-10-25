@@ -19,6 +19,8 @@ import DraftConfirmCard from '../components/agent/DraftConfirmCard';
 import MutationConfirmCard from '../components/agent/MutationConfirmCard';
 import ImageAttachment from '../components/agent/ImageAttachment';
 import { streamChat, agentApi } from '../utils/agentApi';
+import { getAgentChatState, setAgentChatState } from '../utils/sessionStorage';
+import { getServerRuntime } from '../utils/serverRuntime';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { canWrite } from '../utils/permissions';
@@ -74,6 +76,32 @@ export default function AgentChatScreen({ route, navigation }) {
   const listRef = useRef(null);
   const convIdRef = useRef(route?.params?.conversationId || null);
   const cancelledRef = useRef(false);
+  const hydratedChatStateRef = useRef(false);
+
+  useEffect(() => {
+    const snapshot = getServerRuntime();
+    if (!snapshot || !user?.role) return undefined;
+    let cancelled = false;
+    getAgentChatState(snapshot, user.role).then((state) => {
+      if (cancelled) return;
+      if (!convIdRef.current && state?.conversationId) convIdRef.current = state.conversationId;
+      if (!input && typeof state?.draft === 'string') setInput(state.draft);
+      hydratedChatStateRef.current = true;
+    }).catch(() => {
+      hydratedChatStateRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [user?.role, route?.params?.conversationId]);
+
+  useEffect(() => {
+    if (!hydratedChatStateRef.current) return;
+    const snapshot = getServerRuntime();
+    if (!snapshot || !user?.role) return;
+    setAgentChatState(snapshot, user.role, {
+      conversationId: convIdRef.current,
+      draft: input,
+    }).catch(() => {});
+  }, [input, user?.role]);
 
   const recordAvoidingLayout = useCallback(({ nativeEvent: { layout } }) => {
     const next = { y: layout.y, height: layout.height };
@@ -214,6 +242,10 @@ export default function AgentChatScreen({ route, navigation }) {
           } else if (event === 'done') {
             if (data?.conversationId) {
               convIdRef.current = data.conversationId;
+              const snapshot = getServerRuntime();
+              if (snapshot && user?.role) {
+                setAgentChatState(snapshot, user.role, { conversationId: data.conversationId, draft: '' }).catch(() => {});
+              }
             }
             updateLastAssistant({ isStreaming: false });
           } else if (event === 'error') {
