@@ -38,23 +38,27 @@ function Set-ImportJobState { param([Parameter(Mandatory)]$Manifest, [Parameter(
 function Set-ImportItemState { param([Parameter(Mandatory)]$Item, [Parameter(Mandatory)][string]$State) if ([string]$Item.State -in @('completed', 'duplicate', 'cancelled', 'cleaned') -and $State -ne [string]$Item.State) { throw '项目状态不可回退' }; $Item.State = $State; $Item }
 
 function Start-ModelImportJob {
-    param([Parameter(Mandatory)]$Manifest, [scriptblock]$Prepare, [scriptblock]$Upload, [int]$Concurrency = 2, [string]$ManifestPath)
+    param([Parameter(Mandatory)]$Manifest, [scriptblock]$Prepare, [scriptblock]$Upload, [int]$Concurrency = 2, [string]$ManifestPath, [object]$Context)
     $Concurrency = [Math]::Max(1, [Math]::Min(4, $Concurrency)); $Manifest.State = 'running'; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }
-    foreach ($item in @($Manifest.Items)) {
-        if ($item.State -in @('completed', 'duplicate', 'cleaned')) { continue }
-        if ($Manifest.State -eq 'cancelling' -or $Manifest.State -eq 'cancelled') { $item.State = 'cancelled'; continue }
-        try {
-            $item.State = 'preparing'; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; if ($Prepare) { & $Prepare $item | Out-Null }
-            if ($item.State -eq 'duplicate') { if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; continue }
-            if ($Manifest.State -eq 'cancelling' -or $Manifest.State -eq 'cancelled') { $item.State = 'cancelled'; continue }
-            $item.State = 'uploading'; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; if ($Upload) { & $Upload $item | Out-Null }
-            $item.State = 'completed'
-        } catch { $item.Error = $_.Exception.Message; $item.State = 'failed' }
-        if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }
-    }
+    $queue = [Collections.Concurrent.ConcurrentQueue[object]]::new(); foreach ($item in @($Manifest.Items)) { if ($item.State -notin @('completed', 'duplicate', 'cleaned')) { $queue.Enqueue($item) } }
+    $worker = @'
+param($queue, $prepareText, $uploadText, $context)
+while ($true) {
+  $item = $null; if (-not $queue.TryDequeue([ref]$item)) { break }
+  try {
+    $item.State = 'preparing'; if ($prepareText) { & ([ScriptBlock]::Create($prepareText)) $item $context | Out-Null }
+    if ($item.State -eq 'duplicate') { [pscustomobject]@{ ItemId=$item.ItemId; State='duplicate' }; continue }
+    $item.State = 'uploading'; if ($uploadText) { & ([ScriptBlock]::Create($uploadText)) $item $context | Out-Null }
+    [pscustomobject]@{ ItemId=$item.ItemId; State='completed' }
+  } catch { [pscustomobject]@{ ItemId=$item.ItemId; State='failed'; Error=$_.Exception.Message } }
+}
+'@
+    $pool = [RunspaceFactory]::CreateRunspacePool(1, $Concurrency); $pool.Open(); $workers=@(); $handles=@(); $results=@(); $prepareText=if($Prepare){$Prepare.ToString()}else{''}; $uploadText=if($Upload){$Upload.ToString()}else{''}
+    try { for($n=0;$n -lt $Concurrency;$n++){ $ps=[PowerShell]::Create();$ps.RunspacePool=$pool;[void]$ps.AddScript($worker).AddArgument($queue).AddArgument($prepareText).AddArgument($uploadText).AddArgument($Context);$workers+=$ps;$handles+=$ps.BeginInvoke() }; for($n=0;$n -lt $handles.Count;$n++){$results+=@($workers[$n].EndInvoke($handles[$n]))} } finally { $workers|ForEach-Object{$_.Dispose()};$pool.Dispose() }
+    foreach($result in $results){$target=@($Manifest.Items|Where-Object ItemId -eq $result.ItemId)|Select-Object -First 1;if($target){$target.State=$result.State;if($result.PSObject.Properties['Error'] -and $result.Error){$target.Error=$result.Error}}}
     if ($Manifest.State -ne 'cancelled') { $Manifest.State = if (@($Manifest.Items | Where-Object State -eq 'failed').Count) { 'completed_with_errors' } else { 'completed' } }; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; $Manifest
 }
 function Stop-ModelImportJob { param([Parameter(Mandatory)]$Manifest) $Manifest.State = 'cancelling'; foreach ($item in @($Manifest.Items)) { if ($item.State -notin @('completed', 'duplicate', 'failed')) { $item.State = 'cancelled' } }; $Manifest.State = 'cancelled'; $Manifest }
-function Resume-ModelImportJob { param([Parameter(Mandatory)]$Manifest, [scriptblock]$Prepare, [scriptblock]$Upload, [int]$Concurrency = 2, [string]$ManifestPath) Start-ModelImportJob $Manifest $Prepare $Upload $Concurrency $ManifestPath }
+function Resume-ModelImportJob { param([Parameter(Mandatory)]$Manifest, [scriptblock]$Prepare, [scriptblock]$Upload, [int]$Concurrency = 2, [string]$ManifestPath, [object]$Context) Start-ModelImportJob $Manifest $Prepare $Upload $Concurrency $ManifestPath $Context }
 function Repair-ModelImportJob { param([Parameter(Mandatory)]$Manifest) foreach ($item in @($Manifest.Items)) { if ($item.State -in @('preparing', 'uploading', 'verifying')) { $item.State = 'queued' } }; if ($Manifest.State -in @('running', 'cancelling', 'recovery_required')) { $Manifest.State = 'draft' }; $Manifest }
 Export-ModuleMember -Function Get-ModelImportFiles, Expand-SafeModelArchive, Get-ModelImportFacts, New-ModelImportItem, New-ImportManifest, Save-ImportManifest, Read-ImportManifest, Set-ImportJobState, Set-ImportItemState, Start-ModelImportJob, Stop-ModelImportJob, Resume-ModelImportJob, Repair-ModelImportJob
