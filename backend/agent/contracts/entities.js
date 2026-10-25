@@ -167,7 +167,8 @@ const toListResponse = (items = [], options = {}) => {
   const list = Array.isArray(items) ? items : [];
   const total = Number.isFinite(Number(options.total)) ? Number(options.total) : list.length;
   const returned = list.length;
-  const hasMore = options.hasMore == null ? Boolean(options.nextCursor) : Boolean(options.hasMore);
+  const offset = Number.isFinite(Number(options.offset)) && Number(options.offset) >= 0 ? Number(options.offset) : 0;
+  const hasMore = options.hasMore == null ? (options.nextCursor != null || offset + returned < total) : Boolean(options.hasMore);
   return {
     items: list,
     total,
@@ -189,4 +190,7 @@ module.exports = {
   toListResponse,
   normalizeOrderItem,
 };
+
+
+
 
