@@ -45,6 +45,7 @@ function Start-ModelImportJob {
         if ($Manifest.State -eq 'cancelling' -or $Manifest.State -eq 'cancelled') { $item.State = 'cancelled'; continue }
         try {
             $item.State = 'preparing'; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; if ($Prepare) { & $Prepare $item | Out-Null }
+            if ($item.State -eq 'duplicate') { if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; continue }
             if ($Manifest.State -eq 'cancelling' -or $Manifest.State -eq 'cancelled') { $item.State = 'cancelled'; continue }
             $item.State = 'uploading'; if ($ManifestPath) { Save-ImportManifest $Manifest $ManifestPath | Out-Null }; if ($Upload) { & $Upload $item | Out-Null }
             $item.State = 'completed'

@@ -56,6 +56,7 @@ router.get('/info', async (req, res) => {
         objectStorage: process.env.OSS_ENABLED === 'true',
         selfHosted: true,
         modelDownloadsVersion: 1,
+        modelImportVersion: 1,
         inventoryRulesVersion: 1,
       },
     }), { write: false });

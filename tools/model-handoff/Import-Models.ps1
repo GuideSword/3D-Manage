@@ -25,6 +25,14 @@ $headers=@{Authorization='Bearer '+$token}
 $job=Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs') -Method Post -Headers $headers -Body (@{clientJobId=([guid]::NewGuid().ToString('N')); options=@{}}|ConvertTo-Json -Depth 5) -ContentType 'application/json' -MaximumRedirection 0
 $jobId=[string]$job.jobId; if(-not $jobId){$jobId=[string]$job.id}; if(-not $jobId){throw '服务器未返回导入任务编号'}
 $manifestPath=[IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports',$jobId)
-$prepare={param($item) Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs/'+$jobId+'/items/prepare') -Method Post -Headers $headers -Body (($item|ConvertTo-Json -Depth 10)) -ContentType 'application/json' -MaximumRedirection 0 | Out-Null}
-$upload={param($item) $f=Join-Path $item.SourcePath $item.RelativePath; if(-not (Test-Path -LiteralPath $f)){$f=$item.Path}; $client=[Net.Http.HttpClient]::new(); try{$client.DefaultRequestHeaders.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$token);$form=[Net.Http.MultipartFormDataContent]::new();$stream=[IO.File]::OpenRead($f);$content=[Net.Http.StreamContent]::new($stream);$form.Add($content,'file',[IO.Path]::GetFileName($f));$resp=$client.PostAsync($req.Server+'/model-import/jobs/'+$jobId+'/items/'+$item.ItemId+'/file',$form).GetAwaiter().GetResult();if(-not $resp.IsSuccessStatusCode){throw ('上传失败: '+[int]$resp.StatusCode)}}finally{if($stream){$stream.Dispose()};$client.Dispose()}}
+$prepare={param($item)
+ $facts=Get-ModelImportFacts $item; $payload=@{itemId=[string]$item.ItemId;relativePath=[string]$item.RelativePath;originalName=[string]$item.OriginalName;size=[long]$item.Size;sha256=([string]$item.Sha256).ToLowerInvariant();descriptionFacts="文件 $($facts.Name)，格式 $($facts.Extension)，大小 $($facts.Size) 字节，来源路径 $($facts.RelativePath)"}
+ $result=Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs/'+$jobId+'/items/prepare') -Method Post -Headers $headers -Body ($payload|ConvertTo-Json -Depth 10) -ContentType 'application/json' -MaximumRedirection 0
+ if($result.state -eq 'duplicate' -or $result.duplicate -eq $true){$item.State='duplicate';$item.DuplicateReason='内容已存在'}
+}
+$upload={param($item)
+ if($item.State -eq 'duplicate'){return}
+ $f=Join-Path $item.SourcePath $item.RelativePath; if(-not (Test-Path -LiteralPath $f)){$f=$item.Path}; $client=[Net.Http.HttpClient]::new()
+ try{$client.DefaultRequestHeaders.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$token);$form=[Net.Http.MultipartFormDataContent]::new();$stream=[IO.File]::OpenRead($f);$content=[Net.Http.StreamContent]::new($stream);$form.Add($content,'file',[IO.Path]::GetFileName($f));$resp=$client.PostAsync($req.Server+'/model-import/jobs/'+$jobId+'/items/'+$item.ItemId+'/file',$form).GetAwaiter().GetResult();if(-not $resp.IsSuccessStatusCode){throw ('上传失败: '+[int]$resp.StatusCode)}}finally{if($stream){$stream.Dispose()};$client.Dispose()}
+}
 $manifest=Show-ModelImportWorkbench -Root ([IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports')) -ManifestPath $manifestPath -Prepare $prepare -Upload $upload -Concurrency 2
