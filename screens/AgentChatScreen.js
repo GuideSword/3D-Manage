@@ -40,6 +40,7 @@ const {
   COMPOSER_MAX_HEIGHT,
 } = require('../utils/agentComposerLayoutCore.cjs');
 const { getKeyboardVerticalOffset } = require('../utils/agentKeyboardOffsetCore.cjs');
+const { preserveAgentSendError } = require('../utils/agentChatStateCore.cjs');
 const { shouldSendOnEnter } = require('../utils/agentComposerKeyCore.cjs');
 
 // Full-screen Agent chat.
@@ -157,8 +158,6 @@ export default function AgentChatScreen({ route, navigation }) {
   const send = async () => {
     const text = input.trim();
     if (!canSendDraft(text, images) || sending || preparingImages) return;
-    const messageCountBeforeSend = messages.length;
-
     setSending(true);
     setPreparingImages(true);
     cancelledRef.current = false;
@@ -252,7 +251,7 @@ export default function AgentChatScreen({ route, navigation }) {
             updateLastAssistant({ isStreaming: false });
           } else if (event === 'error') {
             const msg = data?.message || '未知错误';
-            setMessages((current) => current.slice(0, messageCountBeforeSend));
+            setMessages((current) => preserveAgentSendError(current, data));
             Alert.alert('出错', msg);
           }
         },
@@ -263,7 +262,7 @@ export default function AgentChatScreen({ route, navigation }) {
       }
     } catch (err) {
       Alert.alert('发送失败', err?.message || String(err));
-      setMessages((current) => current.slice(0, messageCountBeforeSend));
+      setMessages((current) => preserveAgentSendError(current, err));
     } finally {
       setSending(false);
     }
