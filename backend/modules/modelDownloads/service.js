@@ -118,8 +118,13 @@ function createModelDownloadService(repository, { now = Date.now, grantMs = 3000
     redeemImport: ticket => run(async tx => {
       const { grant, current } = await validGrant(tx, ticket, 'model-import');
       await tx.consumeGrant(grant.hash);
-      return { actorId: current.id, serverId: (await tx.policy()).version, purpose: 'model-import' };
+      const token = await mint(tx, current, await tx.policy(), null, 'model-import-session', 300000);
+      return { token, actorId: current.id, purpose: 'model-import', expiresIn: 300 };
     }),
+    validateImportToken: token => run(async tx => {
+      const { current } = await validGrant(tx, token, 'model-import-session');
+      return { actorId: current.id, tokenVersion: current.tokenVersion };
+    }, { readOnly: true }),
     transfer: token => run(async tx => {
       const { grant, current } = await validGrant(tx, token, 'transfer');
       await tx.audit(current.id, 'handoff.read', { key: grant.fileKey });
