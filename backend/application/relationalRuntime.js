@@ -13,11 +13,13 @@ async function createRelationalRuntime({ pool, jwtSecret, uploadDirectory, files
   const { createModelDownloadService } = require('../modules/modelDownloads/service');
   const { createPostgresDownloadRepository } = require('../modules/modelDownloads/postgresRepository');
   const { createModelDownloadsRouter } = require('../modules/modelDownloads/http');
+  const { createModelImportRouter } = require('../modules/adapters/modelImportHttp');
   const { createUserAuthentication } = require('../modules/users/authentication');
   const downloads = createModelDownloadService(createPostgresDownloadRepository(pool));
   const authentication = createUserAuthentication(pool, { jwtSecret });
   router.use('/model-downloads', createModelDownloadsRouter({ service: downloads, authenticate: authentication.authenticate,
     uploadDirectory: root, allowInsecureTest: files.allowInsecureTest === true }));
+  router.use('/model-import', createModelImportRouter({ pool, uploadDirectory: root, authentication }));
   const relationalAgentRouter = suppliedAgentRouter || createAgentRouter({
     pool,
     authenticate: authentication.authenticate,
