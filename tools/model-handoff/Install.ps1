@@ -26,9 +26,11 @@ if (([Windows.Forms.MessageBox]::Show("将安装本地助手并注册独立的ma
 if (Test-Path -LiteralPath $target) { throw '安装目录已存在，拒绝覆盖；请先检查原安装' }
 New-Item -ItemType Directory -Path $target | Out-Null
 foreach ($name in @('Dispatch-ModelHandoff.ps1','Open-Model.ps1','Import-Models.ps1','Handoff.Core.psm1','Import.Core.psm1','Import.Ui.psm1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $target $name) }
+if (Test-Path -LiteralPath (Join-Path $PSScriptRoot 'model-import.exe') -PathType Leaf) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'model-import.exe') -Destination (Join-Path $target 'model-import.exe') }
 @{ serverUrl = $server.AbsoluteUri.TrimEnd('/'); serverId = [string]$identity.serverId; studioPath = $studio.FullName } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $target 'config.json') -Encoding UTF8
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-$command = '"' + $powershell + '" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "' + (Join-Path $target 'Dispatch-ModelHandoff.ps1') + '" -Uri "%1"'
+$app = Join-Path $target 'model-import.exe'
+$command = if (Test-Path -LiteralPath $app -PathType Leaf) { '"' + $app + '" "%1"' } else { '"' + $powershell + '" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "' + (Join-Path $target 'Dispatch-ModelHandoff.ps1') + '" -Uri "%1"' }
 New-Item -Path $key | Out-Null
 Set-Item -LiteralPath $key -Value 'URL:3D Manage model handoff'
 New-ItemProperty -LiteralPath $key -Name 'URL Protocol' -Value '' -PropertyType String | Out-Null

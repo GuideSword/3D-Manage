@@ -1,4 +1,6 @@
-# Windows 模型交接助手
+# Windows 模型交接助手与 model-import 应用
+
+发布包中的 `model-import.exe` 是用户入口。`*.ps1` / `*.psm1` 文件是构建和诊断源码，用户不需要双击它们。安装后，`manage3d-model://` 协议会直接指向 `model-import.exe`。
 
 此目录保存助手全部源码。助手支持“打开Bambu Studio”和“批量导入模型”两种受绑定服务器控制的操作，不提供打印、自动切片或后台模型同步。
 

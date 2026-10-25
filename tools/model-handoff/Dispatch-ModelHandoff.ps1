@@ -1,7 +1,12 @@
-﻿param([Parameter(Mandatory=$true)][string]$Uri)
+﻿param([string]$Uri)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($args.Count -gt 0) { throw '只允许传入一个协议地址' }
+if ([string]::IsNullOrWhiteSpace($Uri)) {
+  $message = '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。'
+  if ($env:MODEL_IMPORT_HEADLESS -eq '1') { Write-Error $message } else { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($message, 'model-import', 'OK', 'Information') | Out-Null }
+  exit 1
+}
 $root=$PSScriptRoot
 $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
 if (-not (Test-Path -LiteralPath $configPath)) { throw '助手尚未安装或缺少绑定配置' }
