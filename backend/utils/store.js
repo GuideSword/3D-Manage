@@ -22,6 +22,8 @@ const COLLECTION_KEYS = [
   'auditLogs',
   'objectUploads',
   'commandReceipts',
+  'modelImportJobs',
+  'modelImportItems',
 ];
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
@@ -44,6 +46,8 @@ const createFreshData = () => {
     auditLogs: [],
     objectUploads: [],
     commandReceipts: [],
+    modelImportJobs: [],
+    modelImportItems: [],
     createdAt: timestamp,
     updatedAt: timestamp,
   };
@@ -345,4 +349,5 @@ module.exports = {
   createFreshData,
   migrateData,
 };
+
 
