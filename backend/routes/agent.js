@@ -128,6 +128,8 @@ router.post('/chat', async (req, res) => {
     await runConversation({
       userId: req.user.id,
       role: req.user.role,
+      session: { id: String(req.user.id), role: req.user.role, serverId: req.agentDataPort?.serverId || 'legacy' },
+      agentDataPort: req.agentDataPort,
       conversationId,
       userMessage: modelMessage,
       displayUserMessage: suppliedMessage,
