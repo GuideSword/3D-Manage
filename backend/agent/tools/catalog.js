@@ -26,11 +26,11 @@ function validateChanges(entity, changes) {
 }
 
 module.exports = [
-  descriptor('list_models', listModelsSchema, '列出模型资料，返回名称、描述、来源、文件、图片和分页信息。用户询问有哪些模型、模型列表或模型资料时使用。', (args, ctx) => portFor(ctx).list('models', args)),
+  descriptor('list_models', listModelsSchema, '列出模型摘要和分页信息（名称、描述、来源、文件数量、图片数量）。用户询问有哪些模型、模型列表时使用；用户需要某个模型的文件或图片详情时再调用 get_model_detail。', (args, ctx) => portFor(ctx).list('models', args)),
   descriptor('get_model_detail', detailSchema, '读取单个模型的完整资料，包括描述、来源、模型文件和图片。', ({ id }, ctx) => portFor(ctx).get('models', id)),
   descriptor('prepare_model_update', z.object({ id: detailSchema.shape.id, changes: changesSchema }).strict(), '准备修改模型资料；不会立即写入，必须展示变更并等待确认。', async ({ id, changes }, ctx) => ({ proposal: await portFor(ctx).prepareUpdate('models', id, validateChanges('models', changes), actorFor(ctx)) }), ['owner', 'staff']),
   descriptor('prepare_model_delete', detailSchema, '准备删除模型资料；不会立即删除，必须得到用户明确确认。', async ({ id }, ctx) => ({ proposal: await portFor(ctx).prepareDelete('models', id, actorFor(ctx)) }), ['owner', 'staff']),
-  descriptor('list_materials', listMaterialsSchema, '列出耗材资料，返回材质、品牌、颜色、直径、密度、单价、单位、备注和分页信息。用户询问耗材、材料或耗材列表时使用。', (args, ctx) => portFor(ctx).list('materials', args)),
+  descriptor('list_materials', listMaterialsSchema, '列出耗材资料和分页信息（材质、品牌、颜色、直径、密度、单价、单位、备注）。用户询问已有耗材、材料或耗材列表时使用。', (args, ctx) => portFor(ctx).list('materials', args)),
   descriptor('get_material_detail', detailSchema, '读取单个耗材的完整资料。', ({ id }, ctx) => portFor(ctx).get('materials', id)),
   descriptor('prepare_material_create', z.object({ changes: changesSchema }).strict(), '准备新增耗材资料；不会立即写入，必须展示字段并等待用户确认。', async ({ changes }, ctx) => ({ proposal: await portFor(ctx).prepareCreate('materials', validateChanges('materials', changes), actorFor(ctx)) }), ['owner', 'staff']),
   descriptor('prepare_material_update', z.object({ id: detailSchema.shape.id, changes: changesSchema }).strict(), '准备修改耗材资料；不会立即写入，必须展示变更并等待确认。', async ({ id, changes }, ctx) => ({ proposal: await portFor(ctx).prepareUpdate('materials', id, validateChanges('materials', changes), actorFor(ctx)) }), ['owner', 'staff']),

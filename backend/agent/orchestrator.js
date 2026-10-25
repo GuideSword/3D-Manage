@@ -14,7 +14,12 @@ const dbBridge = require('./dbBridge');
 const { createLegacyAgentDataPort } = require('./adapters/legacy');
 const { isImageInputRejection } = require('./visionProbe');
 const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
-const { assembleBudgetedContext, estimateTokens } = require('./contextBudget');
+const {
+  assembleBudgetedContext,
+  compactToolResultForContext,
+  estimateTokens,
+  trimConversationToBudget,
+} = require('./contextBudget');
 const { XIAOLI_SYSTEM_PROMPT } = require('./persona');
 const { MAX_INPUT_TOKENS, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
 const { prepareMemoryLayers } = require('./memoryService');
@@ -401,15 +406,30 @@ async function runConversation({
         result = { error: publicErrorMessage(err, '工具执行失败') };
       }
 
-      // Keep the UI and the persisted tool message in sync.  The client uses
-      // the provider call id when several tools are running in one turn, so a
-      // result can never be attached to the wrong card.
-      onEvent('tool_result', { id: tc.id, name: tc.name, result, ok: !result?.error });
-
       let storedResult = result;
       if (result?.__imageRecall) {
         storedResult = { attachment_id: result.attachmentId, recalled: true };
       }
+
+      // Keep catalog list payloads small enough for the next provider turn.
+      // The full file/image metadata is still available through the detail
+      // tools; a list response only needs the stable business fields and
+      // attachment counts. The same compact result is sent to the client and
+      // persisted so a later turn cannot reintroduce the oversized payload.
+      const toolMsg = compactToolResultForContext({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(storedResult),
+      });
+      let clientResult = result;
+      if (toolMsg.content !== JSON.stringify(storedResult)) {
+        try { clientResult = JSON.parse(toolMsg.content); } catch (_) { clientResult = result; }
+      }
+
+      // Keep the UI and the persisted tool message in sync. The client uses
+      // the provider call id when several tools are running in one turn, so a
+      // result can never be attached to the wrong card.
+      onEvent('tool_result', { id: tc.id, name: tc.name, result: clientResult, ok: !result?.error });
 
       // If this is the extract_order_draft tool, emit a draft event
       if (tc.name === 'extract_order_draft' && !draftEmitted) {
@@ -420,12 +440,8 @@ async function runConversation({
         onEvent('mutation_proposal', { proposal: result.proposal });
       }
 
-      const toolMsg = {
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(storedResult),
-      };
       messages.push(toolMsg);
+      trimConversationToBudget(messages, MAX_INPUT_TOKENS);
       if (result?.__imageRecall) {
         messages.push({
           role: 'user',
