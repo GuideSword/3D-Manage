@@ -13,6 +13,10 @@ router.post('/handoff/authorize', requireRoles('owner','staff'), wrap(async (req
 router.post('/handoff/redeem', wrap(async(req,res)=>{ const d=require('../modules/modelDownloads/legacy'); const result=await d.service.redeemImport(req.body?.ticket); const serverId=await withData(data=>data.system.serverId,{write:false}); res.json({...result,serverId}); }));
 router.post('/jobs', importAuth, wrap(async(req,res)=>res.status(201).json(await service.createJob(req.user,req.body))));
 router.post('/jobs/:jobId/items/prepare', importAuth, wrap(async(req,res)=>res.status(201).json(await service.prepareItem(req.user,req.params.jobId,req.body))));
+router.post('/jobs/:jobId/items/:itemId/describe', importAuth, wrap(async(req,res)=>{
+  const options = { ...req.body, generate: req.body?.aiDescription === true && typeof req.app.locals.modelDescriptionProvider === 'function' ? req.app.locals.modelDescriptionProvider : undefined };
+  res.json(await service.describe(req.user, req.params.jobId, req.params.itemId, options));
+}));
 router.post('/jobs/:jobId/items/:itemId/file', importAuth, limitUploadConcurrency, upload.single('file'), wrap(async(req,res)=>res.json(await service.completeFile(req.user,req.params.jobId,req.params.itemId,req.file))));
 router.get('/jobs/:jobId', importAuth, wrap(async(req,res)=>res.json(await service.getJob(req.user,req.params.jobId))));
 router.post('/jobs/:jobId/cleanup', importAuth, wrap(async(req,res)=>res.json(await service.cleanupJob(req.user,req.params.jobId))));
