@@ -25,10 +25,10 @@ if (Test-Path -LiteralPath $key) { throw '此协议已注册；请先检查原�
 if (([Windows.Forms.MessageBox]::Show("将安装本地助手并注册独立的manage3d-model协议。`nERP：$($server.AbsoluteUri)`nStudio：$($studio.FullName)`n不修改STL/3MF文件关联，不启动Studio。是否继续？", '安装模型交接助手', 'YesNo', 'Question')) -ne 'Yes') { return }
 if (Test-Path -LiteralPath $target) { throw '安装目录已存在，拒绝覆盖；请先检查原安装' }
 New-Item -ItemType Directory -Path $target | Out-Null
-foreach ($name in @('Open-Model.ps1', 'Handoff.Core.psm1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $target $name) }
+foreach ($name in @('Dispatch-ModelHandoff.ps1','Open-Model.ps1','Import-Models.ps1','Handoff.Core.psm1','Import.Core.psm1','Import.Ui.psm1')) { Copy-Item -LiteralPath (Join-Path $PSScriptRoot $name) -Destination (Join-Path $target $name) }
 @{ serverUrl = $server.AbsoluteUri.TrimEnd('/'); serverId = [string]$identity.serverId; studioPath = $studio.FullName } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $target 'config.json') -Encoding UTF8
 $powershell = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
-$command = '"' + $powershell + '" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "' + (Join-Path $target 'Open-Model.ps1') + '" -Uri "%1"'
+$command = '"' + $powershell + '" -NoProfile -STA -WindowStyle Hidden -ExecutionPolicy RemoteSigned -File "' + (Join-Path $target 'Dispatch-ModelHandoff.ps1') + '" -Uri "%1"'
 New-Item -Path $key | Out-Null
 Set-Item -LiteralPath $key -Value 'URL:3D Manage model handoff'
 New-ItemProperty -LiteralPath $key -Name 'URL Protocol' -Value '' -PropertyType String | Out-Null
