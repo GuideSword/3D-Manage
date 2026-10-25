@@ -6,9 +6,9 @@ import { authorizeModelImport } from '../utils/api';
 import Button from './Button';
 
 export const MODEL_IMPORT_RELEASE = Object.freeze({
-  version: '1.0.0',
-  downloadUrl: 'https://github.com/GuideSword/3D-Manage/releases/download/model-import-v1.0.0/3d-manage-model-handoff-windows-v1.0.0.zip',
-  checksumUrl: 'https://github.com/GuideSword/3D-Manage/releases/download/model-import-v1.0.0/SHA256SUMS',
+  version: '1.1.0',
+  downloadUrl: 'https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.1.0/3d-manage-model-handoff-windows-v1.1.0.zip',
+  checksumUrl: 'https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.1.0/SHA256SUMS',
 });
 
 export default function ModelImportCard({ user, onStarted }) {

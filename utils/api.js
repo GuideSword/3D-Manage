@@ -40,7 +40,8 @@ export const authorizeModelImport = async () => {
   }
   const result = await apiRequest('/model-import/handoff/authorize', { method: 'POST', body: JSON.stringify({}) });
   if (!isCurrentRuntime(captured)) throw new StaleSessionError();
-  const server = result?.server || result?.serverUrl || captured.apiBaseUrl.replace(/\/api\/?$/, '');
+  // The dispatcher uses the API base to validate the bound server identity.
+  const server = result?.server || result?.serverUrl || captured.apiBaseUrl;
   const ticket = result?.ticket || result?.token;
   if (!ticket) {
     const error = new Error('模型助手授权失败');

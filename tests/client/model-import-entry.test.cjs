@@ -24,7 +24,7 @@ test('authorizeModelImport requests a ticket and opens encoded helper URI', asyn
   let opened;
   const api = loadApi({ openURL: async url => { opened = url; } });
   await api.authorizeModelImport();
-  assert.equal(opened, 'manage3d-model://import?server=https%3A%2F%2Ferp.example&ticket=a%2Bb');
+  assert.equal(opened, 'manage3d-model://import?server=https%3A%2F%2Ferp.example%2Fapi&ticket=a%2Bb');
 });
 
 test('authorizeModelImport rejects a stale runtime before launching helper', async () => {
