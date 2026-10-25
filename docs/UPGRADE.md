@@ -1,5 +1,13 @@
 # 升级运行手册
 
+## 模型助手与批量导入
+
+升级包含模型助手时，先下载新版本 ZIP，再用发布页提供的 `SHA256SUMS` 校验原始归档；不要只校验解压后的单个脚本。批量导入只支持 HTTPS 服务器和 STL、OBJ、3MF、STEP、STP；ZIP 解包受条目数与解压大小限制。
+
+升级中断或电脑断电后，重新启动助手并选择恢复任务。它会把 `preparing`、`uploading`、`verifying` 的不完整项目修复为待处理状态，只保留已完成项目。取消任务会清理未完成服务端记录，不会删除已完成模型或源目录文件。默认 2 路并发，可设置 1–4 路。
+
+模型事实摘要在本地生成；云端 AI 描述为明确的可选功能，关闭时不会上传源文件内容。卸载前按助手说明移除 `manage3d-model` 协议和当前用户目录。
+
 1. 阅读目标版本发行说明，记录当前 Git 提交、镜像 digest、serverId 与 PostgreSQL major。
 2. 按 [BACKUP_RESTORE.md](./BACKUP_RESTORE.md) 创建完整备份，并确认 `manifest.json` 为 `complete`。
 3. 保留上一版本镜像和最近一次已演练备份。`.env` 与 `runtime/` 不得被包替换、Git 清理或复制脚本覆盖。
