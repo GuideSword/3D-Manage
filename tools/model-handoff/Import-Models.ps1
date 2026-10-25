@@ -3,6 +3,23 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'Import.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Import.Ui.psm1') -Force
+
+function Show-ImportLaunchError {
+ param([Parameter(Mandatory)][string]$Message)
+ if ($env:MODEL_IMPORT_HEADLESS -eq '1') { Write-Error $Message; return }
+ try { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($Message, 'model-import', 'OK', 'Error') | Out-Null }
+ catch { Write-Error $Message }
+}
+
+if ([string]::IsNullOrWhiteSpace($Uri)) {
+ Show-ImportLaunchError '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。直接双击脚本没有一次性导入授权，无法开始传输。'
+ exit 1
+}
+if (-not $Config) {
+ $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
+ if (Test-Path -LiteralPath $configPath) { $Config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
+ else { Show-ImportLaunchError '助手尚未安装或缺少服务器绑定配置，请先安装 Windows 模型助手。'; exit 1 }
+}
 function ConvertFrom-ImportUri {
  param([Parameter(Mandatory)][string]$Value,[Parameter(Mandatory)][string]$AllowedServer)
  $u=[Uri]$Value
