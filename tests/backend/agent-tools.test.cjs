@@ -45,3 +45,14 @@ test('mutation tools only prepare proposals and do not confirm writes', async ()
   assert.equal(result.proposal.entity, 'models');
 });
 
+test('model and material domain tools are explicit and confirmation-gated', async () => {
+  for (const name of ['list_models', 'get_model_detail', 'prepare_model_update', 'prepare_model_delete', 'list_materials', 'get_material_detail', 'prepare_material_create', 'prepare_material_update', 'prepare_material_delete']) {
+    assert.ok(toolsByName[name], `missing ${name}`);
+  }
+  const modelList = await dispatchTool('list_models', { all: true }, { agentDataPort: port, role: 'viewer' });
+  assert.equal(modelList.total, 1);
+  const materialProposal = await dispatchTool('prepare_material_create', { changes: { type: 'PLA', brand: '测试' } }, { agentDataPort: port, role: 'staff' });
+  assert.equal(materialProposal.proposal.action, 'create');
+  assert.equal(materialProposal.proposal.entity, 'materials');
+});
+

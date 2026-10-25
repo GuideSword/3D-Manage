@@ -123,7 +123,7 @@ function createLegacyAgentDataPort({ actor = null, signingKey = process.env.AGEN
         let created;
         if (unsigned.entity === 'orders') created = createOrderInData(data, unsigned.changes, { actorId: actorForConfirm.id, action: 'agent.create' });
         else {
-          created = { ...unsigned.changes, id: nextId(rows), createdAt: now(), updatedAt: now() };
+          created = normalizeRecord(unsigned.entity, { ...unsigned.changes, id: nextId(rows), createdAt: now(), updatedAt: now() });
           rows.push(created);
           appendAudit(data, { actorId: String(actorForConfirm.id), entity: collection, entityId: created.id, action: 'agent.create', diff: created });
         }
@@ -134,14 +134,16 @@ function createLegacyAgentDataPort({ actor = null, signingKey = process.env.AGEN
       if (unsigned.expectedVersion != null && String(currentVersion) !== String(unsigned.expectedVersion)) throw PORT_ERROR('VERSION_CONFLICT', '记录已被其他人修改，请重新读取', { status: 409 });
       if (unsigned.action === 'delete') {
         if (unsigned.entity === 'orders') assertOrderCanDelete(data, current.id);
-        if (unsigned.entity === 'materials' && (data.stockLots || []).some(lot => String(lot.materialId || lot.material_id) === String(current.id))) throw PORT_ERROR('MATERIAL_REFERENCED', '耗材有关联批次或库存流水，不能删除', { status: 409 });
+        const materialReferenced = (data.stockLots || []).some(lot => String(lot.materialId || lot.material_id) === String(current.id))
+          || (data.inventoryTxns || []).some(txn => String(txn.materialId || txn.material_id) === String(current.id));
+        if (unsigned.entity === 'materials' && materialReferenced) throw PORT_ERROR('MATERIAL_REFERENCED', '耗材有关联批次或库存流水，不能删除', { status: 409 });
         rows.splice(index, 1);
         appendAudit(data, { actorId: String(actorForConfirm.id), entity: collection, entityId: current.id, action: 'agent.delete', diff: current });
         return { id: String(current.id), deleted: true };
       }
       const next = unsigned.entity === 'orders'
         ? normalizeOrderPayload(unsigned.changes, current)
-        : { ...current, ...unsigned.changes, id: current.id, updatedAt: now() };
+        : normalizeRecord(unsigned.entity, { ...current, ...unsigned.changes, id: current.id, updatedAt: now() });
       rows[index] = next;
       appendAudit(data, { actorId: String(actorForConfirm.id), entity: collection, entityId: current.id, action: 'agent.update', diff: { before: current, after: next, key } });
       return normalizeRecord(unsigned.entity, next);

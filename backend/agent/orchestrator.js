@@ -416,7 +416,7 @@ async function runConversation({
         onEvent('draft', { draft: result });
         draftEmitted = true;
       }
-      if (/^prepare_(create|update|delete)$/.test(tc.name) && result?.proposal) {
+      if (/^prepare_(?:(?:create|update|delete)(?:_(?:model|material))?|(?:model|material)_(?:create|update|delete))$/.test(tc.name) && result?.proposal) {
         onEvent('mutation_proposal', { proposal: result.proposal });
       }
 

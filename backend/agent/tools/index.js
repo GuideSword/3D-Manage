@@ -16,6 +16,7 @@ const extractTools = require('./extract');
 const memoryTools = require('./memory');
 const entityTools = require('./entities');
 const mutationTools = require('./mutations');
+const catalogTools = require('./catalog');
 
 const tools = [
   ...modelsTools, // search_models_by_keyword, search_models_semantic
@@ -24,6 +25,7 @@ const tools = [
   ...extractTools, // extract_order_draft
   ...entityTools, // describe_entity/list_records/get_record/search_records
   ...mutationTools, // prepare_create/prepare_update/prepare_delete
+  ...catalogTools, // model/material domain tools
   ...memoryTools,
 ];
 
