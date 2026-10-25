@@ -56,6 +56,7 @@ const normalizeCustomer = (order = {}) => {
 };
 
 const normalizeOrder = (record = {}) => {
+  record = record && typeof record === 'object' ? record : {};
   const sourceItems = Array.isArray(record.items)
     ? record.items
     : Array.isArray(record.orderItems)
@@ -80,7 +81,9 @@ const normalizeOrder = (record = {}) => {
   };
 };
 
-const normalizeModel = (record = {}) => ({
+const normalizeModel = (record = {}) => {
+  record = record && typeof record === 'object' ? record : {};
+  return ({
   ...record,
   id: asString(record.id),
   name: asString(record.name),
@@ -90,9 +93,11 @@ const normalizeModel = (record = {}) => ({
   images: Array.isArray(record.images) ? record.images : [],
   createdAt: firstPresent(record.createdAt, record.created_at, null),
   updatedAt: firstPresent(record.updatedAt, record.updated_at, null),
-});
+  });
+};
 
 const normalizeMaterial = (record = {}) => {
+  record = record && typeof record === 'object' ? record : {};
   const materialType = asString(firstPresent(record.materialType, record.material_type, record.type, ''));
   return {
     ...record,
@@ -118,7 +123,9 @@ const preserveQuantity = (value) => {
   return Number.isSafeInteger(number) || Number.isFinite(number) ? number : String(value);
 };
 
-const normalizeInventoryLot = (record = {}) => ({
+const normalizeInventoryLot = (record = {}) => {
+  record = record && typeof record === 'object' ? record : {};
+  return ({
   ...record,
   id: asString(record.id),
   materialId: asString(firstPresent(record.materialId, record.material_id, '')),
@@ -133,7 +140,8 @@ const normalizeInventoryLot = (record = {}) => ({
   notes: asString(record.notes),
   createdAt: firstPresent(record.createdAt, record.created_at, null),
   updatedAt: firstPresent(record.updatedAt, record.updated_at, null),
-});
+  });
+};
 
 const ENTITY_DEFINITIONS = {
   orders: {
@@ -190,6 +198,7 @@ module.exports = {
   toListResponse,
   normalizeOrderItem,
 };
+
 
 
 
