@@ -19,6 +19,12 @@ if(-not $Uri){ $Uri='manage3d-model://import' }
 $req=ConvertFrom-ImportUri $Uri $Config.serverUrl
 $identity=Invoke-RestMethod -Uri ($req.Server+'/system/info') -Method Get -MaximumRedirection 0 -TimeoutSec 15
 if([string]$identity.serverId -cne [string]$Config.serverId){throw 'ERP服务器身份已变化，拒绝导入'}
-# The ticket is intentionally retained only in this process. The workbench handles scanning and transfers.
-$manifest=Show-ModelImportWorkbench -Root ([IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports')) -Concurrency 2
-if($manifest){$manifest | Add-Member NoteProperty Server $req.Server -Force; $manifest | Add-Member NoteProperty Ticket $req.Ticket -Force}
+$session=Invoke-RestMethod -Uri ($req.Server+'/model-import/handoff/redeem') -Method Post -Body (@{ticket=$req.Ticket}|ConvertTo-Json) -ContentType 'application/json' -MaximumRedirection 0
+$token=[string]$session.token; if($token -notmatch '^[A-Za-z0-9._-]{20,}$'){throw '服务器返回的导入授权无效'}
+$headers=@{Authorization='Bearer '+$token}
+$job=Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs') -Method Post -Headers $headers -Body (@{clientJobId=([guid]::NewGuid().ToString('N')); options=@{}}|ConvertTo-Json -Depth 5) -ContentType 'application/json' -MaximumRedirection 0
+$jobId=[string]$job.jobId; if(-not $jobId){$jobId=[string]$job.id}; if(-not $jobId){throw '服务器未返回导入任务编号'}
+$manifestPath=[IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports',$jobId)
+$prepare={param($item) Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs/'+$jobId+'/items/prepare') -Method Post -Headers $headers -Body (($item|ConvertTo-Json -Depth 10)) -ContentType 'application/json' -MaximumRedirection 0 | Out-Null}
+$upload={param($item) $f=Join-Path $item.SourcePath $item.RelativePath; if(-not (Test-Path -LiteralPath $f)){$f=$item.Path}; $client=[Net.Http.HttpClient]::new(); try{$client.DefaultRequestHeaders.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$token);$form=[Net.Http.MultipartFormDataContent]::new();$stream=[IO.File]::OpenRead($f);$content=[Net.Http.StreamContent]::new($stream);$form.Add($content,'file',[IO.Path]::GetFileName($f));$resp=$client.PostAsync($req.Server+'/model-import/jobs/'+$jobId+'/items/'+$item.ItemId+'/file',$form).GetAwaiter().GetResult();if(-not $resp.IsSuccessStatusCode){throw ('上传失败: '+[int]$resp.StatusCode)}}finally{if($stream){$stream.Dispose()};$client.Dispose()}}
+$manifest=Show-ModelImportWorkbench -Root ([IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports')) -ManifestPath $manifestPath -Prepare $prepare -Upload $upload -Concurrency 2
