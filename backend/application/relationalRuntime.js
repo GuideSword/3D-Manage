@@ -19,7 +19,7 @@ async function createRelationalRuntime({ pool, jwtSecret, uploadDirectory, files
   const authentication = createUserAuthentication(pool, { jwtSecret });
   router.use('/model-downloads', createModelDownloadsRouter({ service: downloads, authenticate: authentication.authenticate,
     uploadDirectory: root, allowInsecureTest: files.allowInsecureTest === true }));
-  router.use('/model-import', createModelImportRouter({ pool, uploadDirectory: root, authentication }));
+  router.use('/model-import', createModelImportRouter({ pool, uploadDirectory: root, authentication, downloads }));
   const relationalAgentRouter = suppliedAgentRouter || createAgentRouter({
     pool,
     authenticate: authentication.authenticate,
@@ -35,3 +35,4 @@ async function createRelationalRuntime({ pool, jwtSecret, uploadDirectory, files
   return { router };
 }
 module.exports = { createRelationalRuntime };
+
