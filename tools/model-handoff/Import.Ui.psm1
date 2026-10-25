@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 function Show-ModelImportWorkbench { param([string]$Root,[int]$Concurrency=2,[scriptblock]$Prepare,[scriptblock]$Upload,[string]$ManifestPath,[object]$Context)
  Add-Type -AssemblyName System.Windows.Forms
  $form=New-Object Windows.Forms.Form;$form.Text='模型批量导入';$form.Width=760;$form.Height=520

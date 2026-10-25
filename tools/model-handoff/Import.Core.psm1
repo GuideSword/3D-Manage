@@ -1,4 +1,4 @@
-Set-StrictMode -Version Latest
+﻿Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:Extensions = @('.stl', '.obj', '.3mf', '.step', '.stp')
 

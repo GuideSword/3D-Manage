@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$OutputDirectory
 )
 Set-StrictMode -Version Latest

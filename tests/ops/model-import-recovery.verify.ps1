@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $module = Join-Path $PSScriptRoot '..\..\tools\model-handoff\Import.Core.psm1'
 Import-Module $module -Force
 $root = Join-Path ([IO.Path]::GetTempPath()) ('model-import-recovery-' + [guid]::NewGuid())

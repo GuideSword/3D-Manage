@@ -1,4 +1,4 @@
-param([string]$Uri, $Config)
+﻿param([string]$Uri, $Config)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'Import.Core.psm1') -Force
@@ -17,8 +17,7 @@ if ([string]::IsNullOrWhiteSpace($Uri)) {
 }
 if (-not $Config) {
  $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
- if (Test-Path -LiteralPath $configPath) { $Config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json }
- else { Show-ImportLaunchError '助手尚未安装或缺少服务器绑定配置，请先安装 Windows 模型助手。'; exit 1 }
+ if (Test-Path -LiteralPath $configPath) { $Config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { Show-ImportLaunchError '助手尚未安装或缺少服务器绑定配置，请先安装 Windows 模型助手。'; exit 1 }
 }
 function ConvertFrom-ImportUri {
  param([Parameter(Mandatory)][string]$Value,[Parameter(Mandatory)][string]$AllowedServer)

@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$Uri)
+﻿param([Parameter(Mandatory=$true)][string]$Uri)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($args.Count -gt 0) { throw '只允许传入一个协议地址' }

@@ -1,4 +1,4 @@
-$ErrorActionPreference='Stop'
+﻿$ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot '../../tools/model-handoff/Import.Core.psm1') -Force
 $root=Join-Path ([IO.Path]::GetTempPath()) ('model-import-'+[guid]::NewGuid().ToString('N')); [IO.Directory]::CreateDirectory($root)|Out-Null
 try {

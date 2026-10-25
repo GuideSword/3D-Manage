@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $script = Join-Path $PSScriptRoot '../../tools/model-handoff/Import-Models.ps1'
 $previous = $env:MODEL_IMPORT_HEADLESS
 $env:MODEL_IMPORT_HEADLESS = '1'
@@ -9,6 +9,5 @@ try {
   if ($output -notmatch '请从 3D-Manage 模型库点击') { throw "Direct launch guidance missing: $output" }
   Write-Output 'PASS: direct double-click entry reports actionable guidance instead of flashing raw error.'
 } finally {
-  if ($null -eq $previous) { Remove-Item Env:MODEL_IMPORT_HEADLESS -ErrorAction SilentlyContinue }
-  else { $env:MODEL_IMPORT_HEADLESS = $previous }
+  if ($null -eq $previous) { Remove-Item Env:MODEL_IMPORT_HEADLESS -ErrorAction SilentlyContinue } else { $env:MODEL_IMPORT_HEADLESS = $previous }
 }
