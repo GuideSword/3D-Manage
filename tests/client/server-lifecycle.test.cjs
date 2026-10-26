@@ -173,6 +173,7 @@ test('streamChat reads the token bound to its server snapshot', async () => {
 
   assert.equal(streamRequest.url, 'https://example.test/api/agent/chat');
   assert.equal(streamRequest.options.headers.Authorization, 'Bearer token-a');
+  assert.equal(streamRequest.options.body.retryMessageId, undefined);
   assert.equal(released, true);
 });
 
@@ -261,4 +262,26 @@ test('safe session cleanup deletes tracked app-cache files', async () => {
 
   assert.ok(events.includes(`cache:${serverKey}`));
   assert.ok(events.indexOf(`cache:${serverKey}`) < events.indexOf('delete:sessionCleanupPending.v1'));
+});
+
+test('agent draft and active conversation stay within one account and are removed on logout', async () => {
+  const snapshot = { serverKey: 'e'.repeat(64), sessionEpoch: 3 };
+  const saved = new Map();
+  const sessionStorage = evaluateEsModule('utils/sessionStorage.js', {
+    'react-native': { Platform: { OS: 'web' } },
+    'expo-secure-store': {},
+    './storage': { __esModule: true, default: {
+      getItem: async key => saved.get(key) || null,
+      setItem: async (key, value) => { saved.set(key, value); },
+      deleteItem: async key => { saved.delete(key); },
+    } },
+    './serverRuntime': { isCurrentRuntime: captured => captured === snapshot },
+    './sessionFiles': { clearTrackedFiles: async () => {}, trackPickedAsset: async () => {}, trackSessionFile: async () => {} },
+  });
+  await sessionStorage.setAgentChatState(snapshot, 'owner', { conversationId: 'c1', draft: '订单草稿' });
+  assert.deepEqual(JSON.parse(JSON.stringify(await sessionStorage.getAgentChatState(snapshot, 'owner'))),
+    { conversationId: 'c1', draft: '订单草稿' });
+  assert.equal(await sessionStorage.getAgentChatState(snapshot, 'viewer'), null);
+  await sessionStorage.clearSession(snapshot.serverKey);
+  assert.equal(await sessionStorage.getAgentChatState(snapshot, 'owner'), null);
 });

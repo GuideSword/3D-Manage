@@ -36,7 +36,7 @@ function Show-StandaloneImportSetup {
     $form.Controls.Add((New-UiLabel '扫描格式' 30 246 110)); $formats = [Windows.Forms.CheckedListBox]::new(); $formats.Left = 150; $formats.Top = 242; $formats.Width = 500; $formats.Height = 130; $formats.CheckOnClick = $true
     @('STL（3D 打印模型）','OBJ（通用网格模型）','3MF（3D 打印工程）','STEP / STP（CAD 模型）') | ForEach-Object { [void]$formats.Items.Add($_, $true) }
     $formats.Tag = @(@('.stl'), @('.obj'), @('.3mf'), @('.step', '.stp'))
-    if ($Initial -and $Initial.Extensions) { for ($i = 0; $i -lt $formats.Items.Count; $i++) { $formats.SetItemChecked($i, (@($Initial.Extensions) | Where-Object { $formats.Tag[$i] -contains $_ }).Count -gt 0) } }
+    if ($Initial -and $Initial.Extensions) { for ($i = 0; $i -lt $formats.Items.Count; $i++) { $matches = @($Initial.Extensions | Where-Object { $formats.Tag[$i] -contains $_ }); $formats.SetItemChecked($i, $matches.Count -gt 0) } }
     $form.Controls.Add($formats)
 
     $form.Controls.Add((New-UiLabel '并发传输' 30 392 110)); $concurrency = [Windows.Forms.NumericUpDown]::new(); $concurrency.Left = 150; $concurrency.Top = 388; $concurrency.Width = 90; $concurrency.Minimum = 1; $concurrency.Maximum = 4; $concurrency.Value = if ($Initial -and $Initial.Concurrency) { [decimal]$Initial.Concurrency } else { 2 }; $form.Controls.Add($concurrency)
