@@ -11,11 +11,17 @@ const { dispatchTool, getToolsForContext } = require('./tools');
 const { createLLMClient, streamChatCompletion } = require('./providers/llm');
 const embedProvider = require('./providers/embed');
 const dbBridge = require('./dbBridge');
+const { createLegacyAgentDataPort } = require('./adapters/legacy');
 const { isImageInputRejection } = require('./visionProbe');
 const { deleteConversationAttachments, discardPreparedImages, prepareMessageImages } = require('./attachmentStore');
-const { assembleBudgetedContext, estimateTokens } = require('./contextBudget');
+const {
+  assembleBudgetedContext,
+  compactToolResultForContext,
+  estimateTokens,
+  trimConversationToBudget,
+} = require('./contextBudget');
 const { XIAOLI_SYSTEM_PROMPT } = require('./persona');
-const { MAX_INPUT_TOKENS, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
+const { contextTokensFor, MAX_MODEL_TURNS, MAX_OUTPUT_TOKENS } = require('./chatLimits');
 const { prepareMemoryLayers } = require('./memoryService');
 const { withData, appendAudit } = require('../utils/store');
 const { publicErrorMessage } = require('../utils/publicError');
@@ -64,6 +70,8 @@ function messageForProvider(stored) {
 async function runConversation({
   userId,
   role,
+  session,
+  agentDataPort,
   conversationId,
   userMessage,
   displayUserMessage = userMessage,
@@ -99,6 +107,8 @@ async function runConversation({
   });
   sqliteDb.touchConversation(conv.id);
 
+  const maxInputTokens = contextTokensFor(settings);
+
   // 3. Load history
   const history = sqliteDb.getMessages(conv.id);
   const memoryLayers = await prepareMemoryLayers({
@@ -120,7 +130,7 @@ async function runConversation({
     archiveMatches: memoryLayers.archiveMatches,
     recentRounds: memoryLayers.recentRounds.map((round) => round.map(messageForProvider)),
     currentMessage: userMsg,
-    maxInputTokens: MAX_INPUT_TOKENS,
+    maxInputTokens,
   });
   if (budgetedContext.overBudget) {
     if (conv.justCreated) sqliteDb.deleteConversation(conv.id, userId);
@@ -183,6 +193,14 @@ async function runConversation({
       role,
       currentUserMessageId: userMessageId,
       conversationId: conv.id,
+      // New tools consume the storage-neutral port. Legacy routes that call
+      // runConversation directly still receive a port backed by the JSON
+      // store, while dbBridge remains available to old compatibility tools.
+      agentDataPort: agentDataPort || createLegacyAgentDataPort({
+        actor: session
+          ? { id: session.id || session.actorId || String(userId), role: session.role || role, serverId: session.serverId || 'legacy' }
+          : { id: String(userId), role, serverId: 'legacy' },
+      }),
       db: dbBridge,
       ...(embedKey ? {
         embeddingFingerprint: settings.embed_config_fingerprint,
@@ -226,7 +244,7 @@ async function runConversation({
       onEvent('error', { message: '客户端已断开' });
       return;
     }
-    if (estimateTokens(messages) > MAX_INPUT_TOKENS) {
+    if (estimateTokens(messages) > maxInputTokens) {
       await cleanupFailedTurn();
       onEvent('error', { code: 'CHAT_CONTEXT_TOO_LONG', message: '本次查询数据过多，请缩小查询范围后重试' });
       return;
@@ -239,7 +257,7 @@ async function runConversation({
         messages,
         tools: activeTools.map((t) => ({
           type: 'function',
-          function: { name: t.name, description: t.description, parameters: t.parameters },
+          function: { name: t.name, description: t.description, parameters: t.parameters, strict: true },
         })),
         tool_choice: turn === MAX_MODEL_TURNS ? 'none' : 'auto',
         max_completion_tokens: MAX_OUTPUT_TOKENS,
@@ -373,7 +391,7 @@ async function runConversation({
 
     // Execute tools
     for (const tc of toolCalls) {
-      onEvent('tool_call', { name: tc.name, arguments: tc.arguments });
+      onEvent('tool_call', { id: tc.id, name: tc.name, arguments: tc.arguments });
       let args;
       try {
         args = JSON.parse(tc.arguments || '{}');
@@ -395,18 +413,37 @@ async function runConversation({
         storedResult = { attachment_id: result.attachmentId, recalled: true };
       }
 
+      // Keep catalog list payloads small enough for the next provider turn.
+      // The full file/image metadata is still available through the detail
+      // tools; a list response only needs the stable business fields and
+      // attachment counts. The same compact result is sent to the client and
+      // persisted so a later turn cannot reintroduce the oversized payload.
+      const toolMsg = compactToolResultForContext({
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: JSON.stringify(storedResult),
+      });
+      let clientResult = result;
+      if (toolMsg.content !== JSON.stringify(storedResult)) {
+        try { clientResult = JSON.parse(toolMsg.content); } catch (_) { clientResult = result; }
+      }
+
+      // Keep the UI and the persisted tool message in sync. The client uses
+      // the provider call id when several tools are running in one turn, so a
+      // result can never be attached to the wrong card.
+      onEvent('tool_result', { id: tc.id, name: tc.name, result: clientResult, ok: !result?.error });
+
       // If this is the extract_order_draft tool, emit a draft event
       if (tc.name === 'extract_order_draft' && !draftEmitted) {
         onEvent('draft', { draft: result });
         draftEmitted = true;
       }
+      if (/^prepare_(?:(?:create|update|delete)(?:_(?:model|material))?|(?:model|material)_(?:create|update|delete))$/.test(tc.name) && result?.proposal) {
+        onEvent('mutation_proposal', { proposal: result.proposal });
+      }
 
-      const toolMsg = {
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(storedResult),
-      };
       messages.push(toolMsg);
+      trimConversationToBudget(messages, maxInputTokens);
       if (result?.__imageRecall) {
         messages.push({
           role: 'user',

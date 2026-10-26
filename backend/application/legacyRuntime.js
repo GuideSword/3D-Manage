@@ -1,6 +1,6 @@
 'use strict';
 
-async function createLegacyRuntime() {
+async function createLegacyRuntime({ agentRouter } = {}) {
   // All legacy imports and initialization stay behind the selected factory.
   const { initializeStore, closeStore } = require('../utils/store');
   const { initStorage } = require('../config/storage');
@@ -18,9 +18,9 @@ async function createLegacyRuntime() {
     router.use('/model-downloads', require('../modules/modelDownloads/http').createModelDownloadsRouter({
       service: downloads.service, authenticate: downloads.authenticate, uploadDirectory: require('../config/storage').UPLOAD_DIR,
     }));
-    for (const name of ['system', 'auth', 'users', 'orders', 'models', 'materials', 'stock', 'files', 'oss', 'agent']) {
-      router.use('/' + name, require('../routes/' + name));
-    }
+    router.use('/model-import', require('../routes/modelImport'));
+    for (const name of ['system', 'auth', 'users', 'orders', 'models', 'materials', 'stock', 'files', 'oss']) router.use('/' + name, require('../routes/' + name));
+    router.use('/agent', agentRouter || require('../routes/agent'));
     return { router, close: closeResources };
   } catch (failure) {
     try { await closeResources(); } catch (cleanupError) { failure.cleanupError = cleanupError; }

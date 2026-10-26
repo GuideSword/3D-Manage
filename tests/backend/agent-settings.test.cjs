@@ -31,7 +31,30 @@ test('LLM-only configuration is valid and embedding remains disabled', () => {
   });
   assert.equal(candidate.llm.baseUrl, 'https://llm.example/v1');
   assert.equal(candidate.llm.apiKey, 'new-key');
+  assert.equal(candidate.llm.contextTokens, 256000);
   assert.deepEqual(candidate.embedding, { enabled: false });
+});
+
+test('context budget can be saved per user and is exposed without secrets', () => {
+  const candidate = buildCandidate({
+    existing: null,
+    input: {
+      llm: { baseUrl: 'https://llm.example/v1', model: 'chat', apiKey: 'key', contextTokens: 512000 },
+      embedding: { enabled: false },
+    },
+    secrets,
+  });
+  assert.equal(candidate.llm.contextTokens, 512000);
+  const publicSettings = toPublicSettings({
+    llm_api_key_enc: 'enc-key',
+    llm_provider: 'openai_compat',
+    llm_base_url: 'https://llm.example/v1',
+    llm_model: 'chat',
+    llm_context_tokens: 512000,
+  });
+  assert.equal(publicSettings.llm.contextTokens, 512000);
+  assert.deepEqual(publicSettings.llm.contextTokenLimits.recommended, { min: 65536, max: 256000 });
+  assert.equal(JSON.stringify(publicSettings).includes('enc-key'), false);
 });
 
 test('blank replacement keys preserve existing secrets without exposing them publicly', () => {
@@ -140,6 +163,36 @@ test('legacy settings migrate without losing secrets and embedding becomes nulla
   assert.equal(llmOnly.embed_base_url, null);
   assert.equal(llmOnly.embed_api_key_enc, null);
   assert.equal(llmOnly.embed_model, null);
+  db.close();
+});
+
+test('versioned settings gain the 256k context default without a full rebuild', () => {
+  const db = new Database(':memory:');
+  db.exec(`
+    CREATE TABLE user_settings (
+      user_id TEXT PRIMARY KEY,
+      llm_provider TEXT NOT NULL,
+      llm_base_url TEXT NOT NULL,
+      llm_api_key_enc TEXT NOT NULL,
+      llm_model TEXT NOT NULL,
+      llm_vision_status TEXT NOT NULL DEFAULT 'untested',
+      llm_vision_checked_at TEXT,
+      llm_config_revision INTEGER NOT NULL DEFAULT 1,
+      embed_enabled INTEGER NOT NULL DEFAULT 0,
+      embed_base_url TEXT,
+      embed_api_key_enc TEXT,
+      embed_model TEXT,
+      embed_group_id TEXT,
+      embed_config_fingerprint TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+    INSERT INTO user_settings (user_id, llm_provider, llm_base_url, llm_api_key_enc, llm_model)
+      VALUES ('7', 'openai_compat', 'https://llm.example/v1', 'enc-key', 'chat');
+  `);
+  db.pragma('user_version = 3');
+  migrateAgentDb(db);
+  const row = db.prepare('SELECT llm_context_tokens FROM user_settings WHERE user_id = ?').get('7');
+  assert.equal(row.llm_context_tokens, 256000);
   db.close();
 });
 

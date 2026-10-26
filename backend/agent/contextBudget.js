@@ -53,6 +53,80 @@ function clipToolResult(message, maxChars = 2000) {
   return { ...message, content: JSON.stringify(compact) };
 }
 
+/**
+ * Keep a current-turn tool result useful to the model without replaying
+ * transport-heavy catalog metadata (file URLs, hashes and image records).
+ * Historical tool messages are clipped by clipToolResult; this helper is for
+ * the result that is about to be appended to the active model context.
+ */
+function compactToolResultForContext(message) {
+  if (message?.role !== 'tool') return message;
+  const raw = asText(message.content);
+  let parsed;
+  try { parsed = JSON.parse(raw); } catch (_) { return message; }
+  if (!parsed || typeof parsed !== 'object' || !Array.isArray(parsed.items)) return message;
+
+  const items = parsed.items.map((item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    const compact = { ...item };
+    if (typeof compact.description === 'string' && compact.description.length > 240) {
+      compact.description = `${compact.description.slice(0, 240)}…`;
+    }
+    if (Array.isArray(compact.files)) {
+      compact.fileCount = compact.files.length;
+      delete compact.files;
+    }
+    if (Array.isArray(compact.images)) {
+      compact.imageCount = compact.images.length;
+      delete compact.images;
+    }
+    return compact;
+  });
+  return {
+    ...message,
+    content: JSON.stringify({ ...parsed, items, compactedForContext: true }),
+  };
+}
+
+const IMAGE_RECALL_PROMPT = '这是刚才请求回看的历史图片，请结合当前问题继续分析。';
+
+function isSyntheticImageRecallUser(message) {
+  return message?.role === 'user'
+    && Array.isArray(message.content)
+    && message.content.some((part) => part?.type === 'text' && part.text === IMAGE_RECALL_PROMPT);
+}
+
+/**
+ * Drop the oldest complete conversation rounds when a newly appended tool
+ * result would exceed the provider input budget. The current user turn and
+ * its assistant/tool messages are kept intact.
+ */
+function trimConversationToBudget(messages, maxInputTokens = 12000) {
+  let estimatedTokens = estimateTokens(messages);
+  let roundsTrimmed = 0;
+  while (estimatedTokens > maxInputTokens) {
+    const userIndexes = [];
+    for (let index = 0; index < messages.length; index += 1) {
+      if (messages[index]?.role === 'user') userIndexes.push(index);
+    }
+    const activeUserIndex = [...userIndexes].reverse().find((index) => !isSyntheticImageRecallUser(messages[index]));
+    const removableUserIndexes = userIndexes.filter((index) => index < activeUserIndex);
+    if (removableUserIndexes.length === 0) break;
+    const start = removableUserIndexes[0];
+    const nextUserIndex = userIndexes.find((index) => index > start);
+    const end = nextUserIndex ?? messages.length;
+    messages.splice(start, end - start);
+    roundsTrimmed += 1;
+    estimatedTokens = estimateTokens(messages);
+  }
+  return {
+    messages,
+    estimatedTokens,
+    roundsTrimmed,
+    overBudget: estimatedTokens > maxInputTokens,
+  };
+}
+
 function layerMessage(title, content) {
   const text = asText(content).trim();
   return text ? { role: 'system', content: `${title}\n${text}` } : null;
@@ -115,6 +189,9 @@ function assembleBudgetedContext({
 module.exports = {
   assembleBudgetedContext,
   clipToolResult,
+  compactToolResultForContext,
   estimateTokens,
   groupConversationRounds,
+  isSyntheticImageRecallUser,
+  trimConversationToBudget,
 };

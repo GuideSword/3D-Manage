@@ -8,6 +8,7 @@ const { createModelService, modelCommands, validateModelChanges } = require('../
 const { createOrderService, orderCommands, validateOrderProposalChanges } = require('../orders/service');
 const { createInventoryService } = require('../inventory/service');
 const v = require('../catalog/validation');
+const { createRelationalAgentDataPort } = require('../../agent/adapters/relational');
 
 function stable(value, depth = 0) {
   if (depth > 12) v.fail('提案内容嵌套过深');
@@ -91,7 +92,8 @@ function createAgentAdapter(pool, session, { jwtSecret, uploadDirectory, semanti
       return { ...proposal, signature: sign(proposal) };
     },
   });
-  return Object.freeze({ db,
+  const dataPort = createRelationalAgentDataPort({ pool, session: boundSession, jwtSecret, uploadDirectory, semanticLookup, services });
+  return Object.freeze({ db, dataPort,
     async confirmRecordUpdate(input) {
       v.fields(input, ['proposal', 'confirmed', 'key'], ['proposal', 'confirmed', 'key']);
       if (input.confirmed !== true) v.fail('请先确认修改内容', 'HUMAN_CONFIRMATION_REQUIRED');
@@ -120,4 +122,69 @@ function createAgentAdapter(pool, session, { jwtSecret, uploadDirectory, semanti
     },
   });
 }
-module.exports = { createAgentAdapter };
+module.exports = { createAgentAdapter, createAgentRouter };
+
+/**
+ * Storage-neutral HTTP seam for Agent. Runtime factories inject the data port
+ * so this router never imports the SQLite bridge or legacy conversation store.
+ */
+function createAgentRouter({ authenticate, createPort, port, chat, pool, requireRelational = true } = {}) {
+  const express = require('express');
+  const router = express.Router();
+  router.use(express.json({ limit: '12mb' }));
+  const fail = (message, code, status) => { throw Object.assign(new Error(message), { code, status }); };
+  router.use(async (req, _res, next) => {
+    try {
+      const authorization = req.get('Authorization') || '';
+      const token = authorization.startsWith('Bearer ') ? authorization.slice(7) : '';
+      const session = typeof authenticate === 'function' ? await authenticate(token) : null;
+      if (!session) fail('请重新登录', 'AUTHENTICATION_REQUIRED', 401);
+      if (requireRelational && pool?.query) {
+        const state = (await pool.query("SELECT storage_mode FROM erp.installation WHERE id='default'")).rows[0];
+        if (state?.storage_mode !== 'relational') fail('关系业务入口尚未启用', 'RELATIONAL_STORAGE_NOT_ACTIVE', 503);
+      }
+      req.businessSession = session;
+      req.agentDataPort = typeof createPort === 'function' ? await createPort(session, req) : port;
+      if (!req.agentDataPort) fail('Agent 数据接口未配置', 'AGENT_CONFIGURATION_INVALID', 500);
+      next();
+    } catch (error) { next(error); }
+  });
+  const route = fn => async (req, res, next) => { try { await fn(req, res); } catch (error) { next(error); } };
+  router.get('/conversations', route(async (_req, res) => res.json({ items: [] })));
+  router.get('/entities/:entity', route(async (req, res) => res.json(await req.agentDataPort.describeEntity(req.params.entity))));
+  router.get('/records/:entity', route(async (req, res) => res.json(await req.agentDataPort.list(req.params.entity, req.query))));
+  router.get('/records/:entity/:id', route(async (req, res) => res.json(await req.agentDataPort.get(req.params.entity, req.params.id))));
+  router.get('/search/:entity', route(async (req, res) => res.json(await req.agentDataPort.search(req.params.entity, req.query))));
+  router.post('/mutations/prepare', route(async (req, res) => {
+    const { action, entity } = req.body || {};
+    const prepare = action === 'create' ? req.agentDataPort.prepareCreate : action === 'delete' ? req.agentDataPort.prepareDelete : req.agentDataPort.prepareUpdate;
+    if (typeof prepare !== 'function') fail('不支持的修改动作', 'AGENT_MUTATION_INVALID', 400);
+    const proposal = action === 'create' ? await prepare.call(req.agentDataPort, req.body)
+      : action === 'delete' ? await prepare.call(req.agentDataPort, req.body)
+        : await prepare.call(req.agentDataPort, req.body);
+    res.status(200).json({ proposal });
+  }));
+  router.post('/mutations/confirm', route(async (req, res) => {
+    if (typeof req.agentDataPort.confirmMutation !== 'function') fail('Agent 写入接口未配置', 'AGENT_CONFIGURATION_INVALID', 500);
+    res.json(await req.agentDataPort.confirmMutation(req.body));
+  }));
+  router.post('/chat', route(async (req, res) => {
+    if (typeof chat !== 'function') return res.status(501).json({ code: 'AGENT_PROVIDER_NOT_CONFIGURED', error: 'Agent 对话服务尚未配置' });
+    res.setHeader('Content-Type', 'text/event-stream'); res.setHeader('Cache-Control', 'no-cache'); res.setHeader('Connection', 'keep-alive'); res.flushHeaders?.();
+    await chat({ ...req.body, session: req.businessSession, agentDataPort: req.agentDataPort,
+      onEvent: (event, data) => res.write(`event: ${event}
+data: ${JSON.stringify(data)}
+
+`) });
+    res.end();
+  }));
+  router.use((error, _req, res, _next) => {
+    const status = Number.isInteger(error.status) ? error.status : 500;
+    const code = /^[A-Z_]+$/.test(error.code || '') ? error.code : 'AGENT_SERVICE_UNAVAILABLE';
+    res.status(status).json({ code, error: status < 500 ? error.message : 'Agent 服务暂时不可用，请稍后重试' });
+  });
+  return router;
+}
+
+
+

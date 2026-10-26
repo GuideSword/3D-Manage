@@ -1,11 +1,11 @@
 {
   "product": "3d-manage-model-handoff",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "platform": "windows-x64",
-  "releaseTag": "model-handoff-v1.0.0",
-  "asset": "3d-manage-model-handoff-windows-v1.0.0.zip",
+  "releaseTag": "model-handoff-v1.1.0",
+  "asset": "3d-manage-model-handoff-windows-v1.1.0.zip",
   "checksumAsset": "SHA256SUMS",
-  "downloadUrl": "https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.0.0/3d-manage-model-handoff-windows-v1.0.0.zip",
-  "checksumUrl": "https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.0.0/SHA256SUMS",
+  "downloadUrl": "https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.1.0/3d-manage-model-handoff-windows-v1.1.0.zip",
+  "checksumUrl": "https://github.com/GuideSword/3D-Manage/releases/download/model-handoff-v1.1.0/SHA256SUMS",
   "installEntry": "Install.ps1"
 }

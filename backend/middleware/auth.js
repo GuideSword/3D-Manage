@@ -64,6 +64,7 @@ const requireRoles = (...roles) => async (req, res, next) => {
 };
 
 module.exports = {
+  authenticate,
   requireAuth,
   requireRoles,
   publicUser,

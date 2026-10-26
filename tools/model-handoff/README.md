@@ -1,6 +1,10 @@
-# Windows 模型交接助手
+# Windows 模型交接助手与 model-import 应用
 
-此目录保存助手全部源码。助手只在用户点击ERP中的“打开Bambu Studio”并同意浏览器提示后运行，不提供打印、自动切片或后台模型同步。
+发布包中的 `model-import.exe` 是用户入口。`*.ps1` / `*.psm1` 文件是构建和诊断源码，用户不需要双击它们。安装后，`manage3d-model://` 协议会直接指向 `model-import.exe`。
+
+此目录保存助手全部源码。助手支持“打开Bambu Studio”和“批量导入模型”两种受绑定服务器控制的操作，不提供打印、自动切片或后台模型同步。
+
+批量导入通过 `manage3d-model://import?server=<编码后的API地址>&ticket=<一次性凭据>` 启动。安装器注册统一 dispatcher，dispatcher 会校验 HTTPS、服务器身份和重复参数，再打开导入工作台；导入工作台支持 STL、OBJ、3MF、STEP、STP 的递归扫描、断点清单和取消恢复。票据只在助手进程内存中使用。
 
 ## 安装
 
@@ -14,7 +18,7 @@
 .\Verify-Checksum.ps1 -ArchivePath 'D:\你的目录\3d-manage-model-handoff-windows-v1.0.0.zip' -ChecksumFile 'D:\你的目录\SHA256SUMS'
 ```
 
-也可以省略 `-ArchivePath`，脚本会提示输入 ZIP 路径；可以直接把 ZIP 拖进 PowerShell 窗口。注意：校验的是原始 ZIP，不是解压后的单个文件。
+也可以右键 `Verify-Checksum.ps1` 选择“使用 PowerShell 运行”，或省略 `-ArchivePath`，脚本会提示输入 ZIP 路径；可以直接把 ZIP 拖进 PowerShell 窗口。此交互模式会在显示结果或错误后等待再次按回车关闭窗口。指定 `-ArchivePath` 的命令模式不会等待；自动化也可显式传入 `-NoPause`。注意：校验的是原始 ZIP，不是解压后的单个文件。缺少 `SHA256SUMS` 时仅显示本地计算值，不代表校验通过；退出码为 0 表示通过、1 表示错误、2 表示缺少发布值而尚未验证。
 
 从同一版本仓库获取整个目录，在Windows PowerShell运行：
 
@@ -41,3 +45,13 @@ Web端先同意本地拉取并验证模型下载密码，再点击“打开Bambu
 ## 卸载
 
 先核对`HKCU/Software/Classes/manage3d-model/shell/open/command`确实指向上述助手目录，再由用户删除该协议注册项及`app`目录。临时模型是否保留由用户自行决定，勿删除其他软件或下载目录。
+
+## 批量导入操作
+
+导入支持 STL、OBJ、3MF、STEP、STP，并递归扫描用户选定的目录。ZIP 只允许安全的相对路径，最多 10,000 个条目，解压总大小不能超过配置的上传限制；绝对路径、`..` 穿越路径和 reparse point 会被拒绝。扫描结果会显示完整源路径、大小和 SHA-256，重复文件不会再次上传。
+
+导入服务器必须是已绑定且证书有效的 HTTPS 地址。网页票据是一次性、5 分钟有效的内存凭据，助手不会写入日志、保存账号密码或接受任意 URI 服务器。默认并发为 2，可在 1–4 之间选择；失败项目会单独报告并允许重试。
+
+点击取消后，已完成模型保留，准备中或上传中的项目清理为 `cleaned`，排队项目不会创建服务端记录。电脑重启后选择恢复，助手会修复 `preparing`、`uploading`、`verifying` 状态并继续剩余文件。清单以原子方式保存并保留 `.bak`。
+
+描述默认只保存本地事实。只有用户打开“AI 描述增强”时才会向配置的云端提供商发送必要的预览/元数据；关闭该选项不会上传源文件内容。助手始终只读源目录，不覆盖源文件。

@@ -40,7 +40,7 @@ try {
     $overwriteRejected = $false
     try { Invoke-ModelHandoff -Uri $uri -Config $config -TemporaryRoot (Join-Path $root 'temporary') -ReadServer $readServer -Post $post -Download $download -ChooseDestination { return $existing } -Launch $launch | Out-Null } catch { $overwriteRejected = $true }
     if (-not $overwriteRejected -or [IO.File]::ReadAllText($existing) -cne 'user-owned' -or $script:launches -ne 1) { throw 'Existing file overwritten' }
-    foreach ($name in @('Install.ps1', 'Open-Model.ps1', 'Handoff.Core.psm1')) {
+    foreach ($name in @('Install.ps1','Dispatch-ModelHandoff.ps1','Import-Models.ps1','Open-Model.ps1','Handoff.Core.psm1','Import.Core.psm1','Import.Ui.psm1')) {
         $parseErrors = $null; $parseTokens = $null
         [Management.Automation.Language.Parser]::ParseFile((Join-Path $PSScriptRoot ('../../tools/model-handoff/' + $name)), [ref]$parseTokens, [ref]$parseErrors) | Out-Null
         if ($parseErrors.Count) { throw "Helper parse failed: $name" }

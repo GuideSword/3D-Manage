@@ -6,6 +6,7 @@
 
 const { withData } = require('../utils/store');
 const sqliteDb = require('../db/agent');
+const { normalizeOrder } = require('./contracts/entities');
 
 async function searchModelsByKeyword(keyword, limit = 20) {
   if (!keyword) return [];
@@ -71,16 +72,8 @@ async function listOrders({ status, from, to, limit = 50 } = {}) {
   }
   results.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
   return results.slice(0, limit).map((o) => {
-    const customer = (data.customers || []).find((c) => String(c.id) === String(o.customerId || o.customer_id)) || {};
-    return {
-      id: o.id,
-      customerName: customer.name || o.customerName || '',
-      status: o.status,
-      total: o.total,
-      currency: o.currency || 'CNY',
-      dueDate: o.dueDate || o.due_date,
-      createdAt: o.createdAt || o.created_at,
-    };
+    const customer = (data.customers || []).find((c) => String(c.id) === String(o.customerId || o.customer_id));
+    return normalizeOrder({ ...o, customer: o.customer || customer, customerName: o.customerName || customer?.name });
   });
 }
 
@@ -88,23 +81,8 @@ async function getOrderDetail(orderId) {
   const data = await withData((d) => d, { write: false });
   const order = (data.orders || []).find((o) => String(o.id) === String(orderId));
   if (!order) return null;
-  const customer = (data.customers || []).find((c) => String(c.id) === String(order.customerId || order.customer_id)) || {};
-  return {
-    id: order.id,
-    customer: {
-      name: customer.name || '',
-      email: customer.email || '',
-      phone: customer.phone || '',
-    },
-    status: order.status,
-    items: order.items || [],
-    total: order.total,
-    currency: order.currency || 'CNY',
-    dueDate: order.dueDate || order.due_date,
-    notes: order.notes || '',
-    createdAt: order.createdAt || order.created_at,
-    updatedAt: order.updatedAt || order.updated_at,
-  };
+  const customer = (data.customers || []).find((c) => String(c.id) === String(order.customerId || order.customer_id));
+  return normalizeOrder({ ...order, customer: order.customer || customer, customerName: order.customerName || customer?.name });
 }
 
 const { inventorySummary } = require('../services/inventory');

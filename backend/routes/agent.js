@@ -31,31 +31,25 @@ const { queueUserModelReconcile } = require('../agent/modelIndex');
 const { deleteConversationAttachments, readOwnedAttachment } = require('../agent/attachmentStore');
 const { withData } = require('../utils/store');
 const { createOrderInData } = require('../services/orders');
-const { z } = require('zod');
 const { parseRequest } = require('../utils/validation');
 const { publicErrorMessage } = require('../utils/publicError');
+const { createLegacyAgentDataPort } = require('../agent/adapters/legacy');
+const { normalizeOrderDraft, orderDraftSchema } = require('../agent/contracts/drafts');
 
 const router = express.Router();
 router.use(requireAuth);
+router.use(async (req, _res, next) => {
+  try {
+    const data = await withData((store) => ({ serverId: store.system?.serverId || 'legacy' }), { write: false });
+    req.agentDataPort = createLegacyAgentDataPort({
+      actor: { id: String(req.user.id), role: req.user.role, serverId: data.serverId },
+    });
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 const chatGuard = createChatGuard();
-
-const orderDraftSchema = z.object({
-  customer_name: z.string().trim().min(1).max(200),
-  due_date: z.string().trim().max(40).nullable().optional(),
-  notes: z.string().trim().max(5000).optional().default(''),
-  items: z.array(z.object({
-    model_asset_id: z.string().max(200).optional().default(''),
-    model_name: z.string().max(200).optional().default(''),
-    material_type: z.string().trim().min(1).max(120),
-    color: z.string().max(120).optional().default(''),
-    layer_height_mm: z.union([z.string(), z.number()]).optional().default(''),
-    qty: z.coerce.number().positive(),
-    unit_price: z.coerce.number().nonnegative(),
-    notes: z.string().max(1000).optional().default(''),
-  }).strict()).min(1),
-  confidence: z.number().min(0).max(1).optional(),
-  missing_fields: z.array(z.string()).optional(),
-}).strict();
 
 // 1) POST /chat — main entry, SSE
 router.post('/chat', async (req, res) => {
@@ -134,6 +128,8 @@ router.post('/chat', async (req, res) => {
     await runConversation({
       userId: req.user.id,
       role: req.user.role,
+      session: { id: String(req.user.id), role: req.user.role, serverId: req.agentDataPort?.serverId || 'legacy' },
+      agentDataPort: req.agentDataPort,
       conversationId,
       userMessage: modelMessage,
       displayUserMessage: suppliedMessage,
@@ -193,13 +189,15 @@ router.post('/drafts/confirm', requireRoles('owner', 'staff'), async (req, res) 
   const draft = parseRequest(orderDraftSchema, req.body?.draft, res);
   if (!draft) return undefined;
   try {
+    const normalized = normalizeOrderDraft(draft);
+    orderDraftSchema.parse(normalized);
     const newOrder = await withData((data) => createOrderInData(data, {
-      customer: { name: draft.customer_name, email: '', phone: '' },
+      customer: { name: normalized.customer_name, email: '', phone: '' },
       status: 'draft',
       currency: 'CNY',
-      dueDate: draft.due_date || null,
-      notes: draft.notes,
-      items: draft.items.map((item) => ({
+      dueDate: normalized.due_date || null,
+      notes: normalized.notes,
+      items: normalized.items.map((item) => ({
         modelId: item.model_asset_id,
         modelName: item.model_name,
         materialType: item.material_type,
@@ -215,7 +213,33 @@ router.post('/drafts/confirm', requireRoles('owner', 'staff'), async (req, res) 
     }));
     res.json({ order: newOrder });
   } catch (err) {
-    res.status(500).json({ error: publicErrorMessage(err, '读取草稿失败') });
+    res.status(err.status || 500).json({ code: err.code || 'DRAFT_CONFIRM_FAILED', error: publicErrorMessage(err, '读取草稿失败') });
+  }
+});
+
+// 5.1) Storage-neutral mutation proposal endpoints. The proposal is signed by
+// the selected AgentDataPort and is only executed after explicit confirmation.
+router.post('/mutations/prepare', async (req, res) => {
+  try {
+    const { action, entity, id, changes = {} } = req.body || {};
+    let proposal;
+    if (action === 'create') proposal = await req.agentDataPort.prepareCreate(entity, changes, { id: req.user.id, role: req.user.role });
+    else if (action === 'update') proposal = await req.agentDataPort.prepareUpdate(entity, id, changes, { id: req.user.id, role: req.user.role });
+    else if (action === 'delete') proposal = await req.agentDataPort.prepareDelete(entity, id, { id: req.user.id, role: req.user.role });
+    else return res.status(400).json({ code: 'AGENT_MUTATION_INVALID', error: '修改动作无效' });
+    return res.json({ proposal });
+  } catch (error) {
+    return res.status(error.status || 500).json({ code: error.code || 'AGENT_MUTATION_PREPARE_FAILED', error: publicErrorMessage(error, '生成修改提案失败') });
+  }
+});
+
+router.post('/mutations/confirm', async (req, res) => {
+  try {
+    if (req.body?.confirmed !== true) return res.status(400).json({ code: 'HUMAN_CONFIRMATION_REQUIRED', error: '请先确认修改内容' });
+    const result = await req.agentDataPort.confirmMutation(req.body.proposal, { id: req.user.id, role: req.user.role }, req.get('Idempotency-Key') || req.body.key);
+    return res.json({ result });
+  } catch (error) {
+    return res.status(error.status || 500).json({ code: error.code || 'AGENT_MUTATION_CONFIRM_FAILED', error: publicErrorMessage(error, '执行修改失败') });
   }
 });
 

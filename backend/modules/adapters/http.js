@@ -54,7 +54,7 @@ function createRelationalRouter(pool, options = {}) {
     res.json({ product: PRODUCT_NAME, serverId: state.serverId, organizationName: state.organizationName, organizationVersion: state.organizationVersion,
       initialized: state.initialized, maintenance: state.maintenance, apiVersion: API_VERSION, serverVersion: SERVER_VERSION,
       capabilities: { modelDownloadsVersion: 1, inventoryRulesVersion: 1, businessRulesVersion: state.storageMode === 'relational' ? 2 : 1, relationalBusiness: state.storageMode === 'relational',
-        dashboardRulesVersion: state.storageMode === 'relational' ? 1 : 0, businessWritable: state.businessWritable, selfHosted: true, agent: false, objectStorage: false } });
+        dashboardRulesVersion: state.storageMode === 'relational' ? 1 : 0, businessWritable: state.businessWritable, selfHosted: true, agent: false, objectStorage: false, modelImport: true } });
   }));
   router.use(async (_req, _res, next) => {
     try {

@@ -38,6 +38,14 @@ test('settings UI keeps LLM and optional Embedding credentials independent', () 
   assert.doesNotMatch(screen, /聊天和 Embedding 共用/);
 });
 
+test('settings UI exposes the configurable context budget and recommendation range', () => {
+  const screen = read('screens/AgentSettingsScreen.js');
+  assert.match(screen, /上下文上限（token）/);
+  assert.match(screen, /contextTokens:\s*Number\(llm\.contextTokens\)/);
+  assert.match(screen, /建议/);
+  assert.match(screen, /256000/);
+});
+
 test('chat composer layout exposes the approved five-line policy', () => {
   assert.equal(composerLayout.COMPOSER_MAX_VISIBLE_LINES, 5);
   assert.equal(composerLayout.COMPOSER_LINE_HEIGHT, 20);
@@ -60,6 +68,8 @@ test('chat composer wires the shared five-line policy to the real text input', (
   assert.match(composerInput, /\bmultiline\b/);
   assert.match(composerInput, /\bscrollEnabled\b/);
   assert.match(composerInput, /textAlignVertical="top"/);
+  assert.match(composerInput, /onKeyPress=\{handleComposerKeyPress\}/);
+  assert.match(screen, /onSubmitEditing=\{Platform\.OS === 'web' \? undefined : send\}/);
   assert.doesNotMatch(composerInput, /\bnestedScrollEnabled\b/);
   assert.doesNotMatch(composerInput, /\ballowFontScaling\b/);
   assert.match(composerStyle, /maxHeight:\s*COMPOSER_MAX_HEIGHT/);

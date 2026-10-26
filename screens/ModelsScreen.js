@@ -40,6 +40,7 @@ import { useRelationalPage } from '../utils/useRelationalPage';
 import masterDataCore from '../utils/masterDataCore.cjs';
 import PaginationControls from '../components/PaginationControls';
 import responsiveLayout from '../utils/responsiveLayout.cjs';
+import ModelImportCard from '../components/ModelImportCard';
 
 const SOURCE_LABELS = {
   original: '原创',
@@ -137,6 +138,7 @@ const ModelsScreen = ({ navigation }) => {
           />
         ) : null}
       />
+      <ModelImportCard user={user} onStarted={fetchModels} />
       <CyberSearchField
         placeholder="搜索模型名称、描述或文件名"
         value={searchQuery}

@@ -3,6 +3,7 @@
 // an SSE 'draft' event for the frontend to render the confirmation card.
 
 const { z } = require('zod');
+const { normalizeOrderDraft } = require('../contracts/drafts');
 
 // ------------------------------------------------------------------
 // Minimal Zod -> JSON Schema converter (handles the cases we use).
@@ -71,22 +72,22 @@ function zodToJsonSchema(schema) {
 // Does NOT write to the DB; user must confirm via /agent/drafts/confirm.
 // ------------------------------------------------------------------
 const extractOrderDraftSchema = z.object({
-  customer_name: z.string().optional(),
-  due_date: z.string().optional().describe('ISO 日期 (YYYY-MM-DD)'),
-  notes: z.string().optional(),
+  customer_name: z.string().optional().default(''),
+  due_date: z.string().nullable().optional().describe('ISO 日期 (YYYY-MM-DD)'),
+  notes: z.string().optional().default(''),
   items: z
     .array(
       z.object({
-        material_type: z.string(),
+        material_type: z.string().optional().default(''),
         color: z.string().optional(),
-        layer_height_mm: z.number().optional(),
-        qty: z.number().int().positive(),
-        unit_price: z.number().nonnegative(),
-        model_asset_id: z.number().int().optional(),
-      })
+        layer_height_mm: z.union([z.string(), z.number()]).optional(),
+        qty: z.union([z.string(), z.number()]).optional(),
+        unit_price: z.union([z.string(), z.number()]).optional(),
+        model_asset_id: z.union([z.string(), z.number()]).optional(),
+      }).strict()
     )
     .default([]),
-  confidence: z.number().min(0).max(1).describe('抽取置信度 0-1'),
+  confidence: z.number().min(0).max(1).optional().describe('抽取置信度 0-1'),
   missing_fields: z.array(z.string()).default([]),
 });
 
@@ -101,7 +102,7 @@ const extractOrderDraft = {
     // Identity: just pass the parsed draft through. The Orchestrator
     // will detect this tool name and emit a 'draft' SSE event so the
     // frontend can show a confirmation card.
-    return args;
+    return normalizeOrderDraft(args);
   },
 };
 

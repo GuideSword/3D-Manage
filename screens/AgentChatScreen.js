@@ -7,6 +7,7 @@ import {
   FlatList,
   StyleSheet,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
@@ -16,8 +17,11 @@ import {
 import AgentBubble from '../components/agent/AgentBubble';
 import ToolCallCard from '../components/agent/ToolCallCard';
 import DraftConfirmCard from '../components/agent/DraftConfirmCard';
+import MutationConfirmCard from '../components/agent/MutationConfirmCard';
 import ImageAttachment from '../components/agent/ImageAttachment';
 import { streamChat, agentApi } from '../utils/agentApi';
+import { getAgentChatState, setAgentChatState } from '../utils/sessionStorage';
+import { getServerRuntime } from '../utils/serverRuntime';
 import { useAppTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { canWrite } from '../utils/permissions';
@@ -29,12 +33,15 @@ import {
   prepareAgentImages,
   removeImage,
 } from '../utils/agentImage';
+import { normalizeDraftForClient } from '../components/agent/DraftConfirmCard';
 const {
   COMPOSER_LINE_HEIGHT,
   COMPOSER_VERTICAL_PADDING,
   COMPOSER_MAX_HEIGHT,
 } = require('../utils/agentComposerLayoutCore.cjs');
 const { getKeyboardVerticalOffset } = require('../utils/agentKeyboardOffsetCore.cjs');
+const { preserveAgentSendError } = require('../utils/agentChatStateCore.cjs');
+const { shouldSendOnEnter } = require('../utils/agentComposerKeyCore.cjs');
 
 // Full-screen Agent chat.
 //
@@ -72,6 +79,32 @@ export default function AgentChatScreen({ route, navigation }) {
   const listRef = useRef(null);
   const convIdRef = useRef(route?.params?.conversationId || null);
   const cancelledRef = useRef(false);
+  const hydratedChatStateRef = useRef(false);
+
+  useEffect(() => {
+    const snapshot = getServerRuntime();
+    if (!snapshot || !user?.role) return undefined;
+    let cancelled = false;
+    getAgentChatState(snapshot, user.role).then((state) => {
+      if (cancelled) return;
+      if (!convIdRef.current && state?.conversationId) convIdRef.current = state.conversationId;
+      if (!input && typeof state?.draft === 'string') setInput(state.draft);
+      hydratedChatStateRef.current = true;
+    }).catch(() => {
+      hydratedChatStateRef.current = true;
+    });
+    return () => { cancelled = true; };
+  }, [user?.role, route?.params?.conversationId]);
+
+  useEffect(() => {
+    if (!hydratedChatStateRef.current) return;
+    const snapshot = getServerRuntime();
+    if (!snapshot || !user?.role) return;
+    setAgentChatState(snapshot, user.role, {
+      conversationId: convIdRef.current,
+      draft: input,
+    }).catch(() => {});
+  }, [input, user?.role]);
 
   const recordAvoidingLayout = useCallback(({ nativeEvent: { layout } }) => {
     const next = { y: layout.y, height: layout.height };
@@ -125,8 +158,6 @@ export default function AgentChatScreen({ route, navigation }) {
   const send = async () => {
     const text = input.trim();
     if (!canSendDraft(text, images) || sending || preparingImages) return;
-    const messageCountBeforeSend = messages.length;
-
     setSending(true);
     setPreparingImages(true);
     cancelledRef.current = false;
@@ -152,7 +183,7 @@ export default function AgentChatScreen({ route, navigation }) {
     // 2) Empty streaming assistant bubble that deltas will fill in.
     appendMessage({ role: 'assistant', text: '', isStreaming: true });
 
-    const toolMap = new Map(); // name|args-key → message id
+    const toolMap = new Map(); // provider tool-call id → message id
 
     try {
       const result = await streamChat({
@@ -177,20 +208,23 @@ export default function AgentChatScreen({ route, navigation }) {
           } else if (event === 'tool_call') {
             const name = data?.name || 'tool';
             const args = data?.arguments || data?.args || {};
-            const key = `${name}:${JSON.stringify(args)}`;
+            const key = data?.id || `${name}:${JSON.stringify(args)}`;
             const id = `${Date.now()}-tool-${Math.random().toString(36).slice(2, 6)}`;
             toolMap.set(key, id);
             appendMessage({ id, toolCall: { name, args, result: null } });
           } else if (event === 'tool_result') {
-            // Best-effort: update the LAST tool card (the server doesn't
-            // currently echo a key, so we assume results arrive in order).
+            const targetId = toolMap.get(data?.id);
             setMessages((prev) => {
               const next = [...prev];
               for (let i = next.length - 1; i >= 0; i -= 1) {
-                if (next[i] && next[i].toolCall && !next[i].toolCall.result) {
+                if (next[i] && next[i].toolCall && (!targetId || next[i].id === targetId)) {
                   next[i] = {
                     ...next[i],
-                    toolCall: { ...next[i].toolCall, result: data?.result ?? data },
+                    toolCall: {
+                      ...next[i].toolCall,
+                      result: data?.result ?? data,
+                      ok: data?.ok !== false,
+                    },
                   };
                   break;
                 }
@@ -199,14 +233,25 @@ export default function AgentChatScreen({ route, navigation }) {
             });
           } else if (event === 'draft') {
             appendMessage({ draft: data?.draft || data });
+          } else if (event === 'mutation_proposal') {
+            // The server may wrap the proposal in { proposal }; accept both
+            // shapes so old and new orchestrators can share this screen.
+            appendMessage({ mutationProposal: data?.proposal || data });
+          } else if (event === 'mutation_result') {
+            const result = data?.result ?? data;
+            appendMessage({ mutationResult: result, role: 'assistant', text: mutationResultText(result) });
           } else if (event === 'done') {
             if (data?.conversationId) {
               convIdRef.current = data.conversationId;
+              const snapshot = getServerRuntime();
+              if (snapshot && user?.role) {
+                setAgentChatState(snapshot, user.role, { conversationId: data.conversationId, draft: '' }).catch(() => {});
+              }
             }
             updateLastAssistant({ isStreaming: false });
           } else if (event === 'error') {
             const msg = data?.message || '未知错误';
-            setMessages((current) => current.slice(0, messageCountBeforeSend));
+            setMessages((current) => preserveAgentSendError(current, data));
             Alert.alert('出错', msg);
           }
         },
@@ -217,21 +262,46 @@ export default function AgentChatScreen({ route, navigation }) {
       }
     } catch (err) {
       Alert.alert('发送失败', err?.message || String(err));
-      setMessages((current) => current.slice(0, messageCountBeforeSend));
+      setMessages((current) => preserveAgentSendError(current, err));
     } finally {
       setSending(false);
     }
   };
 
+  const handleComposerKeyPress = useCallback((event) => {
+    const nativeEvent = event?.nativeEvent || {};
+    const key = nativeEvent.key || event?.key;
+    const shiftKey = nativeEvent.shiftKey === true || event?.shiftKey === true;
+    const isComposing = nativeEvent.isComposing === true || event?.isComposing === true;
+    if (!shouldSendOnEnter({ platform: Platform.OS, key, shiftKey, isComposing })) return;
+    event?.preventDefault?.();
+    send();
+  }, [send]);
+
   const onConfirmDraft = async (draft) => {
     try {
-      const res = await agentApi.confirmDraft(draft);
+      const normalized = normalizeDraftForClient(draft);
+      const res = normalized.proposal
+        ? await agentApi.confirmMutation({ proposal: normalized.proposal, confirmed: true })
+        : await agentApi.confirmDraft(normalized);
       const orderId = res?.order?.id ?? res?.id ?? '(未知)';
       Alert.alert('已创建', `订单 #${orderId} 已创建`);
+      appendMessage({ role: 'assistant', text: `已完成订单写入：#${orderId}` });
       // Drop all draft messages from the view.
       setMessages((prev) => prev.filter((m) => !m.draft));
     } catch (err) {
       Alert.alert('创建失败', err?.message || String(err));
+    }
+  };
+
+  const onConfirmMutation = async (proposal) => {
+    try {
+      const res = await agentApi.confirmMutation({ proposal, confirmed: true }, proposal?.proposalId);
+      const result = res?.result ?? res;
+      appendMessage({ role: 'assistant', text: mutationResultText(result), mutationResult: result });
+      setMessages((prev) => prev.filter((m) => !sameProposal(m.mutationProposal, proposal)));
+    } catch (err) {
+      Alert.alert('修改失败', err?.message || String(err));
     }
   };
 
@@ -257,6 +327,18 @@ export default function AgentChatScreen({ route, navigation }) {
           onCancel={onCancelDraft}
         />
       );
+    }
+    if (item.mutationProposal) {
+      return (
+        <MutationConfirmCard
+          proposal={item.mutationProposal}
+          onConfirm={allowWrite ? onConfirmMutation : undefined}
+          onCancel={() => setMessages((prev) => prev.filter((m) => m !== item))}
+        />
+      );
+    }
+    if (item.mutationResult) {
+      return <AgentBubble role="assistant" text={item.text || mutationResultText(item.mutationResult)} />;
     }
     return (
       <AgentBubble
@@ -317,7 +399,8 @@ export default function AgentChatScreen({ route, navigation }) {
           scrollEnabled
           textAlignVertical="top"
           editable={!sending && !preparingImages}
-          onSubmitEditing={send}
+          onKeyPress={handleComposerKeyPress}
+          onSubmitEditing={Platform.OS === 'web' ? undefined : send}
           blurOnSubmit={false}
         />
         <TouchableOpacity
@@ -331,6 +414,17 @@ export default function AgentChatScreen({ route, navigation }) {
       </View>
     </KeyboardControllerAvoidingView>
   );
+}
+
+function sameProposal(left, right) {
+  return Boolean(left && right && left.proposalId && right.proposalId && left.proposalId === right.proposalId);
+}
+
+function mutationResultText(result) {
+  if (!result) return '修改已完成。';
+  if (result.deleted) return `已删除记录 #${result.id || ''}`.trim();
+  const id = result.id || result.record?.id;
+  return id ? `修改已完成：记录 #${id}` : '修改已完成。';
 }
 
 const createStyles = (colors) => StyleSheet.create({

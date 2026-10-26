@@ -3,7 +3,7 @@ const test = require('node:test'), assert = require('node:assert/strict');
 const { createModelDownloadService } = require('../../backend/modules/modelDownloads/service');
 function fixture() {
   let time = 1000;
-  const users = { owner: { id: 'owner', role: 'owner', active: true, tokenVersion: '1' }, staff: { id: 'staff', role: 'staff', active: true, tokenVersion: '1' } };
+  const users = Object.fromEntries(['owner', 'staff', 'viewer'].map(role => [role, { id: role, role, active: true, tokenVersion: '1' }]));
   const state = { policy: { enabled: false, passwordHash: null, version: '1' }, grants: {}, attempts: {}, audits: [] };
   const repo = { transaction: async fn => {
     const copy = structuredClone(state);
@@ -44,6 +44,51 @@ test('all source paths require a file- and account-bound grant; preview still wo
   assert.equal(await f.service.check(staff, 'models/part.stl', token), true); // Same transmission, multiple ranges.
   await assert.rejects(f.service.check(owner, 'models/part.stl', token), code('MODEL_DOWNLOAD_AUTHORIZATION_REQUIRED'));
   await assert.rejects(f.service.check(staff, 'models/other.stl', token), code('MODEL_DOWNLOAD_AUTHORIZATION_REQUIRED'));
+});
+test('members cannot rotate or disable policy; all roles including owner must verify the password', async () => {
+  const f = fixture(); await enable(f);
+  for (const role of ['staff', 'viewer']) {
+    const session = { actorId: role, tokenVersion: '1' };
+    for (const input of [{ version: '2', enabled: false }, { version: '2', enabled: true, password: 'unauthorized-replacement' }]) {
+      await assert.rejects(f.service.configure(session, input), code('BUSINESS_FORBIDDEN'));
+      assert.equal(f.state.policy.version, '2'); assert.equal(f.state.policy.enabled, true);
+    }
+    await assert.rejects(f.service.configure(session, { version: '2', enabled: true, role: 'owner', password }), code('DOWNLOAD_INPUT_INVALID'));
+  }
+  for (const role of ['owner', 'staff', 'viewer']) {
+    const session = { actorId: role, tokenVersion: '1' };
+    await assert.rejects(authorize(f, { password: 'wrong' }, session), code('MODEL_DOWNLOAD_PASSWORD_INVALID'));
+    await assert.rejects(authorize(f, { password: undefined }, session), code('MODEL_DOWNLOAD_PASSWORD_INVALID'));
+    const grant = await authorize(f, {}, session);
+    assert.equal(await f.service.check(session, 'models/part.stl', grant.token), true);
+    assert.deepEqual(Object.keys(await f.service.status(session)).sort(), ['enabled', 'version']);
+  }
+});
+
+test('HTTP API rejects members changing policy and owner downloading without password', async t => {
+  const express = require('../../backend/node_modules/express');
+  const { createModelDownloadsRouter } = require('../../backend/modules/modelDownloads/http');
+  const f = fixture(); await enable(f);
+  const app = express();
+  app.use(createModelDownloadsRouter({ service: f.service, authenticate: async role => ({ actorId: role, tokenVersion: '1' }), allowInsecureTest: true }));
+  const server = app.listen(0, '127.0.0.1');
+  await new Promise(resolve => server.once('listening', resolve));
+  t.after(() => new Promise(resolve => server.close(resolve)));
+  const send = (role, endpoint, body, method = 'POST') => fetch(`http://127.0.0.1:${server.address().port}${endpoint}`, { method, headers: { Authorization: `Bearer ${role}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  for (const role of ['staff', 'viewer']) {
+    for (const body of [{ enabled: false, version: '2' }, { enabled: true, version: '2', password: 'member-tried-to-change-password' }]) {
+      const response = await send(role, '/policy', body, 'PUT');
+      assert.equal(response.status, 403); assert.equal((await response.json()).code, 'BUSINESS_FORBIDDEN');
+    }
+  }
+  for (const role of ['owner', 'staff', 'viewer']) {
+    const body = { key: 'models/part.stl', purpose: 'download', consent: true };
+    assert.equal((await send(role, '/authorize', body)).status, 403);
+    assert.equal((await send(role, '/authorize', { ...body, password })).status, 200);
+  }
+  const rotated = await send('owner', '/policy', { enabled: true, version: '2', password: 'new-owner-download-password' }, 'PUT');
+  assert.equal(rotated.status, 200);
+  assert.deepEqual(await rotated.json(), { enabled: true, version: '3' });
 });
 test('declining local transfer issues nothing; failures persist and throttle across requests', async () => {
   const f = fixture(); await enable(f);

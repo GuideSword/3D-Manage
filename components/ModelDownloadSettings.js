@@ -28,7 +28,8 @@ export default function ModelDownloadSettings() {
   }
   const fieldStyle = { color: colors.text, borderWidth: 1, borderColor: colors.border, borderRadius: 8, padding: 12, marginTop: 10 };
   return <Card><Text style={{ color: colors.text, fontWeight: '700', fontSize: 18 }}>模型下载保护</Text>
-    <Text style={{ color: colors.text, marginVertical: 12 }}>统一保护模型下载、手机分享和 Studio 导入。管理员本人也需验证下载密码。此功能需要服务器支持 HTTPS。</Text>
+    <Text style={{ color: colors.text, marginVertical: 12 }}>统一保护模型下载、手机分享和 Studio 导入。只有超级管理员可以更改此下载密码；启用保护后，所有账号（包括管理员）下载时均需验证。此密码与账号登录密码不同。</Text>
+    <Text style={{ color: colors.textSecondary, marginBottom: 12 }}>需要受信 HTTPS。局域网部署可在服务器电脑运行“配置内网HTTPS.bat”，为使用设备安装根证书，再将服务器地址切换为 https:// 开头。</Text>
     <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}><Text style={{ color: colors.text }}>启用模型下载密码</Text><Switch accessibilityLabel="启用模型下载密码" disabled={busy || !policy} value={enabled} onValueChange={setEnabled} /></View>
     <TextInput accessibilityLabel="设置模型下载密码" placeholder="新下载密码（至少12个字符；留空保持原密码）" placeholderTextColor={colors.textSecondary} secureTextEntry autoCorrect={false} autoCapitalize="none" value={password} onChangeText={setPassword} style={fieldStyle} />
     <TextInput accessibilityLabel="确认模型下载密码" placeholder="再次输入新下载密码" placeholderTextColor={colors.textSecondary} secureTextEntry autoCorrect={false} autoCapitalize="none" value={confirmation} onChangeText={setConfirmation} style={fieldStyle} />
