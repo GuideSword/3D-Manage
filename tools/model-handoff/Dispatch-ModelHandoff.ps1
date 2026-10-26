@@ -3,15 +3,20 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 if ($args.Count -gt 0) { throw '只允许传入一个协议地址' }
 if ([string]::IsNullOrWhiteSpace($Uri)) {
-  $message = '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。'
-  if ($env:MODEL_IMPORT_HEADLESS -eq '1') { Write-Error $message } else { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($message, 'model-import', 'OK', 'Information') | Out-Null }
-  exit 1
+  if ($env:MODEL_IMPORT_HEADLESS -eq '1') { Write-Error '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。'; exit 1 }
+  $root=if($PSScriptRoot){$PSScriptRoot}else{[AppDomain]::CurrentDomain.BaseDirectory}
+  $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
+  if (-not (Test-Path -LiteralPath $configPath)) { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show('助手尚未安装或缺少服务器绑定配置，请先安装 Windows 模型助手。', 'model-import', 'OK', 'Error') | Out-Null; exit 1 }
+  $config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+  try { $env:MODEL_IMPORT_STANDALONE='1'; & (Join-Path $root 'Import-Models.ps1') -Standalone -Config $config; exit $LASTEXITCODE }
+  catch { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'model-import', 'OK', 'Error') | Out-Null; exit 1 }
 }
-$root=$PSScriptRoot
+$root=if($PSScriptRoot){$PSScriptRoot}else{[AppDomain]::CurrentDomain.BaseDirectory}
 $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
 if (-not (Test-Path -LiteralPath $configPath)) { throw '助手尚未安装或缺少绑定配置' }
 $config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
 $u=[Uri]$Uri
 if ($u.Scheme -cne 'manage3d-model' -or $u.Host -notin @('open','import') -or $u.UserInfo -or $u.Fragment) { throw '模型助手协议地址无效' }
 if ($u.Host -eq 'open') { & (Join-Path $root 'Open-Model.ps1') -Uri $Uri; exit $LASTEXITCODE }
-& (Join-Path $root 'Import-Models.ps1') -Uri $Uri -Config $config
+try { & (Join-Path $root 'Import-Models.ps1') -Uri $Uri -Config $config; exit $LASTEXITCODE }
+catch { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'model-import', 'OK', 'Error') | Out-Null; exit 1 }

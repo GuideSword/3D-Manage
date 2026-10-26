@@ -1,23 +1,22 @@
-﻿param([string]$Uri, $Config)
+﻿param([string]$Uri, $Config, [switch]$Standalone)
 Set-StrictMode -Version Latest
 $ErrorActionPreference='Stop'
 Import-Module (Join-Path $PSScriptRoot 'Import.Core.psm1') -Force
 Import-Module (Join-Path $PSScriptRoot 'Import.Ui.psm1') -Force
+if ($env:MODEL_IMPORT_STANDALONE -eq '1') { $Standalone = $true }
 
 function Show-ImportLaunchError {
  param([Parameter(Mandatory)][string]$Message)
  if ($env:MODEL_IMPORT_HEADLESS -eq '1') { Write-Error $Message; return }
- try { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($Message, 'model-import', 'OK', 'Error') | Out-Null }
- catch { Write-Error $Message }
+ try { Add-Type -AssemblyName System.Windows.Forms; [Windows.Forms.MessageBox]::Show($Message, 'model-import', 'OK', 'Error') | Out-Null } catch { Write-Error $Message }
 }
 
-if ([string]::IsNullOrWhiteSpace($Uri)) {
- Show-ImportLaunchError '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。直接双击脚本没有一次性导入授权，无法开始传输。'
- exit 1
-}
 if (-not $Config) {
  $configPath=Join-Path $env:LOCALAPPDATA '3DManageModelHandoff/app/config.json'
  if (Test-Path -LiteralPath $configPath) { $Config=Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json } else { Show-ImportLaunchError '助手尚未安装或缺少服务器绑定配置，请先安装 Windows 模型助手。'; exit 1 }
+}
+if ([string]::IsNullOrWhiteSpace($Uri) -and -not $Standalone) {
+ Show-ImportLaunchError '请从 3D-Manage 模型库点击“批量导入模型”启动 model-import。直接双击脚本没有一次性导入授权，无法开始传输。'; exit 1
 }
 function ConvertFrom-ImportUri {
  param([Parameter(Mandatory)][string]$Value,[Parameter(Mandatory)][string]$AllowedServer)
@@ -31,15 +30,35 @@ function ConvertFrom-ImportUri {
  if($s.AbsoluteUri.TrimEnd('/') -cne $a.AbsoluteUri.TrimEnd('/')){throw '服务器与已绑定ERP不一致'}
  @{Server=$a.AbsoluteUri.TrimEnd('/');Ticket=$p.ticket}
 }
-if(-not $Uri){ $Uri='manage3d-model://import' }
-$req=ConvertFrom-ImportUri $Uri $Config.serverUrl
-$identity=Invoke-RestMethod -Uri ($req.Server+'/system/info') -Method Get -MaximumRedirection 0 -TimeoutSec 15
-if([string]$identity.serverId -cne [string]$Config.serverId){throw 'ERP服务器身份已变化，拒绝导入'}
-$session=Invoke-RestMethod -Uri ($req.Server+'/model-import/handoff/redeem') -Method Post -Body (@{ticket=$req.Ticket}|ConvertTo-Json) -ContentType 'application/json' -MaximumRedirection 0
-$token=[string]$session.token; if($token -notmatch '^[A-Za-z0-9._-]{20,}$'){throw '服务器返回的导入授权无效'}
+
+$extensions=@('.stl','.obj','.3mf','.step','.stp')
+if ($Standalone) {
+ $setup=Show-StandaloneImportSetup
+ if ($setup.Cancelled) { exit 0 }
+ $req=@{Server=([string]$Config.serverUrl).TrimEnd('/')}
+ $extensions=@($setup.Extensions)
+ $identity=Invoke-RestMethod -Uri ($req.Server+'/system/info') -Method Get -MaximumRedirection 0 -TimeoutSec 15
+ if([string]$identity.serverId -cne [string]$Config.serverId){throw 'ERP服务器身份已变化，拒绝导入'}
+ $session=Invoke-RestMethod -Uri ($req.Server+'/auth/login') -Method Post -Body (@{email=$setup.Email;password=$setup.Password}|ConvertTo-Json) -ContentType 'application/json' -MaximumRedirection 0
+ $token=[string]$session.token
+ if($token -notmatch '^[A-Za-z0-9._-]{20,}$'){throw '服务器返回的登录授权无效'}
+ $concurrency=[int]$setup.Concurrency
+} else {
+ if(-not $Uri){ $Uri='manage3d-model://import' }
+ $req=ConvertFrom-ImportUri $Uri $Config.serverUrl
+ $identity=Invoke-RestMethod -Uri ($req.Server+'/system/info') -Method Get -MaximumRedirection 0 -TimeoutSec 15
+ if([string]$identity.serverId -cne [string]$Config.serverId){throw 'ERP服务器身份已变化，拒绝导入'}
+ $session=Invoke-RestMethod -Uri ($req.Server+'/model-import/handoff/redeem') -Method Post -Body (@{ticket=$req.Ticket}|ConvertTo-Json) -ContentType 'application/json' -MaximumRedirection 0
+ $token=[string]$session.token
+ if($token -notmatch '^[A-Za-z0-9._-]{20,}$'){throw '服务器返回的导入授权无效'}
+ $concurrency=2
+}
+
 $headers=@{Authorization='Bearer '+$token;'X-Business-Rules-Version'='2'}
 $jobHeaders=$headers.Clone();$jobHeaders['Idempotency-Key']=[guid]::NewGuid().ToString('N')
-$job=Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs') -Method Post -Headers $jobHeaders -Body (@{clientJobId=([guid]::NewGuid().ToString('N')); options=@{}}|ConvertTo-Json -Depth 5) -ContentType 'application/json' -MaximumRedirection 0
+$options=@{}
+if ($Standalone) { $options.extensions=$extensions; $options.concurrency=$concurrency }
+$job=Invoke-RestMethod -Uri ($req.Server+'/model-import/jobs') -Method Post -Headers $jobHeaders -Body (@{clientJobId=([guid]::NewGuid().ToString('N')); options=$options}|ConvertTo-Json -Depth 5) -ContentType 'application/json' -MaximumRedirection 0
 $jobId=[string]$job.jobId; if(-not $jobId){$jobId=[string]$job.id}; if(-not $jobId){throw '服务器未返回导入任务编号'}
 $manifestPath=[IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports',$jobId)
 $context=[pscustomobject]@{Server=$req.Server;JobId=$jobId;Token=$token}
@@ -50,7 +69,9 @@ $prepare={param($item,$context)
 }
 $upload={param($item,$context)
  if($item.State -eq 'duplicate'){return}
- $f=Join-Path $item.SourcePath $item.RelativePath; if(-not (Test-Path -LiteralPath $f)){$f=$item.Path}; $client=[Net.Http.HttpClient]::new()
+ $f=Join-Path $item.SourcePath $item.RelativePath; if(-not (Test-Path -LiteralPath $f)){$f=$item.Path}; $client=[Net.Http.HttpClient]::new(); $stream=$null
  try{$client.DefaultRequestHeaders.Authorization=[Net.Http.Headers.AuthenticationHeaderValue]::new('Bearer',$context.Token);$client.DefaultRequestHeaders.Add('X-Business-Rules-Version','2');$client.DefaultRequestHeaders.Add('Idempotency-Key',"upload-$($item.ItemId)");$form=[Net.Http.MultipartFormDataContent]::new();$stream=[IO.File]::OpenRead($f);$content=[Net.Http.StreamContent]::new($stream);$form.Add($content,'file',[IO.Path]::GetFileName($f));$resp=$client.PostAsync($context.Server+'/model-import/jobs/'+$context.JobId+'/items/'+$item.ItemId+'/file',$form).GetAwaiter().GetResult();if(-not $resp.IsSuccessStatusCode){throw ('上传失败: '+[int]$resp.StatusCode)}}finally{if($stream){$stream.Dispose()};$client.Dispose()}
 }
-$manifest=Show-ModelImportWorkbench -Root ([IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports')) -ManifestPath $manifestPath -Prepare $prepare -Upload $upload -Concurrency 2 -Context $context
+if ($Standalone) { Show-ModelImportWorkbench -Root $setup.Root -Extensions $extensions -ManifestPath $manifestPath -Prepare $prepare -Upload $upload -Concurrency $concurrency -Context $context | Out-Null }
+else { Show-ModelImportWorkbench -Root ([IO.Path]::Combine($env:LOCALAPPDATA,'3DManageModelHandoff','imports')) -ManifestPath $manifestPath -Prepare $prepare -Upload $upload -Concurrency $concurrency -Context $context | Out-Null }
+exit 0

@@ -3,7 +3,8 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Net.Http
-Import-Module (Join-Path $PSScriptRoot 'Handoff.Core.psm1') -Force
+$scriptRoot = if($PSScriptRoot){$PSScriptRoot}else{[AppDomain]::CurrentDomain.BaseDirectory}
+Import-Module (Join-Path $scriptRoot 'Handoff.Core.psm1') -Force
 $handler = [Net.Http.HttpClientHandler]::new()
 $handler.AllowAutoRedirect = $false
 $client = [Net.Http.HttpClient]::new($handler)
@@ -16,7 +17,7 @@ try {
     if ($null -ne $unboundArguments -and @($unboundArguments).Count -gt 0) { throw '不接受额外交接参数' }
     $diagnostic.stage = 'configuration'
     $diagnostic.code = 'HANDOFF_CONFIGURATION'
-    $configPath = Join-Path $PSScriptRoot 'config.json'
+    $configPath = Join-Path $scriptRoot 'config.json'
     if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) { throw '助手配置文件不存在，请重新安装助手' }
     $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
     if (-not $config.serverUrl -or -not $config.serverId -or -not $config.studioPath) { throw '助手配置文件缺少服务器或Studio路径' }
